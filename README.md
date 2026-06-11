@@ -118,6 +118,8 @@ function onLayoutChange(e) { console.log('layout', e.mode, e.orientation) }
 // call instance methods through the ref:
 function fit() { chart.value.fitToScreen() }
 function exportSvg() { chart.value.exportSVG() }
+function setTop() { chart.value.setOrientation('TopToBottom') } // also accepts 'Top'
+function showGrid() { chart.value.setShowGrid(true) }
 </script>
 ```
 
@@ -219,15 +221,151 @@ Each payload includes the relevant `{ id, node, ... }`.
 
 ## 10. Methods (Vue ref / vanilla instance)
 
-`fitToScreen()`, `relayout()`, `expandAll()`, `collapseAll()`, `toggleCollapse(id)`,
-`centerOnNode(id)`, `search(query)`, `clearSearch()`, `setOrientation(o)`,
-`setSubtreeMode(m)`, `setSpacing(x, y)`, `setNodes(nodes)`, `loadJSON(data)`,
-`exportJSON(download?)`, `exportSVG()`, `exportPNG(scale?)`, `exportPDF()`,
-`getState()`, `getNodes()`, `getPositioned()`, `on(name, cb)`, `off(name, cb)`,
-`destroy()`.
+All methods are available on:
+- **Vue:** `chartRef.value.method()` (where `const chartRef = ref(null)` on `<OrgChart ref="chartRef" />`)
+- **Vanilla:** `chart.method()` (from `const chart = createOrgChart(el, opts)`)
 
-`destroy()` removes all DOM created by the chart and every event listener — call it
-when you tear the chart down (the Vue wrapper does this automatically on unmount).
+### View / Layout
+
+| Method | Description |
+|--------|-------------|
+| `fitToScreen()` | Zoom & pan to frame all visible nodes |
+| `relayout()` | Recalculate layout; clears manual offsets & waypoints |
+| `resetView()` | Clear search + relayout + fit (one-stop view reset) |
+| `reset()` | Alias for `resetView()` |
+| `expandAll()` | Expand every collapsed node |
+| `collapseAll()` | Collapse every non-root node with children |
+| `toggleCollapse(id)` | Toggle a single node's collapsed state |
+| `centerOnNode(id)` | Pan to center a specific node in the viewport |
+
+### Search
+
+| Method | Description |
+|--------|-------------|
+| `search(query)` | Highlight nodes matching `query`; returns match count |
+| `clearSearch()` | Remove search highlighting |
+
+### Orientation / Subtree
+
+| Method | Description |
+|--------|-------------|
+| `setOrientation(o)` | `TopToBottom`, `BottomToTop`, `LeftToRight`, `RightToLeft`; aliases `Top`, `Bottom`, `Left`, `Right` |
+| `setSubtreeMode(m)` | `'Balanced'` · `'Center'` · `'Left'` · `'Right'` · `'Alternate'` · `'AlternateLeft'` · `'AlternateRight'` · `'Matrix'` |
+| `setSpacing(x?, y?)` | Adjust horizontal / vertical gap between nodes |
+
+### Grid
+
+| Method | Description |
+|--------|-------------|
+| `setShowGrid(on)` | Toggle the grid overlay |
+| `setSnapToGrid(on)` | Toggle snap-to-grid during node drag |
+| `setAlignToGrid(on)` | Toggle grid-aligned layout positions |
+| `toggleGrid(force?)` | Toggle the grid overlay, or force a specific state |
+| `showGrid(on)` | Alias for `setShowGrid(on)` |
+| `snapToGrid(on)` | Alias for `setSnapToGrid(on)` |
+| `alignToGrid(on)` | Alias for `setAlignToGrid(on)` |
+
+> These convenience methods call `setOption()` under the hood. You can also use
+> `setOption('showGrid', true)` etc. directly.
+
+### Edit / Inspector / Settings
+
+| Method | Description |
+|--------|-------------|
+| `setEditMode(on)` | Enable/disable edit mode (drag nodes, edit fields) |
+| `isEditMode()` | Returns current edit-mode state |
+| `updateNode(id, patch)` | Merge `patch` into a node's data |
+| `addChild(parentId)` | Create a new child node (edit mode only) |
+| `deleteNode(id)` | Delete a node + its descendants (edit mode only) |
+| `reparentNode(id, newParentId)` | Move a node under a new parent |
+| `detachNode(id)` | Make a node a root (remove `parentId`) |
+| `openInspector(id)` | Open the right slide-in panel for a node |
+| `closeInspector()` | Close the inspector panel |
+| `getSettings()` | Get current settings (spacing, grid, theme rules) |
+| `setSettings(s)` | Apply settings (merges; fires `settings-change`) |
+| `toggleSettings(force?)` | Toggle the left settings panel |
+
+### Data
+
+| Method | Description |
+|--------|-------------|
+| `setNodes(nodes, meta?)` | Replace node data programmatically |
+| `loadJSON(data)` | Import from export format; returns node count |
+| `getState()` | Snapshot of internal state (zoom, pan, mode, etc.) |
+| `getNodes()` | Get a copy of the current node array |
+| `getPositioned()` | Get the positioned layout result |
+
+### Export
+
+| Method | Description |
+|--------|-------------|
+| `exportPNG(scale?)` | Download a high-DPI PNG (default scale = 3) |
+| `exportSVG()` | Download an SVG; returns SVG string |
+| `exportPDF()` | Open a print-ready SVG in a new tab |
+| `exportJSON(download?)` | Export full layout state as JSON; returns the object |
+| `buildSVG(raster?)` | Build the raw SVG string without downloading |
+
+### Requested toolbar support
+
+Supported: all subtree modes (`Balanced`, `Center`, `Left`, `Right`, `Alternate`,
+`AlternateLeft`, `AlternateRight`, `Matrix`), all four orientations, fit, re-layout,
+reset, expand/collapse, search, show grid, snap to grid, align to grid, edit mode,
+settings panel, PNG, SVG, PDF, JSON export, JSON import, and raw SVG generation.
+
+Current no-op / unsupported list: none for the requested toolbar features. PDF export
+uses the browser print dialog from a generated SVG rather than a binary PDF writer.
+
+### Generic / Advanced
+
+| Method | Description |
+|--------|-------------|
+| `setOption(key, val)` | Set any engine option by key |
+| `on(name, cb)` | Subscribe to chart events |
+| `off(name, cb)` | Unsubscribe from chart events |
+| `instance()` | *(Vue only)* Access the underlying vanilla `OrgChartInstance` |
+| `destroy()` | *(vanilla only)* Remove all DOM + listeners |
+
+### Vue toolbar example
+
+```vue
+<template>
+  <div style="height: 100vh">
+    <!-- use :toolbar="false" to hide the built-in one, build your own -->
+    <OrgChart ref="chartRef" :nodes="nodes" :toolbar="false" />
+    <div class="my-toolbar">
+      <button @click="chartRef.fitToScreen()">Fit</button>
+      <button @click="chartRef.relayout()">Re-layout</button>
+      <button @click="chartRef.reset()">Reset</button>
+      <button @click="chartRef.expandAll()">Expand</button>
+      <button @click="chartRef.collapseAll()">Collapse</button>
+      <button @click="chartRef.setOrientation('LeftToRight')">Left→Right</button>
+      <button @click="chartRef.setSubtreeMode('Alternate')">Alternate</button>
+      <button @click="chartRef.setShowGrid(true)">Show Grid</button>
+      <button @click="chartRef.setEditMode(true)">Edit</button>
+      <button @click="chartRef.exportPNG()">PNG</button>
+      <button @click="chartRef.exportSVG()">SVG</button>
+      <button @click="chartRef.exportPDF()">PDF</button>
+      <button @click="chartRef.exportJSON()">JSON</button>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+import { OrgChart } from 'local-org-chart/vue'
+import 'local-org-chart/style.css'
+
+const chartRef = ref(null)
+const nodes = ref([/* your node data */])
+</script>
+```
+
+**TypeScript tip:** use the `OrgChartVueInstance` type for autocomplete:
+```ts
+import type { OrgChartVueInstance } from 'local-org-chart'
+const chartRef = ref<OrgChartVueInstance | null>(null)
+```
+
 
 ### Node schema
 

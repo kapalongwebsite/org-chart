@@ -611,7 +611,7 @@ export function createOrgChart(host, userOpts = {}) {
     if (typeof s.spacingX === 'number') state.spacingX = s.spacingX;
     if (typeof s.spacingY === 'number') state.spacingY = s.spacingY;
     if (typeof s.gridSize === 'number') state.gridSize = s.gridSize;
-    if (s.orientation) state.orientation = s.orientation;
+    if (s.orientation) state.orientation = normalizeOrientationInput(s.orientation);
     if (s.subtreeMode) state.subtreeMode = s.subtreeMode;
     if ('showGrid' in s) state.showGrid = !!s.showGrid;
     if ('snapGrid' in s) state.snapGrid = !!s.snapGrid;
@@ -769,14 +769,44 @@ export function createOrgChart(host, userOpts = {}) {
     if (opts.fitOnInit) fitToScreen();
   }
   function loadJSON(data) { const { nodes, meta } = normalizeImported(data); setNodes(nodes, meta); return nodes.length; }
-  function setOrientation(o) { state.orientation = o; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); emit('orientation-change', { orientation: o }); }
+  const ORIENTATION_ALIASES = {
+    Top: 'TopToBottom',
+    Bottom: 'BottomToTop',
+    Left: 'LeftToRight',
+    Right: 'RightToLeft',
+  };
+  function normalizeOrientationInput(o) { return ORIENTATION_ALIASES[o] || o; }
+  function setOrientation(o) {
+    const orientation = normalizeOrientationInput(o);
+    state.orientation = orientation; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); emit('orientation-change', { orientation });
+  }
   function setSubtreeMode(m) { state.subtreeMode = m; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); emit('subtree-mode-change', { subtreeMode: m }); }
-  function setSpacing(x, y) { if (x != null) state.spacingX = x; if (y != null) state.spacingY = y; refresh(); }
+  function setSpacing(x, y) {
+    if (x != null) state.spacingX = x; if (y != null) state.spacingY = y;
+    refresh(); emit('settings-change', getSettings());
+  }
   function setOption(key, val) {
-    if (key in state) { state[key] = val; if (key === 'showGrid') applyGridOverlay(); if (key === 'alignGrid') { manualOffsets = Object.create(null); refresh(); } syncToolbar(); }
+    if (key in state) {
+      state[key] = val;
+      if (key === 'showGrid') applyGridOverlay();
+      if (key === 'alignGrid') { manualOffsets = Object.create(null); refresh(); }
+      syncToolbar(); persist();
+      if (['showGrid', 'snapGrid', 'alignGrid', 'gridSize'].includes(key)) emit('settings-change', getSettings());
+    }
     else opts[key] = val;
   }
+  function setShowGrid(on) { setOption('showGrid', !!on); return state.showGrid; }
+  function setSnapToGrid(on) { setOption('snapGrid', !!on); return state.snapGrid; }
+  function setAlignToGrid(on) { setOption('alignGrid', !!on); return state.alignGrid; }
+  function toggleGrid(force) { return setShowGrid(force == null ? !state.showGrid : force); }
   function relayout() { manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); refresh(); }
+  function resetView() {
+    clearSearch();
+    closeInspector();
+    relayout();
+    fitToScreen();
+  }
+  function reset() { resetView(); }
 
   // ================= global interaction wiring =================
   addL(nodesLayer, 'pointerdown', (e) => { const el2 = e.target.closest('.loc-node'); if (el2) onNodePointerDown(e, el2.dataset.id); });
@@ -971,12 +1001,17 @@ export function createOrgChart(host, userOpts = {}) {
   const api = {
     root,
     setNodes, loadJSON, setOrientation, setSubtreeMode, setSpacing, setOption,
-    fitToScreen, relayout, expandAll, collapseAll, toggleCollapse, centerOnNode,
+    setShowGrid, setSnapToGrid, setAlignToGrid, toggleGrid,
+    fitToScreen, relayout, resetView, reset, expandAll, collapseAll, toggleCollapse, centerOnNode,
     search, clearSearch, exportJSON, exportSVG, exportPNG, exportPDF, buildSVG,
     setEditMode, isEditMode: () => state.editMode,
     updateNode, addChild, deleteNode, reparentNode, detachNode,
     openInspector, closeInspector,
     getSettings, setSettings, toggleSettings,
+    // convenience aliases (match the Vue expose names)
+    showGrid: (on) => setShowGrid(on),
+    snapToGrid: (on) => setSnapToGrid(on),
+    alignToGrid: (on) => setAlignToGrid(on),
     // slot bridging (used by the Vue wrapper's teleports)
     getNodeHost: (id) => elById[id] || null,
     getNodeSlotEl: (id) => (elById[id] ? elById[id].querySelector('.loc-node-slot') : null),

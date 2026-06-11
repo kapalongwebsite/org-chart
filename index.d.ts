@@ -1,6 +1,7 @@
 // Type definitions for local-org-chart (hand-written, framework-independent core + vanilla).
 
 export type Orientation = 'TopToBottom' | 'BottomToTop' | 'LeftToRight' | 'RightToLeft';
+export type OrientationInput = Orientation | 'Top' | 'Bottom' | 'Left' | 'Right';
 export type SubtreeMode =
   | 'Balanced' | 'Center' | 'Left' | 'Right'
   | 'Alternate' | 'AlternateLeft' | 'AlternateRight' | 'Matrix';
@@ -20,7 +21,7 @@ export interface OrgNode {
 }
 
 export interface LayoutOptions {
-  orientation?: Orientation;
+  orientation?: OrientationInput;
   subtreeMode?: SubtreeMode;
   spacingX?: number;
   spacingY?: number;
@@ -38,7 +39,7 @@ export interface Bounds { x: number; y: number; w: number; h: number; }
 export interface LayoutResult {
   positioned: PositionedNode[];
   posById: Record<string, PositionedNode>;
-  cfg: Required<LayoutOptions>;
+  cfg: Omit<Required<LayoutOptions>, 'orientation'> & { orientation: Orientation };
   bounds: Bounds;
 }
 
@@ -65,7 +66,7 @@ export interface ThemeRule {
 }
 export interface ChartSettings {
   spacingX?: number; spacingY?: number; gridSize?: number;
-  orientation?: Orientation; subtreeMode?: SubtreeMode;
+  orientation?: OrientationInput; subtreeMode?: SubtreeMode;
   showGrid?: boolean; snapGrid?: boolean; alignGrid?: boolean;
   themeRules?: ThemeRule[];
 }
@@ -82,7 +83,7 @@ export interface CreateOptions extends LayoutOptions {
   inspector?: boolean;
   settings?: ChartSettings;
   fitOnInit?: boolean;
-  toolbar?: boolean;
+  toolbar?: boolean | Partial<Record<'subtree' | 'orient' | 'actions' | 'grid' | 'mode' | 'export', boolean>>;
   persist?: boolean;
   storageKey?: string;
 }
@@ -94,14 +95,20 @@ export type OrgChartEventName =
 
 export interface OrgChartInstance {
   root: HTMLElement;
-  setNodes(nodes: OrgNode[], meta?: any): void;
+  setNodes(nodes: OrgNode[], meta?: any, options?: { resetEdits?: boolean }): void;
   loadJSON(data: any): number;
-  setOrientation(o: Orientation): void;
+  setOrientation(o: OrientationInput): void;
   setSubtreeMode(m: SubtreeMode): void;
   setSpacing(x?: number, y?: number): void;
   setOption(key: string, val: any): void;
+  setShowGrid(on: boolean): boolean;
+  setSnapToGrid(on: boolean): boolean;
+  setAlignToGrid(on: boolean): boolean;
+  toggleGrid(force?: boolean): boolean;
   fitToScreen(): void;
   relayout(): void;
+  resetView(): void;
+  reset(): void;
   expandAll(): void;
   collapseAll(): void;
   toggleCollapse(id: string): void;
@@ -125,6 +132,12 @@ export interface OrgChartInstance {
   getSettings(): ChartSettings;
   setSettings(settings: ChartSettings): void;
   toggleSettings(force?: boolean): void;
+  /** Convenience: toggle grid overlay visibility. */
+  showGrid(on: boolean): boolean;
+  /** Convenience: toggle snap-to-grid during drag. */
+  snapToGrid(on: boolean): boolean;
+  /** Convenience: toggle align-to-grid (snaps layout positions to grid). */
+  alignToGrid(on: boolean): boolean;
   getState(): any;
   getNodes(): OrgNode[];
   getPositioned(): PositionedNode[];
@@ -134,3 +147,77 @@ export interface OrgChartInstance {
 }
 
 export function createOrgChart(host: HTMLElement, options?: CreateOptions): OrgChartInstance;
+
+// ---- Vue component ref type ----
+// Use this when typing the ref in a consuming Vue app:
+//   const chartRef = ref<OrgChartVueInstance | null>(null)
+export interface OrgChartVueInstance {
+  // view / layout
+  fitToScreen(): void;
+  relayout(): void;
+  resetView(): void;
+  expandAll(): void;
+  collapseAll(): void;
+  toggleCollapse(id: string): void;
+  centerOnNode(id: string): void;
+
+  // search
+  search(query: string): number;
+  clearSearch(): void;
+
+  // orientation / subtree
+  setOrientation(o: OrientationInput): void;
+  setSubtreeMode(m: SubtreeMode): void;
+  setSpacing(x?: number, y?: number): void;
+
+  // grid convenience
+  setShowGrid(on: boolean): boolean;
+  setSnapToGrid(on: boolean): boolean;
+  setAlignToGrid(on: boolean): boolean;
+  toggleGrid(force?: boolean): boolean;
+  /** Toggle grid overlay visibility. */
+  showGrid(on: boolean): boolean;
+  /** Toggle snap-to-grid during drag. */
+  snapToGrid(on: boolean): boolean;
+  /** Toggle align-to-grid (snaps layout positions to grid). */
+  alignToGrid(on: boolean): boolean;
+
+  // edit mode / inspector / settings
+  setEditMode(on: boolean): void;
+  isEditMode(): boolean;
+  updateNode(id: string, patch: Partial<OrgNode>): void;
+  addChild(parentId: string): void;
+  deleteNode(id: string): void;
+  reparentNode(id: string, newParentId: string): void;
+  detachNode(id: string): void;
+  openInspector(id: string): void;
+  closeInspector(): void;
+  getSettings(): ChartSettings;
+  setSettings(settings: ChartSettings): void;
+  toggleSettings(force?: boolean): void;
+
+  // data
+  setNodes(nodes: OrgNode[], meta?: any, options?: { resetEdits?: boolean }): void;
+  loadJSON(data: any): number;
+  getState(): any;
+  getNodes(): OrgNode[];
+  getPositioned(): PositionedNode[];
+
+  // export
+  exportJSON(download?: boolean): any;
+  exportSVG(): string;
+  exportPNG(scale?: number): void;
+  exportPDF(): void;
+  buildSVG(raster?: boolean): string;
+
+  // generic / advanced
+  setOption(key: string, val: any): void;
+  on(name: OrgChartEventName, cb: (payload: any) => void): void;
+  off(name: OrgChartEventName, cb: (payload: any) => void): void;
+
+  /** Convenience: clear search + relayout + fit to screen. */
+  reset(): void;
+
+  /** Access the underlying vanilla OrgChartInstance (escape hatch). */
+  instance(): OrgChartInstance;
+}

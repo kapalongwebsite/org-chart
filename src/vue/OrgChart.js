@@ -111,20 +111,34 @@ export const OrgChart = defineComponent({
     onBeforeUnmount(() => { if (chart) { chart.destroy(); chart = null; } });
 
     expose({
+      // ---- view / layout ----
       fitToScreen: () => chart && chart.fitToScreen(),
       relayout: () => chart && chart.relayout(),
+      resetView: () => chart && chart.resetView(),
       expandAll: () => chart && chart.expandAll(),
       collapseAll: () => chart && chart.collapseAll(),
+      toggleCollapse: (id) => chart && chart.toggleCollapse(id),
+      centerOnNode: (id) => chart && chart.centerOnNode(id),
+
+      // ---- search ----
       search: (q) => chart && chart.search(q),
       clearSearch: () => chart && chart.clearSearch(),
-      exportJSON: (download) => chart && chart.exportJSON(download),
-      exportSVG: () => chart && chart.exportSVG(),
-      exportPNG: (scale) => chart && chart.exportPNG(scale),
-      exportPDF: () => chart && chart.exportPDF(),
+
+      // ---- orientation / subtree ----
       setOrientation: (o) => chart && chart.setOrientation(o),
       setSubtreeMode: (m) => chart && chart.setSubtreeMode(m),
-      loadJSON: (data) => chart && chart.loadJSON(data),
-      centerOnNode: (id) => chart && chart.centerOnNode(id),
+      setSpacing: (x, y) => chart && chart.setSpacing(x, y),
+
+      // ---- grid convenience (so toolbar doesn't need to know option keys) ----
+      setShowGrid: (on) => chart && chart.setShowGrid(on),
+      setSnapToGrid: (on) => chart && chart.setSnapToGrid(on),
+      setAlignToGrid: (on) => chart && chart.setAlignToGrid(on),
+      toggleGrid: (force) => chart && chart.toggleGrid(force),
+      showGrid: (on) => chart && chart.setShowGrid(on),
+      snapToGrid: (on) => chart && chart.setSnapToGrid(on),
+      alignToGrid: (on) => chart && chart.setAlignToGrid(on),
+
+      // ---- edit mode / inspector / settings ----
       setEditMode: (v) => chart && chart.setEditMode(v),
       isEditMode: () => chart && chart.isEditMode(),
       updateNode: (id, patch) => chart && chart.updateNode(id, patch),
@@ -137,6 +151,30 @@ export const OrgChart = defineComponent({
       getSettings: () => chart && chart.getSettings(),
       setSettings: (s) => chart && chart.setSettings(s),
       toggleSettings: (f) => chart && chart.toggleSettings(f),
+
+      // ---- data ----
+      setNodes: (nodes, meta, options) => chart && chart.setNodes(nodes, meta, options),
+      loadJSON: (data) => chart && chart.loadJSON(data),
+      getState: () => chart && chart.getState(),
+      getNodes: () => chart && chart.getNodes(),
+      getPositioned: () => chart && chart.getPositioned(),
+
+      // ---- export ----
+      exportJSON: (download) => chart && chart.exportJSON(download),
+      exportSVG: () => chart && chart.exportSVG(),
+      exportPNG: (scale) => chart && chart.exportPNG(scale),
+      exportPDF: () => chart && chart.exportPDF(),
+      buildSVG: (raster) => chart && chart.buildSVG(raster),
+
+      // ---- generic / advanced ----
+      setOption: (key, val) => chart && chart.setOption(key, val),
+      on: (name, cb) => chart && chart.on(name, cb),
+      off: (name, cb) => chart && chart.off(name, cb),
+
+      // ---- convenience: reset view (clear search + relayout + fit) ----
+      reset: () => chart && chart.reset(),
+
+      // ---- raw engine instance (escape hatch) ----
       instance: () => chart,
     });
 
