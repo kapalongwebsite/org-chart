@@ -4,7 +4,7 @@
 // method surface and a destroy() that removes all DOM + listeners.
 import {
   makeNode, indexNodes, layoutOrgChart, normalizeConfig, isHorizontal,
-  routeConnector, edgeEndpoints, edgeControlPoints, effCenter,
+  routeConnector, edgeEndpoints, edgeControlPoints, orthoThrough, effCenter,
   searchNodes as coreSearch, calculateBounds, fitBounds,
   childCount, computeDepths, normalizeImported, exportLayout, buildChartSVG,
   resolveNodeStyle, normalizeRule,
@@ -378,6 +378,14 @@ export function createOrgChart(host, userOpts = {}) {
     const wps = edgeWaypoints[id] || [];
     return edgeControlPoints(parent, child, wps, cfg(), manualOffsets, edgeAnchors[id]);
   }
+  function renderedHandleSegments(controls) {
+    const out = [], horizontal = isHorizontal(cfg());
+    for (let i = 0; i < controls.length - 1; i++) {
+      const pts = orthoThrough([controls[i], controls[i + 1]], horizontal);
+      for (let j = 0; j < pts.length - 1; j++) out.push({ a: pts[j], b: pts[j + 1], insert: i });
+    }
+    return out;
+  }
   function selectEdge(id) {
     if (state.selectedEdgeId && pathById[state.selectedEdgeId]) pathById[state.selectedEdgeId].classList.remove('loc-sel');
     if (state.selectedNodeId && elById[state.selectedNodeId]) elById[state.selectedNodeId].classList.remove('loc-selected');
@@ -403,9 +411,9 @@ export function createOrgChart(host, userOpts = {}) {
     const controls = controlsFor(id); if (!controls) return;
     const wps = edgeWaypoints[id] || [];
     const r = 6 / state.zoom, ra = 5 / state.zoom;
-    for (let s = 0; s < controls.length - 1; s++) {
-      const A = controls[s], B = controls[s + 1];
-      const c = mkCircle((A.x + B.x) / 2, (A.y + B.y) / 2, ra, 'loc-wp-add'); c.dataset.add = s; edgeHandlesG.appendChild(c);
+    for (const seg of renderedHandleSegments(controls)) {
+      const c = mkCircle((seg.a.x + seg.b.x) / 2, (seg.a.y + seg.b.y) / 2, ra, 'loc-wp-add');
+      c.dataset.add = seg.insert; edgeHandlesG.appendChild(c);
     }
     for (let i = 0; i < wps.length; i++) { const c = mkCircle(wps[i].x, wps[i].y, r, 'loc-wp-handle'); c.dataset.wp = i; edgeHandlesG.appendChild(c); }
     // endpoint anchors: square = where the line meets the box (drag to move;
@@ -479,8 +487,9 @@ export function createOrgChart(host, userOpts = {}) {
     return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
   }
   function nearestSegment(controls, pt) {
+    const segments = renderedHandleSegments(controls);
     let best = 0, bestD = Infinity;
-    for (let s = 0; s < controls.length - 1; s++) { const d = distToSeg(pt, controls[s], controls[s + 1]); if (d < bestD) { bestD = d; best = s; } }
+    for (const seg of segments) { const d = distToSeg(pt, seg.a, seg.b); if (d < bestD) { bestD = d; best = seg.insert; } }
     return best;
   }
 
