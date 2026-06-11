@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>local-org-chart — vanilla demo</title>
+  <!-- built stylesheet (run `npm run build` first) -->
+  <link rel="stylesheet" href="../dist/local-org-chart.css" />
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+    #app { height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module">
+    // import the built ESM bundle + the demo data
+    import { createOrgChart } from '../dist/vanilla.js';
+    import { sampleNodes } from './sample-data.js';
+
+    const chart = createOrgChart(document.getElementById('app'), {
+      nodes: sampleNodes,
+      orientation: 'TopToBottom',
+      subtreeMode: 'Balanced',
+      toolbar: true,
+      persist: false,
+    });
+
+    chart.on('node-click', (e) => console.log('node-click', e.id));
+    chart.on('layout-change', (e) => console.log('layout-change', e.mode, e.orientation));
+
+    // expose for console poking
+    window.chart = chart;
+  </script>
+</body>
+</html>

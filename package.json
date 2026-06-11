@@ -1,0 +1,59 @@
+{
+  "name": "local-org-chart",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dependency-free organizational chart engine with automatic subtree layout (Balanced / Alternate / Matrix), 4 orientations, pan/zoom/drag, search, expand-collapse, manual offsets, orthogonal connector waypoints, and SVG/PNG/PDF/JSON export. Ships a framework-independent core, a plain-JS renderer, and a Vue 3 wrapper.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "main": "./dist/local-org-chart.cjs",
+  "module": "./dist/local-org-chart.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./dist/local-org-chart.js",
+      "require": "./dist/local-org-chart.cjs"
+    },
+    "./core": {
+      "import": "./dist/core.js",
+      "require": "./dist/core.cjs"
+    },
+    "./vanilla": {
+      "import": "./dist/vanilla.js",
+      "require": "./dist/vanilla.cjs"
+    },
+    "./vue": {
+      "import": "./dist/vue.js",
+      "require": "./dist/vue.cjs"
+    },
+    "./style.css": "./dist/local-org-chart.css",
+    "./package.json": "./package.json"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "files": [
+    "dist",
+    "src",
+    "index.d.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "prepare": "vite build",
+    "pack-local": "npm run build && npm pack"
+  },
+  "peerDependencies": {
+    "vue": "^3.3.0"
+  },
+  "peerDependenciesMeta": {
+    "vue": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "vue": "^3.4.0"
+  }
+}

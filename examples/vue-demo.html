@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>local-org-chart — Vue 3 demo</title>
+  <link rel="stylesheet" href="../dist/local-org-chart.css" />
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+    #app { height: 100vh; }
+  </style>
+  <!-- In a real Vite/Quasar project Vue resolves automatically. For this
+       buildless file:// demo we map the bare "vue" specifier to the local copy. -->
+  <script type="importmap">
+  { "imports": { "vue": "../node_modules/vue/dist/vue.esm-browser.prod.js" } }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module">
+    import { createApp, h, ref } from 'vue';
+    import { OrgChart } from '../dist/vue.js';
+    import { sampleNodes } from './sample-data.js';
+
+    const App = {
+      setup() {
+        const chartRef = ref(null);
+        const orientation = ref('TopToBottom');
+        const subtreeMode = ref('Balanced');
+        // expose for the test harness / console
+        window.__chart = chartRef;
+        window.__setOrientation = (o) => { orientation.value = o; };
+        window.__setMode = (m) => { subtreeMode.value = m; };
+        return () => h(OrgChart, {
+          ref: chartRef,
+          nodes: sampleNodes,
+          orientation: orientation.value,
+          subtreeMode: subtreeMode.value,
+          toolbar: true,
+          'onNode-click': (e) => { window.__lastClick = e.id; },
+          'onLayout-change': (e) => { window.__lastLayout = e.mode + '/' + e.orientation; },
+        });
+      },
+    };
+    createApp(App).mount('#app');
+  </script>
+</body>
+</html>

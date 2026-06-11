@@ -1,0 +1,107 @@
+// Type definitions for local-org-chart (hand-written, framework-independent core + vanilla).
+
+export type Orientation = 'TopToBottom' | 'BottomToTop' | 'LeftToRight' | 'RightToLeft';
+export type SubtreeMode =
+  | 'Balanced' | 'Center' | 'Left' | 'Right'
+  | 'Alternate' | 'AlternateLeft' | 'AlternateRight' | 'Matrix';
+
+export interface OrgNode {
+  id: string;
+  parentId?: string;
+  type?: 'department' | 'position' | string;
+  label?: string;
+  personName?: string;
+  status?: 'FILLED' | 'VACANT' | 'UNFUNDED' | string;
+  width?: number;
+  height?: number;
+  collapsed?: boolean;
+  layoutMode?: SubtreeMode | null;
+  data?: Record<string, any>;
+}
+
+export interface LayoutOptions {
+  orientation?: Orientation;
+  subtreeMode?: SubtreeMode;
+  spacingX?: number;
+  spacingY?: number;
+  gridSize?: number;
+  alignGrid?: boolean;
+}
+
+export interface PositionedNode {
+  node: OrgNode;
+  cx: number; cy: number; w: number; h: number;
+  parentId: string; routeType: 'bus' | 'spine-left' | 'spine-right';
+}
+
+export interface Bounds { x: number; y: number; w: number; h: number; }
+export interface LayoutResult {
+  positioned: PositionedNode[];
+  posById: Record<string, PositionedNode>;
+  cfg: Required<LayoutOptions>;
+  bounds: Bounds;
+}
+
+// ---- core ----
+export function layoutOrgChart(nodes: OrgNode[], options?: LayoutOptions): LayoutResult;
+export function buildTree(nodes: OrgNode[]): any;
+export function searchNodes(nodes: OrgNode[], query: string): Set<string>;
+export function calculateBounds(positioned: PositionedNode[], manualOffsets?: Record<string, { dx: number; dy: number }>, pad?: number): Bounds;
+export function fitBounds(bounds: Bounds, viewportW: number, viewportH: number, opts?: { maxZoom?: number; margin?: number }): { zoom: number; panX: number; panY: number };
+export function normalizeImported(data: any): { nodes: OrgNode[]; meta: any };
+export function makeNode(src: OrgNode): OrgNode;
+export function exportLayout(state: any, nodes: OrgNode[], manualOffsets?: any, edgeWaypoints?: any): any;
+export function buildChartSVG(positioned: PositionedNode[], paths: string[], opts?: { manualOffsets?: any; raster?: boolean; measureText?: (t: string, font: string) => number; fitOf?: (n: OrgNode) => number }): string;
+
+export const SUBTREE_MODES: SubtreeMode[];
+export const ORIENTATIONS: Orientation[];
+
+// ---- vanilla ----
+export interface CreateOptions extends LayoutOptions {
+  nodes?: OrgNode[];
+  showGrid?: boolean;
+  snapGrid?: boolean;
+  enableDragging?: boolean;
+  enablePan?: boolean;
+  enableZoom?: boolean;
+  readonly?: boolean;
+  fitOnInit?: boolean;
+  toolbar?: boolean;
+  persist?: boolean;
+  storageKey?: string;
+}
+
+export type OrgChartEventName =
+  | 'node-click' | 'node-select' | 'node-drag-start' | 'node-drag' | 'node-drag-end'
+  | 'layout-change' | 'orientation-change' | 'subtree-mode-change';
+
+export interface OrgChartInstance {
+  root: HTMLElement;
+  setNodes(nodes: OrgNode[], meta?: any): void;
+  loadJSON(data: any): number;
+  setOrientation(o: Orientation): void;
+  setSubtreeMode(m: SubtreeMode): void;
+  setSpacing(x?: number, y?: number): void;
+  setOption(key: string, val: any): void;
+  fitToScreen(): void;
+  relayout(): void;
+  expandAll(): void;
+  collapseAll(): void;
+  toggleCollapse(id: string): void;
+  centerOnNode(id: string): void;
+  search(query: string): number;
+  clearSearch(): void;
+  exportJSON(download?: boolean): any;
+  exportSVG(): string;
+  exportPNG(scale?: number): void;
+  exportPDF(): void;
+  buildSVG(raster?: boolean): string;
+  getState(): any;
+  getNodes(): OrgNode[];
+  getPositioned(): PositionedNode[];
+  on(name: OrgChartEventName, cb: (payload: any) => void): OrgChartInstance;
+  off(name: OrgChartEventName, cb: (payload: any) => void): OrgChartInstance;
+  destroy(): void;
+}
+
+export function createOrgChart(host: HTMLElement, options?: CreateOptions): OrgChartInstance;
