@@ -7,6 +7,7 @@ import {
   routeConnector, edgeEndpoints, edgeControlPoints, effCenter,
   searchNodes as coreSearch, calculateBounds, fitBounds,
   childCount, computeDepths, normalizeImported, exportLayout, buildChartSVG,
+  resolveNodeStyle, normalizeRule,
 } from '../core/index.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -26,8 +27,12 @@ const DEFAULT_OPTS = {
   enablePan: true,
   enableZoom: true,
   readonly: false,
+  editMode: false,    // when true: drag nodes, edit lines, edit fields in the panel
+  inspector: true,    // show the slide-in inspector panel on node click
+  inspectorSlot: false, // leave the inspector body empty for an external (Vue) slot
+  nodeSlots: false,   // render empty positioned hosts (Vue teleports card content in)
   fitOnInit: true,
-  toolbar: true,
+  toolbar: true,      // true | false | { subtree, orient, actions, grid, mode, export }
   persist: false,
   storageKey: 'local-org-chart.state',
 };
@@ -44,11 +49,16 @@ export function createOrgChart(host, userOpts = {}) {
     selectedNodeId: null, selectedEdgeId: null,
     gridSize: opts.gridSize, showGrid: opts.showGrid,
     snapGrid: opts.snapGrid, alignGrid: opts.alignGrid,
+    editMode: !!opts.editMode,
   };
   let NODES = (opts.nodes || []).map(makeNode);
   let nodeById = indexNodes(NODES);
   let manualOffsets = Object.create(null);
   let edgeWaypoints = Object.create(null);
+  let edgeAnchors = Object.create(null);     // childId -> { p:{nx,ny}, c:{nx,ny} } manual line endpoints
+  let nodeOverrides = Object.create(null);   // id -> {field: value} manual node edits (persisted overlay)
+  let themeRules = ((opts.settings && opts.settings.themeRules) || opts.themeRules || []).map(normalizeRule);
+  let idCounter = 0;
   let positioned = [], posById = Object.create(null);
 
   const elById = Object.create(null);
@@ -85,6 +95,28 @@ export function createOrgChart(host, userOpts = {}) {
   content.appendChild(gridEl); content.appendChild(svg); content.appendChild(nodesLayer); content.appendChild(overlay);
   canvas.appendChild(content); canvas.appendChild(zoomReadout);
   root.appendChild(canvas);
+
+  // right slide-in inspector panel
+  const panel = el('div', 'loc-panel');
+  panel.innerHTML =
+    '<div class="loc-panel-head"><span class="loc-panel-title">Node</span>'
+    + '<button class="loc-panel-close" title="Close" data-role="panel-close">✕</button></div>'
+    + '<div class="loc-panel-body" data-role="panel-body"></div>'
+    + '<div class="loc-panel-foot" data-role="panel-foot"></div>';
+  canvas.appendChild(panel);
+  const panelBody = panel.querySelector('[data-role="panel-body"]');
+  const panelFoot = panel.querySelector('[data-role="panel-foot"]');
+  const panelTitle = panel.querySelector('.loc-panel-title');
+
+  // left slide-in settings panel
+  const settingsPanel = el('div', 'loc-settings');
+  settingsPanel.innerHTML =
+    '<div class="loc-panel-head"><span class="loc-panel-title">Settings</span>'
+    + '<button class="loc-panel-close" title="Close" data-role="settings-close">✕</button></div>'
+    + '<div class="loc-panel-body" data-role="settings-body"></div>';
+  canvas.appendChild(settingsPanel);
+  const settingsBody = settingsPanel.querySelector('[data-role="settings-body"]');
+
   host.appendChild(root);
 
   function el(tag, cls) { const d = document.createElement(tag); if (cls) d.className = cls; return d; }
@@ -123,13 +155,25 @@ export function createOrgChart(host, userOpts = {}) {
       elNode.style.height = n.height + 'px';
       const c = effCenter(p, manualOffsets);
       elNode.style.transform = `translate(${c.x - n.width / 2}px, ${c.y - n.height / 2}px)`;
-      if (!elNode.dataset.fitted) { fitNodeText(elNode); elNode.dataset.fitted = '1'; }
+      if (!opts.nodeSlots) {
+        if (!elNode.dataset.fitted) { fitNodeText(elNode); elNode.dataset.fitted = '1'; }
+        applyTheme(elNode, n);
+      }
       elNode.classList.toggle('loc-selected', state.selectedNodeId === n.id);
       updateToggle(elNode, n);
     }
     for (const id in elById) if (!seen[id]) { elById[id].remove(); delete elById[id]; }
+    emit('nodes-rendered', { ids: positioned.map((p) => p.node.id) });
   }
   function buildNodeEl(n) {
+    // host mode: empty positioned shell; the consumer (Vue #node slot) fills it
+    if (opts.nodeSlots) {
+      const h = el('div', 'loc-node loc-node-host loc-' + n.type + (n.status ? ' loc-status-' + n.status : ''));
+      h.dataset.id = n.id;
+      h.innerHTML = '<div class="loc-node-slot"></div>';
+      if (n.type === 'department') { const t = el('div', 'loc-toggle'); t.dataset.role = 'toggle'; h.appendChild(t); }
+      return h;
+    }
     const d = el('div', 'loc-node loc-' + n.type + (n.status ? ' loc-status-' + n.status : ''));
     d.dataset.id = n.id;
     if (n.type === 'department') {
@@ -175,7 +219,7 @@ export function createOrgChart(host, userOpts = {}) {
       const n = p.node; if (!n.parentId) continue;
       const parent = posById[n.parentId]; if (!parent) continue;
       seen[n.id] = true;
-      const d = routeConnector(parent, p, cfg(), manualOffsets, edgeWaypoints);
+      const d = routeConnector(parent, p, cfg(), manualOffsets, edgeWaypoints, edgeAnchors);
       let path = pathById[n.id];
       if (!path) { path = createNS('path'); pathById[n.id] = path; svg.appendChild(path); }
       path.setAttribute('d', d); path.classList.toggle('loc-sel', state.selectedEdgeId === n.id);
@@ -190,7 +234,7 @@ export function createOrgChart(host, userOpts = {}) {
   function updateEdgeGeom(id) {
     const child = posById[id]; if (!child) return;
     const parent = posById[child.node.parentId]; if (!parent) return;
-    const d = routeConnector(parent, child, cfg(), manualOffsets, edgeWaypoints);
+    const d = routeConnector(parent, child, cfg(), manualOffsets, edgeWaypoints, edgeAnchors);
     if (pathById[id]) pathById[id].setAttribute('d', d);
     if (hitById[id]) hitById[id].setAttribute('d', d);
   }
@@ -273,7 +317,8 @@ export function createOrgChart(host, userOpts = {}) {
     deselectEdge();
     selectNode(id);
     emit('node-select', { id, node: nodeById[id] });
-    if (opts.readonly || !opts.enableDragging) return;
+    if (opts.inspector) openInspector(id);
+    if (opts.readonly || !opts.enableDragging || !state.editMode) return;
     const off = manualOffsets[id] || { dx: 0, dy: 0 };
     drag = { id, startX: e.clientX, startY: e.clientY, baseDx: off.dx, baseDy: off.dy, moved: false };
     elById[id].classList.add('loc-dragging');
@@ -331,9 +376,7 @@ export function createOrgChart(host, userOpts = {}) {
     const child = posById[id]; if (!child) return null;
     const parent = posById[child.node.parentId]; if (!parent) return null;
     const wps = edgeWaypoints[id] || [];
-    if (wps.length) return edgeControlPoints(parent, child, wps, cfg(), manualOffsets);
-    const { S, E } = edgeEndpoints(parent, child, effCenter(child, manualOffsets), effCenter(parent, manualOffsets), cfg(), manualOffsets);
-    return [S, E];
+    return edgeControlPoints(parent, child, wps, cfg(), manualOffsets, edgeAnchors[id]);
   }
   function selectEdge(id) {
     if (state.selectedEdgeId && pathById[state.selectedEdgeId]) pathById[state.selectedEdgeId].classList.remove('loc-sel');
@@ -349,9 +392,14 @@ export function createOrgChart(host, userOpts = {}) {
   function mkCircle(x, y, r, cls) {
     const c = createNS('circle'); c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', r); c.setAttribute('class', cls); return c;
   }
+  function mkRect(x, y, r, cls) {
+    const c = createNS('rect'); c.setAttribute('x', x - r); c.setAttribute('y', y - r);
+    c.setAttribute('width', 2 * r); c.setAttribute('height', 2 * r); c.setAttribute('rx', 2 / state.zoom);
+    c.setAttribute('class', cls); return c;
+  }
   function renderEdgeHandles() {
     edgeHandlesG.innerHTML = '';
-    const id = state.selectedEdgeId; if (!id || opts.readonly) return;
+    const id = state.selectedEdgeId; if (!id || opts.readonly || !state.editMode) return;
     const controls = controlsFor(id); if (!controls) return;
     const wps = edgeWaypoints[id] || [];
     const r = 6 / state.zoom, ra = 5 / state.zoom;
@@ -360,7 +408,71 @@ export function createOrgChart(host, userOpts = {}) {
       const c = mkCircle((A.x + B.x) / 2, (A.y + B.y) / 2, ra, 'loc-wp-add'); c.dataset.add = s; edgeHandlesG.appendChild(c);
     }
     for (let i = 0; i < wps.length; i++) { const c = mkCircle(wps[i].x, wps[i].y, r, 'loc-wp-handle'); c.dataset.wp = i; edgeHandlesG.appendChild(c); }
+    // endpoint anchors: square = where the line meets the box (drag to move;
+    // drag the parent-end onto another box to re-parent; dbl-click it to detach)
+    const S = controls[0], E = controls[controls.length - 1];
+    const pe = mkRect(S.x, S.y, 6 / state.zoom, 'loc-ep loc-ep-parent'); pe.dataset.ep = 'parent'; edgeHandlesG.appendChild(pe);
+    const ce = mkRect(E.x, E.y, 6 / state.zoom, 'loc-ep loc-ep-child'); ce.dataset.ep = 'child'; edgeHandlesG.appendChild(ce);
   }
+  /* nearest point on a node's box perimeter, as normalized [-1,1] offsets */
+  function perimeterAnchor(posNode, pt) {
+    const c = effCenter(posNode, manualOffsets), w = posNode.node.width, h = posNode.node.height;
+    let nx = (pt.x - c.x) / (w / 2), ny = (pt.y - c.y) / (h / 2);
+    const m = Math.max(Math.abs(nx), Math.abs(ny));
+    if (m > 1e-6) { nx /= m; ny /= m; }
+    return { nx: Math.max(-1, Math.min(1, nx)), ny: Math.max(-1, Math.min(1, ny)) };
+  }
+  /* topmost node whose box contains pt, excluding this edge's child + its subtree */
+  function nodeAtContentPoint(pt, edgeId) {
+    const banned = new Set([edgeId].concat(descendantsOf(edgeId)));
+    for (let i = positioned.length - 1; i >= 0; i--) {
+      const p = positioned[i]; if (banned.has(p.node.id)) continue;
+      const c = effCenter(p, manualOffsets);
+      if (pt.x >= c.x - p.node.width / 2 && pt.x <= c.x + p.node.width / 2
+        && pt.y >= c.y - p.node.height / 2 && pt.y <= c.y + p.node.height / 2) return p.node.id;
+    }
+    return null;
+  }
+  let reparentTarget = null;
+  function highlightReparentTarget(id) {
+    if (reparentTarget && elById[reparentTarget]) elById[reparentTarget].classList.remove('loc-reparent-target');
+    reparentTarget = id;
+    if (id && elById[id]) elById[id].classList.add('loc-reparent-target');
+  }
+  function onEpMove(e) {
+    if (!edgeDrag || edgeDrag.kind !== 'ep') return;
+    const id = edgeDrag.id, child = posById[id]; if (!child) return;
+    const parent = posById[child.node.parentId]; if (!parent) return;
+    const pt = clientToContent(e.clientX, e.clientY);
+    edgeAnchors[id] = edgeAnchors[id] || {};
+    if (edgeDrag.which === 'child') {
+      edgeAnchors[id].c = perimeterAnchor(child, pt);
+    } else {
+      edgeAnchors[id].p = perimeterAnchor(parent, pt);
+      const tgt = nodeAtContentPoint(pt, id);
+      highlightReparentTarget(tgt && tgt !== child.node.parentId ? tgt : null);
+    }
+    updateEdgeGeom(id); renderEdgeHandles();
+  }
+  function onEpUp() {
+    const d = edgeDrag; edgeDrag = null;
+    rmWin('pointermove', onEpMove); rmWin('pointerup', onEpUp);
+    if (d && d.which === 'parent' && reparentTarget) { const t = reparentTarget; highlightReparentTarget(null); reparentNode(d.id, t); return; }
+    highlightReparentTarget(null); persist();
+  }
+  function reparentNode(id, newParentId) {
+    const n = nodeById[id]; if (!n || newParentId === id) return;
+    if (newParentId && descendantsOf(id).indexOf(newParentId) >= 0) return;   // no cycles
+    n.parentId = newParentId || '';
+    nodeOverrides[id] = Object.assign(nodeOverrides[id] || {}, { parentId: n.parentId });
+    delete edgeWaypoints[id]; delete edgeAnchors[id];
+    state.selectedEdgeId = null; edgeHandlesG.innerHTML = '';
+    if (posById[id]) Object.assign(posById[id].node, { parentId: n.parentId });
+    refresh();
+    emit('node-change', { id, node: { ...n }, patch: { parentId: n.parentId }, reparented: true });
+    persist();
+  }
+  function detachNode(id) { reparentNode(id, ''); }
   function distToSeg(p, a, b) {
     const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy;
     let t = L2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2 : 0; t = Math.max(0, Math.min(1, t));
@@ -372,6 +484,185 @@ export function createOrgChart(host, userOpts = {}) {
     return best;
   }
 
+  // ================= edit mode + inspector + node editing =================
+  const SUBMODES = ['', 'Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'Matrix'];
+  function escAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+  function applyEditModeUI() { root.classList.toggle('loc-edit', state.editMode); }
+  function setEditMode(on) {
+    state.editMode = !!on;
+    applyEditModeUI(); syncToolbar();
+    if (!state.editMode) deselectEdge();
+    if (panel.classList.contains('loc-open')) renderInspector();
+    emit('edit-mode-change', { editMode: state.editMode });
+    persist();
+  }
+  function openInspector(id) {
+    if (!opts.inspector) return;
+    state.selectedNodeId = id;
+    panel.classList.add('loc-open');
+    renderInspector();
+    emit('inspector-open', { id, node: nodeById[id] });
+  }
+  function closeInspector() {
+    if (!panel.classList.contains('loc-open')) return;
+    panel.classList.remove('loc-open');
+    emit('inspector-close', {});
+  }
+  function renderInspector() {
+    const id = state.selectedNodeId, n = id && nodeById[id];
+    if (!n) { closeInspector(); return; }
+    panelTitle.textContent = n.label || n.personName || n.id;
+    if (opts.inspectorSlot) { panelFoot.innerHTML = ''; return; }  // body filled by the external slot
+    const ed = state.editMode, dis = ed ? '' : ' disabled';
+    const inp = (f, v, t) => `<input data-field="${f}" type="${t || 'text'}" value="${escAttr(v)}"${dis}/>`;
+    const sel = (f, v, opt) => `<select data-field="${f}"${dis}>` + opt.map((o) => {
+      const val = Array.isArray(o) ? o[0] : o, lbl = Array.isArray(o) ? o[1] : (o || '—');
+      return `<option value="${escAttr(val)}"${String(val) === String(v == null ? '' : v) ? ' selected' : ''}>${lbl}</option>`;
+    }).join('') + '</select>';
+    const fld = (label, html) => `<label class="loc-field"><span>${label}</span>${html}</label>`;
+    let h = fld('ID', `<input value="${escAttr(n.id)}" disabled/>`)
+      + fld('Type', sel('type', n.type, [['department', 'department'], ['position', 'position']]))
+      + fld('Label', inp('label', n.label));
+    if (n.type !== 'department') {
+      h += fld('Person name', inp('personName', n.personName))
+        + fld('Status', sel('status', n.status, [['', '—'], ['FILLED', 'FILLED'], ['VACANT', 'VACANT'], ['UNFUNDED', 'UNFUNDED']]))
+        + fld('Photo URL', inp('photo_url', (n.data && n.data.photo_url) || ''));
+    }
+    h += fld('Layout override', sel('layoutMode', n.layoutMode || '', SUBMODES.map((m) => [m, m || '(inherit)'])))
+      + fld('Width', inp('width', n.width, 'number'))
+      + fld('Height', inp('height', n.height, 'number'));
+    panelBody.innerHTML = h;
+    panelFoot.innerHTML = ed
+      ? '<button data-role="add-child">+ Add child</button>'
+        + (n.parentId ? '<button data-role="detach">Detach</button>' : '')
+        + '<button data-role="del-node" class="loc-danger">Delete</button>'
+      : '<span class="loc-foot-hint">Turn on Edit to modify fields</span>';
+  }
+  function genId() { let id; do { id = 'node-' + (++idCounter); } while (nodeById[id]); return id; }
+  /* apply a field patch to a node + record it as a persisted overlay */
+  function updateNode(id, patch) {
+    const n = nodeById[id]; if (!n) return;
+    Object.assign(n, patch);
+    // layout works on node COPIES; keep the positioned copy in sync for non-structural redraws
+    if (posById[id] && posById[id].node !== n) Object.assign(posById[id].node, patch);
+    nodeOverrides[id] = Object.assign(nodeOverrides[id] || {}, patch);
+    const structural = ['type', 'width', 'height', 'layoutMode'].some((k) => k in patch);
+    if (elById[id]) { elById[id].remove(); delete elById[id]; }   // rebuild the card content
+    if (structural) refresh(); else { drawNodes(); }
+    emit('node-change', { id, node: { ...n }, patch });
+    persist();
+  }
+  function descendantsOf(id) {
+    const out = [], stack = [id];
+    while (stack.length) { const p = stack.pop(); for (const n of NODES) if (n.parentId === p) { out.push(n.id); stack.push(n.id); } }
+    return out;
+  }
+  function addChild(parentId) {
+    if (!state.editMode) return;
+    const id = genId();
+    const node = makeNode({ id, parentId: parentId || '', type: 'position', label: 'NEW POSITION', personName: '', status: '' });
+    NODES.push(node); nodeById[id] = node;
+    nodeOverrides[id] = Object.assign({ __new: true }, node);
+    refresh(); selectNode(id); openInspector(id);
+    emit('node-change', { id, node: { ...node }, added: true }); persist();
+  }
+  function deleteNode(id) {
+    if (!state.editMode || !id) return;
+    const ids = [id].concat(descendantsOf(id)), set = new Set(ids);
+    NODES = NODES.filter((n) => !set.has(n.id)); nodeById = indexNodes(NODES);
+    ids.forEach((x) => { nodeOverrides[x] = { __deleted: true }; if (elById[x]) { elById[x].remove(); delete elById[x]; } });
+    if (set.has(state.selectedNodeId)) { state.selectedNodeId = null; closeInspector(); }
+    refresh(); emit('node-change', { id, removed: true, ids }); persist();
+  }
+  /* re-apply the persisted edit overlay onto the current NODES (after props/restore) */
+  function applyOverrides() {
+    const del = new Set(Object.keys(nodeOverrides).filter((k) => nodeOverrides[k] && nodeOverrides[k].__deleted));
+    if (del.size) NODES = NODES.filter((n) => !del.has(n.id));
+    nodeById = indexNodes(NODES);
+    for (const id in nodeOverrides) {
+      const ov = nodeOverrides[id]; if (!ov || ov.__deleted) continue;
+      if (ov.__new) {
+        if (!nodeById[id]) { const rest = Object.assign({}, ov); delete rest.__new; const node = makeNode(rest); NODES.push(node); nodeById[id] = node; }
+      } else if (nodeById[id]) { Object.assign(nodeById[id], ov); }
+    }
+  }
+
+  // ================= settings + conditional theming =================
+  const RULE_FIELDS = [['type', 'Type'], ['status', 'Status'], ['level', 'Level (data.level)'],
+    ['unit', 'Unit (data.unit)'], ['id', 'Node id'], ['label', 'Label']];
+  function applyTheme(elNode, n) {
+    const st = resolveNodeStyle(n, themeRules);
+    setVar(elNode, '--loc-node-bg', st && st.bg);
+    setVar(elNode, '--loc-node-text', st && st.text);
+    setVar(elNode, '--loc-node-border', st && st.border);
+  }
+  function setVar(elNode, name, val) { if (val) elNode.style.setProperty(name, val); else elNode.style.removeProperty(name); }
+  function applyThemeAll() { for (const id in elById) if (nodeById[id]) applyTheme(elById[id], nodeById[id]); }
+  function getSettings() {
+    return {
+      spacingX: state.spacingX, spacingY: state.spacingY, gridSize: state.gridSize,
+      orientation: state.orientation, subtreeMode: state.subtreeMode,
+      showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid,
+      themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
+    };
+  }
+  function setSettings(s, o) {
+    s = s || {};
+    if (typeof s.spacingX === 'number') state.spacingX = s.spacingX;
+    if (typeof s.spacingY === 'number') state.spacingY = s.spacingY;
+    if (typeof s.gridSize === 'number') state.gridSize = s.gridSize;
+    if (s.orientation) state.orientation = s.orientation;
+    if (s.subtreeMode) state.subtreeMode = s.subtreeMode;
+    if ('showGrid' in s) state.showGrid = !!s.showGrid;
+    if ('snapGrid' in s) state.snapGrid = !!s.snapGrid;
+    if ('alignGrid' in s) state.alignGrid = !!s.alignGrid;
+    if (Array.isArray(s.themeRules)) themeRules = s.themeRules.map(normalizeRule);
+    applyGridOverlay(); syncToolbar(); refresh();
+    if (settingsPanel.classList.contains('loc-open')) renderSettings();
+    if (!(o && o.silent)) emit('settings-change', getSettings());
+    persist();
+  }
+  function toggleSettings(force) {
+    const open = force == null ? !settingsPanel.classList.contains('loc-open') : !!force;
+    settingsPanel.classList.toggle('loc-open', open);
+    if (toolbarEl) toolbarEl.querySelectorAll('button[data-act="settings"]').forEach((b) => b.classList.toggle('loc-active', open));
+    if (open) renderSettings();
+  }
+  function setRange(key, label, val, min, max) {
+    return `<label class="loc-field"><span>${label}: <b data-rangelabel="${key}">${val}</b></span>`
+      + `<input type="range" data-set="${key}" min="${min}" max="${max}" value="${val}"/></label>`;
+  }
+  function colorField(i, key, label, val) {
+    return `<label class="loc-color"><input type="checkbox" data-rule="${i}" data-rk="${key}-on"${val ? ' checked' : ''}/>`
+      + `<span>${label}</span><input type="color" data-rule="${i}" data-rk="${key}" value="${val || '#e0524d'}"/></label>`;
+  }
+  function ruleRow(r, i) {
+    const opt = (v, l) => `<option value="${v}"${r.field === v ? ' selected' : ''}>${l}</option>`;
+    return `<div class="loc-rule">`
+      + `<div class="loc-rule-top">`
+      + `<input type="checkbox" data-rule="${i}" data-rk="enabled"${r.enabled ? ' checked' : ''} title="enable rule"/>`
+      + `<select data-rule="${i}" data-rk="field">` + RULE_FIELDS.map(([v, l]) => opt(v, l)).join('') + `</select>`
+      + `<input class="loc-rule-val" data-rule="${i}" data-rk="value" placeholder="value" value="${escAttr(r.value)}"/>`
+      + `<button class="loc-rule-del" data-rule="${i}" data-rk="remove" title="Remove rule">✕</button></div>`
+      + `<div class="loc-rule-colors">`
+      + colorField(i, 'bg', 'BG', r.style.bg) + colorField(i, 'text', 'Text', r.style.text) + colorField(i, 'border', 'Border', r.style.border)
+      + `</div></div>`;
+  }
+  function renderSettings() {
+    let h = '<div class="loc-set-section"><div class="loc-set-title">Layout</div>'
+      + setRange('spacingX', 'Spacing X', state.spacingX, 0, 200)
+      + setRange('spacingY', 'Spacing Y', state.spacingY, 0, 260)
+      + setRange('gridSize', 'Grid size', state.gridSize, 6, 80)
+      + '</div>';
+    h += '<div class="loc-set-section"><div class="loc-set-title">Theme rules</div>'
+      + '<div class="loc-set-hint">Recolor nodes that match a field = value. Later rules win.</div>';
+    themeRules.forEach((r, i) => { h += ruleRow(r, i); });
+    h += '<button class="loc-set-add" data-role="add-rule">+ Add rule</button></div>';
+    settingsBody.innerHTML = h;
+  }
+  function colorOn(i, ck) { const c = settingsBody.querySelector(`[data-rule="${i}"][data-rk="${ck}-on"]`); return c && c.checked; }
+  function colorVal(i, ck) { const c = settingsBody.querySelector(`[data-rule="${i}"][data-rk="${ck}"]`); return c ? c.value : ''; }
+
   // ================= persistence =================
   function persist() {
     if (!opts.persist) return;
@@ -381,7 +672,9 @@ export function createOrgChart(host, userOpts = {}) {
         spacingX: state.spacingX, spacingY: state.spacingY,
         zoom: state.zoom, panX: state.panX, panY: state.panY,
         showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid, gridSize: state.gridSize,
-        manualOffsets, edgeWaypoints, collapsed: NODES.filter((n) => n.collapsed).map((n) => n.id),
+        editMode: state.editMode,
+        manualOffsets, edgeWaypoints, edgeAnchors, nodeOverrides, themeRules,
+        collapsed: NODES.filter((n) => n.collapsed).map((n) => n.id),
       }));
     } catch (e) { /* quota / unavailable — ignore */ }
   }
@@ -393,14 +686,22 @@ export function createOrgChart(host, userOpts = {}) {
     if (s.subtreeMode) state.subtreeMode = s.subtreeMode;
     ['spacingX', 'spacingY', 'zoom', 'panX', 'panY', 'gridSize'].forEach((k) => { if (typeof s[k] === 'number') state[k] = s[k]; });
     state.showGrid = !!s.showGrid; state.snapGrid = !!s.snapGrid; state.alignGrid = !!s.alignGrid;
+    state.editMode = !!s.editMode;
     if (s.manualOffsets) manualOffsets = s.manualOffsets;
     if (s.edgeWaypoints) edgeWaypoints = s.edgeWaypoints;
+    if (s.edgeAnchors) edgeAnchors = s.edgeAnchors;
+    if (s.nodeOverrides) { nodeOverrides = s.nodeOverrides; applyOverrides(); }
+    if (Array.isArray(s.themeRules)) themeRules = s.themeRules.map(normalizeRule);
     if (Array.isArray(s.collapsed)) { const set = new Set(s.collapsed); for (const n of NODES) n.collapsed = set.has(n.id); }
   }
 
   // ================= export =================
   function exportJSON(download) {
     const payload = exportLayout(state, NODES, manualOffsets, edgeWaypoints);
+    payload.editMode = state.editMode;
+    payload.edgeAnchors = edgeAnchors;
+    payload.nodeOverrides = nodeOverrides;
+    payload.settings = getSettings();
     if (download !== false) downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), 'org-chart-layout.json');
     return payload;
   }
@@ -443,10 +744,13 @@ export function createOrgChart(host, userOpts = {}) {
   }
 
   // ================= public setters =================
-  function setNodes(nodes, meta) {
+  function setNodes(nodes, meta, opts2) {
+    const keepEdits = !(opts2 && opts2.resetEdits);
     NODES = (nodes || []).map(makeNode); nodeById = indexNodes(NODES);
-    manualOffsets = Object.create(null); edgeWaypoints = Object.create(null);
+    manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null);
+    if (!keepEdits) nodeOverrides = Object.create(null);
     state.selectedNodeId = null; state.selectedEdgeId = null; searchMatches = new Set();
+    closeInspector();
     for (const id in elById) { elById[id].remove(); delete elById[id]; }
     for (const id in pathById) { pathById[id].remove(); delete pathById[id]; }
     for (const id in hitById) { hitById[id].remove(); delete hitById[id]; }
@@ -455,19 +759,24 @@ export function createOrgChart(host, userOpts = {}) {
       if (meta.orientation) state.orientation = meta.orientation;
       if (meta.manualOffsets) manualOffsets = meta.manualOffsets;
       if (meta.edgeWaypoints) edgeWaypoints = meta.edgeWaypoints;
+      if (meta.edgeAnchors) edgeAnchors = meta.edgeAnchors;
+      if (meta.nodeOverrides) { nodeOverrides = meta.nodeOverrides; }
+      if (typeof meta.editMode === 'boolean') state.editMode = meta.editMode;
+      if (meta.settings && Array.isArray(meta.settings.themeRules)) themeRules = meta.settings.themeRules.map(normalizeRule);
     }
-    syncToolbar(); refresh();
+    if (keepEdits) applyOverrides();   // re-layer persisted node edits onto the new data
+    applyEditModeUI(); syncToolbar(); refresh();
     if (opts.fitOnInit) fitToScreen();
   }
   function loadJSON(data) { const { nodes, meta } = normalizeImported(data); setNodes(nodes, meta); return nodes.length; }
-  function setOrientation(o) { state.orientation = o; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); deselectEdge(); syncToolbar(); refresh(); emit('orientation-change', { orientation: o }); }
-  function setSubtreeMode(m) { state.subtreeMode = m; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); deselectEdge(); syncToolbar(); refresh(); emit('subtree-mode-change', { subtreeMode: m }); }
+  function setOrientation(o) { state.orientation = o; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); emit('orientation-change', { orientation: o }); }
+  function setSubtreeMode(m) { state.subtreeMode = m; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); emit('subtree-mode-change', { subtreeMode: m }); }
   function setSpacing(x, y) { if (x != null) state.spacingX = x; if (y != null) state.spacingY = y; refresh(); }
   function setOption(key, val) {
     if (key in state) { state[key] = val; if (key === 'showGrid') applyGridOverlay(); if (key === 'alignGrid') { manualOffsets = Object.create(null); refresh(); } syncToolbar(); }
     else opts[key] = val;
   }
-  function relayout() { manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); deselectEdge(); refresh(); }
+  function relayout() { manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); refresh(); }
 
   // ================= global interaction wiring =================
   addL(nodesLayer, 'pointerdown', (e) => { const el2 = e.target.closest('.loc-node'); if (el2) onNodePointerDown(e, el2.dataset.id); });
@@ -479,7 +788,7 @@ export function createOrgChart(host, userOpts = {}) {
 
   addL(edgeHitsG, 'pointerdown', (e) => { const t = e.target.closest('path'); if (!t) return; e.stopPropagation(); selectEdge(t.dataset.edge); });
   addL(edgeHitsG, 'dblclick', (e) => {
-    if (opts.readonly) return;
+    if (opts.readonly || !state.editMode) return;
     const t = e.target.closest('path'); if (!t) return;
     const id = t.dataset.edge; selectEdge(id);
     const controls = controlsFor(id); if (!controls) return;
@@ -489,8 +798,13 @@ export function createOrgChart(host, userOpts = {}) {
     updateEdgeGeom(id); renderEdgeHandles(); persist();
   });
   addL(edgeHandlesG, 'pointerdown', (e) => {
-    if (opts.readonly) return;
+    if (opts.readonly || !state.editMode) return;
     const t = e.target, id = state.selectedEdgeId; if (!id) return;
+    if (t.dataset.ep) {   // endpoint anchor drag (parent-end can re-parent)
+      e.stopPropagation(); e.preventDefault();
+      edgeDrag = { id, kind: 'ep', which: t.dataset.ep };
+      addWin('pointermove', onEpMove); addWin('pointerup', onEpUp); return;
+    }
     let idx;
     if (t.dataset.wp != null) idx = +t.dataset.wp;
     else if (t.dataset.add != null) { const s = +t.dataset.add; const wps = edgeWaypoints[id] || (edgeWaypoints[id] = []); wps.splice(s, 0, snapPoint(clientToContent(e.clientX, e.clientY))); idx = s; updateEdgeGeom(id); }
@@ -499,7 +813,9 @@ export function createOrgChart(host, userOpts = {}) {
     edgeDrag = { id, idx }; addWin('pointermove', onHandleMove); addWin('pointerup', onHandleUp);
   });
   addL(edgeHandlesG, 'dblclick', (e) => {
-    const t = e.target; if (t.dataset.wp == null) return;
+    const t = e.target;
+    if (t.dataset.ep === 'parent') { detachNode(state.selectedEdgeId); return; }  // detach -> make root
+    if (t.dataset.wp == null) return;
     const id = state.selectedEdgeId, wps = edgeWaypoints[id]; if (!wps) return;
     wps.splice(+t.dataset.wp, 1); if (!wps.length) delete edgeWaypoints[id];
     updateEdgeGeom(id); renderEdgeHandles(); persist();
@@ -507,13 +823,62 @@ export function createOrgChart(host, userOpts = {}) {
   function onHandleMove(e) { if (!edgeDrag) return; const wps = edgeWaypoints[edgeDrag.id]; if (!wps) return; wps[edgeDrag.idx] = snapPoint(clientToContent(e.clientX, e.clientY)); updateEdgeGeom(edgeDrag.id); renderEdgeHandles(); }
   function onHandleUp() { edgeDrag = null; rmWin('pointermove', onHandleMove); rmWin('pointerup', onHandleUp); persist(); }
 
+  // inspector panel
+  addL(panel, 'click', (e) => {
+    if (e.target.closest('[data-role="panel-close"]')) { closeInspector(); return; }
+    if (e.target.closest('[data-role="add-child"]')) { addChild(state.selectedNodeId); return; }
+    if (e.target.closest('[data-role="detach"]')) { detachNode(state.selectedNodeId); return; }
+    if (e.target.closest('[data-role="del-node"]')) { deleteNode(state.selectedNodeId); return; }
+  });
+  addL(panelBody, 'input', (e) => {
+    if (!state.editMode) return;
+    const t = e.target.closest('[data-field]'); if (!t) return;
+    const id = state.selectedNodeId; if (!id) return;
+    const f = t.dataset.field; let v = t.value;
+    if (f === 'type') { updateNode(id, { type: v }); renderInspector(); return; }
+    if (f === 'width' || f === 'height') { updateNode(id, { [f]: Math.max(20, parseFloat(v) || 0) }); return; }
+    if (f === 'photo_url') { const n = nodeById[id]; updateNode(id, { data: Object.assign({}, n.data, { photo_url: v || null }) }); return; }
+    if (f === 'layoutMode') { updateNode(id, { layoutMode: v || null }); return; }
+    updateNode(id, { [f]: v });
+  });
+
+  // settings panel
+  addL(settingsPanel, 'click', (e) => {
+    if (e.target.closest('[data-role="settings-close"]')) { toggleSettings(false); return; }
+    if (e.target.closest('[data-role="add-rule"]')) {
+      themeRules.push(normalizeRule({ field: 'type', value: '', style: {} }));
+      renderSettings(); applyThemeAll(); persist(); emit('settings-change', getSettings()); return;
+    }
+    const del = e.target.closest('[data-rk="remove"]');
+    if (del) { themeRules.splice(+del.dataset.rule, 1); renderSettings(); applyThemeAll(); persist(); emit('settings-change', getSettings()); }
+  });
+  addL(settingsBody, 'input', (e) => {
+    const t = e.target;
+    if (t.dataset.set != null) {
+      const v = parseFloat(t.value); state[t.dataset.set] = v;
+      const lab = settingsBody.querySelector(`[data-rangelabel="${t.dataset.set}"]`); if (lab) lab.textContent = v;
+      refresh(); emit('settings-change', getSettings()); persist(); return;
+    }
+    if (t.dataset.rule != null) {
+      const i = +t.dataset.rule, rk = t.dataset.rk, r = themeRules[i]; if (!r) return;
+      if (rk === 'enabled') r.enabled = t.checked;
+      else if (rk === 'field') r.field = t.value;
+      else if (rk === 'value') r.value = t.value;
+      else if (rk === 'bg' || rk === 'text' || rk === 'border') { if (colorOn(i, rk)) r.style[rk] = t.value; }
+      else if (/-on$/.test(rk)) { const ck = rk.replace('-on', ''); r.style[ck] = t.checked ? (colorVal(i, ck) || '#e0524d') : ''; }
+      applyThemeAll(); emit('settings-change', getSettings()); persist();
+    }
+  });
+
   // pan
   addL(canvas, 'pointerdown', (e) => {
-    if (e.target.closest('.loc-node') || e.target.closest('.loc-edgehits path') || e.target.closest('.loc-edgehandles *')) {
-      // selection clearing handled elsewhere; just don't pan
+    if (e.target.closest('.loc-node') || e.target.closest('.loc-edgehits path')
+        || e.target.closest('.loc-edgehandles *') || e.target.closest('.loc-panel') || e.target.closest('.loc-settings')) {
+      // node / edge / handle / panel / settings interaction — don't pan or deselect
     } else {
       if (state.selectedNodeId) { if (elById[state.selectedNodeId]) elById[state.selectedNodeId].classList.remove('loc-selected'); state.selectedNodeId = null; }
       if (state.selectedEdgeId) deselectEdge();
+      closeInspector();
       if (!opts.enablePan) return;
       canvas.classList.add('loc-panning');
       const sx = e.clientX, sy = e.clientY, px = state.panX, py = state.panY;
@@ -540,13 +905,17 @@ export function createOrgChart(host, userOpts = {}) {
 
   // ================= optional toolbar =================
   function buildToolbar() {
+    const tcfg = (opts.toolbar && typeof opts.toolbar === 'object') ? opts.toolbar : {};
+    const show = (g) => tcfg[g] !== false;          // each group defaults visible
     const bar = el('div', 'loc-toolbar');
-    bar.innerHTML = ''
-      + group('Subtree', ['Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'Matrix'].map((m) => btn('mode', m, m)).join(''))
-      + group('Orient', [['TopToBottom', 'Top'], ['BottomToTop', 'Bottom'], ['LeftToRight', 'Left'], ['RightToLeft', 'Right']].map(([o, l]) => btn('orient', o, l)).join(''))
-      + group('', '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout">Re-layout</button>')
-      + group('Grid', '<button data-flag="showGrid">Show</button><button data-flag="snapGrid">Snap</button><button data-flag="alignGrid">Align</button>')
-      + group('Export', '<button data-act="png">PNG</button><button data-act="svg">SVG</button><button data-act="pdf">PDF</button><button data-act="json">JSON</button>');
+    let html = '';
+    if (show('subtree')) html += group('Subtree', ['Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'Matrix'].map((m) => btn('mode', m, m)).join(''));
+    if (show('orient')) html += group('Orient', [['TopToBottom', 'Top'], ['BottomToTop', 'Bottom'], ['LeftToRight', 'Left'], ['RightToLeft', 'Right']].map(([o, l]) => btn('orient', o, l)).join(''));
+    if (show('actions')) html += group('', '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout">Re-layout</button>');
+    if (show('grid')) html += group('Grid', '<button data-flag="showGrid">Show</button><button data-flag="snapGrid">Snap</button><button data-flag="alignGrid">Align</button>');
+    if (show('mode')) html += group('Mode', '<button data-act="edit" title="Toggle edit mode">Edit</button><button data-act="settings" title="Settings &amp; theming">Settings</button>');
+    if (show('export')) html += group('Export', '<button data-act="png">PNG</button><button data-act="svg">SVG</button><button data-act="pdf">PDF</button><button data-act="json">JSON</button>');
+    bar.innerHTML = html;
     bar.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.mode) setSubtreeMode(b.dataset.mode);
@@ -557,6 +926,8 @@ export function createOrgChart(host, userOpts = {}) {
         case 'collapse': collapseAll(); break;
         case 'fit': fitToScreen(); break;
         case 'relayout': relayout(); break;
+        case 'edit': setEditMode(!state.editMode); break;
+        case 'settings': toggleSettings(); break;
         case 'png': exportPNG(3); break;
         case 'svg': exportSVG(); break;
         case 'pdf': exportPDF(); break;
@@ -572,12 +943,14 @@ export function createOrgChart(host, userOpts = {}) {
     toolbarEl.querySelectorAll('button[data-mode]').forEach((b) => b.classList.toggle('loc-active', b.dataset.mode === state.subtreeMode));
     toolbarEl.querySelectorAll('button[data-orient]').forEach((b) => b.classList.toggle('loc-active', b.dataset.orient === state.orientation));
     toolbarEl.querySelectorAll('button[data-flag]').forEach((b) => b.classList.toggle('loc-active', !!state[b.dataset.flag]));
+    toolbarEl.querySelectorAll('button[data-act="edit"]').forEach((b) => b.classList.toggle('loc-active', state.editMode));
   }
 
   // ================= boot =================
   restore();
   syncToolbar();
   applyGridOverlay();
+  applyEditModeUI();
   refresh();
   if (opts.fitOnInit) fitToScreen();
 
@@ -600,6 +973,15 @@ export function createOrgChart(host, userOpts = {}) {
     setNodes, loadJSON, setOrientation, setSubtreeMode, setSpacing, setOption,
     fitToScreen, relayout, expandAll, collapseAll, toggleCollapse, centerOnNode,
     search, clearSearch, exportJSON, exportSVG, exportPNG, exportPDF, buildSVG,
+    setEditMode, isEditMode: () => state.editMode,
+    updateNode, addChild, deleteNode, reparentNode, detachNode,
+    openInspector, closeInspector,
+    getSettings, setSettings, toggleSettings,
+    // slot bridging (used by the Vue wrapper's teleports)
+    getNodeHost: (id) => elById[id] || null,
+    getNodeSlotEl: (id) => (elById[id] ? elById[id].querySelector('.loc-node-slot') : null),
+    getInspectorBody: () => panelBody,
+    nodeThemeStyle: (id) => (nodeById[id] ? resolveNodeStyle(nodeById[id], themeRules) : null),
     getState: () => ({ ...state }),
     getNodes: () => NODES.map((n) => ({ ...n })),
     getPositioned: () => positioned,

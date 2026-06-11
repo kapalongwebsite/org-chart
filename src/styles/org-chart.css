@@ -88,6 +88,12 @@
 .loc-overlay .loc-wp-handle { fill: #fff; stroke: var(--loc-accent); stroke-width: 2; cursor: move; pointer-events: all; }
 .loc-overlay .loc-wp-add { fill: #fff; stroke: #9aa7bd; stroke-width: 1.5; cursor: copy; pointer-events: all; opacity: .8; }
 .loc-overlay .loc-wp-handle:hover, .loc-overlay .loc-wp-add:hover { stroke: var(--loc-accent); opacity: 1; }
+/* endpoint anchors (squares) — parent-end is filled (drag to re-parent / dbl-click to detach) */
+.loc-overlay .loc-ep { fill: #fff; stroke: var(--loc-accent); stroke-width: 2; cursor: move; pointer-events: all; }
+.loc-overlay .loc-ep-parent { fill: var(--loc-accent); }
+.loc-overlay .loc-ep:hover { fill: var(--loc-accent); }
+/* node highlighted as a re-parent drop target */
+.loc-node.loc-reparent-target { outline: 3px dashed #16a34a; outline-offset: 2px; }
 
 .loc-nodes { position: absolute; left: 0; top: 0; z-index: 2; }
 
@@ -158,3 +164,100 @@
   font-size: 13px; line-height: 1; cursor: pointer; font-weight: 700; pointer-events: auto;
 }
 .loc-node .loc-toggle:hover { background: rgba(255,255,255,.4); }
+
+/* ---------- Node host mode (Vue #node slot teleports here) ---------- */
+.loc-node.loc-node-host {
+  background: transparent; border: none; box-shadow: none; overflow: visible; border-radius: 0;
+}
+.loc-node.loc-node-host .loc-node-slot { width: 100%; height: 100%; }
+
+/* ---------- Vue wrapper helpers ---------- */
+.loc-vue-wrap { display: flex; flex-direction: column; width: 100%; height: 100%; }
+.loc-vue-host { flex: 1 1 auto; min-height: 0; position: relative; }
+.loc-vue-toolbar { flex: 0 0 auto; }
+.loc-vue-empty {
+  position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center;
+  color: var(--loc-muted); font-family: "Segoe UI", system-ui, sans-serif; pointer-events: none;
+}
+
+/* ---------- Edit mode cursors ---------- */
+.loc-root:not(.loc-edit) .loc-canvas .loc-node { cursor: pointer; }
+.loc-root.loc-edit .loc-canvas .loc-node { cursor: grab; }
+.loc-root.loc-edit .loc-canvas .loc-node.loc-dragging { cursor: grabbing; }
+
+/* ---------- Inspector slide-in panel ---------- */
+.loc-panel {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 300px; max-width: 86%;
+  z-index: 7; background: #fff; border-left: 1px solid var(--loc-border);
+  box-shadow: -6px 0 18px rgba(16,24,40,.10);
+  display: flex; flex-direction: column;
+  transform: translateX(100%); transition: transform .2s ease;
+  font-size: 13px;
+}
+.loc-panel.loc-open { transform: translateX(0); }
+.loc-panel-head {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border-bottom: 1px solid var(--loc-border); background: #fafbfc;
+}
+.loc-panel-title {
+  flex: 1 1 auto; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+  font-size: 12px; color: var(--loc-text-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.loc-panel-close {
+  flex: 0 0 auto; width: 24px; height: 24px; border: 1px solid var(--loc-border);
+  border-radius: 6px; background: #fff; cursor: pointer; color: var(--loc-text-gray); line-height: 1;
+}
+.loc-panel-close:hover { background: #f1f5f9; }
+.loc-panel-body { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.loc-panel-foot {
+  flex: 0 0 auto; padding: 10px 12px; border-top: 1px solid var(--loc-border);
+  display: flex; gap: 8px; align-items: center; background: #fafbfc;
+}
+.loc-panel-foot button {
+  font: inherit; font-size: 12px; padding: 6px 10px; border: 1px solid var(--loc-border);
+  border-radius: 6px; background: #fff; cursor: pointer; color: var(--loc-text-gray);
+}
+.loc-panel-foot button:hover { background: #f1f5f9; }
+.loc-panel-foot button.loc-danger { color: #b42318; border-color: #f3c0bb; }
+.loc-panel-foot button.loc-danger:hover { background: #fdeceb; }
+.loc-foot-hint { color: var(--loc-muted); font-size: 12px; }
+.loc-field { display: flex; flex-direction: column; gap: 3px; }
+.loc-field > span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--loc-muted); }
+.loc-field input, .loc-field select {
+  font: inherit; font-size: 13px; padding: 6px 8px; width: 100%; min-width: 0; max-width: 100%;
+  border: 1px solid var(--loc-border); border-radius: 6px; background: #fff; color: var(--loc-text-dark);
+}
+.loc-field input:disabled, .loc-field select:disabled { background: #f5f7fb; color: var(--loc-text-gray); cursor: default; }
+.loc-field-row { display: flex; gap: 8px; }
+.loc-field-row .loc-field { flex: 1 1 0; }
+
+/* ---------- Settings slide-in panel (left) ---------- */
+.loc-settings {
+  position: absolute; top: 0; left: 0; bottom: 0; width: 300px; max-width: 86%;
+  z-index: 7; background: #fff; border-right: 1px solid var(--loc-border);
+  box-shadow: 6px 0 18px rgba(16,24,40,.10);
+  display: flex; flex-direction: column;
+  transform: translateX(-100%); transition: transform .2s ease; font-size: 13px;
+}
+.loc-settings.loc-open { transform: translateX(0); }
+.loc-set-section { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px solid #eef1f5; }
+.loc-set-title { font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: .4px; color: var(--loc-text-dark); }
+.loc-set-hint { font-size: 11px; color: var(--loc-muted); }
+.loc-set-add { font: inherit; font-size: 12px; padding: 6px 10px; border: 1px dashed var(--loc-border); border-radius: 6px; background: #fff; cursor: pointer; color: var(--loc-text-gray); }
+.loc-set-add:hover { background: #f1f5f9; }
+.loc-rule { border: 1px solid var(--loc-border); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; background: #fbfcfe; }
+.loc-rule-top { display: flex; align-items: center; gap: 6px; }
+.loc-rule-top select { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid var(--loc-border); border-radius: 6px; }
+.loc-rule-val { flex: 1 1 50px; min-width: 0; width: 50px; font: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid var(--loc-border); border-radius: 6px; }
+.loc-rule-del { flex: 0 0 auto; width: 22px; height: 22px; border: 1px solid var(--loc-border); border-radius: 6px; background: #fff; cursor: pointer; color: var(--loc-text-gray); }
+.loc-rule-del:hover { background: #fdeceb; color: #b42318; }
+.loc-rule-colors { display: flex; gap: 10px; flex-wrap: wrap; }
+.loc-color { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--loc-text-gray); }
+.loc-color input[type="color"] { width: 26px; height: 22px; padding: 0; border: 1px solid var(--loc-border); border-radius: 4px; background: #fff; cursor: pointer; }
+.loc-color input[type="checkbox"] { margin: 0; }
+
+/* ---------- Theme overrides via CSS vars (set per-node by the renderer) ---------- */
+.loc-node.loc-department { background: var(--loc-node-bg, linear-gradient(135deg, var(--loc-teal-1), var(--loc-teal-2))); color: var(--loc-node-text, #fff); }
+.loc-node.loc-position { background: var(--loc-node-bg, #fff); border-color: var(--loc-node-border, var(--loc-border)); }
+.loc-node.loc-position .loc-pname { color: var(--loc-node-text, var(--loc-text-dark)); }
+.loc-node.loc-position .loc-ptitle { color: var(--loc-node-text, var(--loc-text-gray)); }

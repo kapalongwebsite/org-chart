@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>local-org-chart — Vue 3 slots demo</title>
+  <link rel="stylesheet" href="../dist/local-org-chart.css" />
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+    #app { height: 100vh; }
+    /* a custom toolbar via #toolbar slot */
+    .mybar { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: #20303a; color: #fff; font-size: 13px; }
+    .mybar button { padding: 5px 10px; border: 0; border-radius: 6px; cursor: pointer; }
+    .mybar .st { margin-left: auto; opacity: .8; }
+    /* a custom node card via #node slot (fills the engine-positioned host) */
+    .mycard { width: 100%; height: 100%; box-sizing: border-box; border-radius: 10px; padding: 8px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+      cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+    .mycard.dept { background: #334155; color: #fff; }
+    .mycard.pos { background: #fff; border: 2px solid #94a3b8; color: #0f172a; }
+    .mycard.sel { outline: 3px solid #2563eb; }
+    .mc-title { font-weight: 700; font-size: 12px; text-transform: uppercase; }
+    .mc-sub { font-size: 11px; opacity: .75; margin-top: 2px; }
+    .myempty { font-size: 16px; color: #64748b; }
+  </style>
+  <script type="importmap">
+  { "imports": { "vue": "../node_modules/vue/dist/vue.esm-browser.prod.js" } }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module">
+    import { createApp, h, ref } from 'vue';
+    import { OrgChart } from '../dist/vue.js';
+    import { sampleNodes } from './sample-data.js';
+
+    const App = {
+      setup() {
+        const nodes = ref(sampleNodes);
+        const editMode = ref(false);
+        // test hooks
+        window.__app = {
+          setEmpty: () => { nodes.value = []; },
+          setFull: () => { nodes.value = sampleNodes.slice(); },
+          toggleEdit: () => { editMode.value = !editMode.value; },
+        };
+        return () => h(OrgChart, {
+          nodes: nodes.value, editMode: editMode.value, persist: false, fitOnInit: true,
+        }, {
+          // replace the toolbar entirely
+          toolbar: ({ chart, state }) => h('div', { class: 'mybar' }, [
+            h('strong', 'CUSTOM TOOLBAR'),
+            h('button', { onClick: () => chart && chart.fitToScreen() }, 'Fit'),
+            h('button', { onClick: () => chart && chart.setSubtreeMode('Alternate') }, 'Alternate'),
+            h('button', { onClick: () => chart && chart.expandAll() }, 'Expand'),
+            h('span', { class: 'st' }, 'mode: ' + (state.subtreeMode || '')),
+          ]),
+          // custom node card
+          node: ({ node, selected, themeStyle, select }) => h('div', {
+            class: 'mycard ' + (node.type === 'department' ? 'dept' : 'pos') + (selected ? ' sel' : ''),
+            style: themeStyle, onClick: select,
+          }, [
+            h('div', { class: 'mc-title' }, node.label),
+            node.type !== 'department' ? h('div', { class: 'mc-sub' }, node.personName) : null,
+          ]),
+          // custom inspector body
+          inspector: ({ node, editMode, update, close }) => h('div', { class: 'myinspector' }, [
+            h('div', { class: 'mi-id' }, 'id: ' + node.id),
+            h('label', {}, ['Label ', h('input', {
+              class: 'mi-label', value: node.label, disabled: !editMode,
+              onInput: (e) => update({ label: e.target.value }),
+            })]),
+            h('button', { class: 'mi-close', onClick: close }, 'Close'),
+          ]),
+          // empty state
+          empty: () => h('div', { class: 'myempty' }, 'No data — custom #empty slot'),
+        });
+      },
+    };
+    createApp(App).mount('#app');
+  </script>
+</body>
+</html>

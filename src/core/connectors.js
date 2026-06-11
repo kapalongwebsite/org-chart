@@ -9,10 +9,12 @@ export function effCenter(p, manualOffsets) {
   return { x: p.cx + (off ? off.dx : 0), y: p.cy + (off ? off.dy : 0) };
 }
 
-/* one orthogonal path between parent & child; waypoints override the auto route */
-export function routeConnector(parent, child, cfg, manualOffsets, edgeWaypoints) {
+/* one orthogonal path between parent & child.
+   Manual waypoints OR manual endpoint anchors override the auto route. */
+export function routeConnector(parent, child, cfg, manualOffsets, edgeWaypoints, edgeAnchors) {
   const wps = edgeWaypoints && edgeWaypoints[child.node.id];
-  if (wps && wps.length) return waypointPath(parent, child, wps, cfg, manualOffsets);
+  const anchors = edgeAnchors && edgeAnchors[child.node.id];
+  if ((wps && wps.length) || anchors) return waypointPath(parent, child, wps || [], cfg, manualOffsets, anchors);
 
   const P = effCenter(parent, manualOffsets), C = effCenter(child, manualOffsets);
   const pw = parent.node.width, ph = parent.node.height;
@@ -49,24 +51,34 @@ export function routeConnector(parent, child, cfg, manualOffsets, edgeWaypoints)
   return 'M ' + pts.map((p) => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' L ');
 }
 
-/* parent exit / child entry edges facing the adjacent waypoints */
-export function edgeEndpoints(parent, child, toward1, towardN, cfg, manualOffsets) {
+/* parent exit / child entry edges; manual anchors (normalized to [-1,1] on the
+   box perimeter) override the auto facing-center logic. */
+export function edgeEndpoints(parent, child, toward1, towardN, cfg, manualOffsets, anchors) {
   const P = effCenter(parent, manualOffsets), C = effCenter(child, manualOffsets);
   const pw = parent.node.width, ph = parent.node.height;
   const cw = child.node.width, chh = child.node.height;
   let S, E;
-  if (!isHorizontal(cfg)) {
+  if (anchors && anchors.p) {
+    S = { x: P.x + anchors.p.nx * pw / 2, y: P.y + anchors.p.ny * ph / 2 };
+  } else if (!isHorizontal(cfg)) {
     S = { x: P.x, y: (toward1.y >= P.y) ? P.y + ph / 2 : P.y - ph / 2 };
-    E = { x: C.x, y: (towardN.y >= C.y) ? C.y + chh / 2 : C.y - chh / 2 };
   } else {
     S = { x: (toward1.x >= P.x) ? P.x + pw / 2 : P.x - pw / 2, y: P.y };
+  }
+  if (anchors && anchors.c) {
+    E = { x: C.x + anchors.c.nx * cw / 2, y: C.y + anchors.c.ny * chh / 2 };
+  } else if (!isHorizontal(cfg)) {
+    E = { x: C.x, y: (towardN.y >= C.y) ? C.y + chh / 2 : C.y - chh / 2 };
+  } else {
     E = { x: (towardN.x >= C.x) ? C.x + cw / 2 : C.x - cw / 2, y: C.y };
   }
   return { S, E };
 }
 
-export function edgeControlPoints(parent, child, wps, cfg, manualOffsets) {
-  const { S, E } = edgeEndpoints(parent, child, wps[0], wps[wps.length - 1], cfg, manualOffsets);
+export function edgeControlPoints(parent, child, wps, cfg, manualOffsets, anchors) {
+  const first = wps.length ? wps[0] : effCenter(child, manualOffsets);
+  const last = wps.length ? wps[wps.length - 1] : effCenter(parent, manualOffsets);
+  const { S, E } = edgeEndpoints(parent, child, first, last, cfg, manualOffsets, anchors);
   return [S].concat(wps.map((w) => ({ x: w.x, y: w.y })), [E]);
 }
 
@@ -80,7 +92,7 @@ export function orthoThrough(controls, horizontal) {
   return out;
 }
 
-export function waypointPath(parent, child, wps, cfg, manualOffsets) {
-  const pts = orthoThrough(edgeControlPoints(parent, child, wps, cfg, manualOffsets), isHorizontal(cfg));
+export function waypointPath(parent, child, wps, cfg, manualOffsets, anchors) {
+  const pts = orthoThrough(edgeControlPoints(parent, child, wps, cfg, manualOffsets, anchors), isHorizontal(cfg));
   return 'M ' + pts.map((p) => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' L ');
 }

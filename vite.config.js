@@ -13,7 +13,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   build: {
     cssCodeSplit: false,
-    sourcemap: true,
+    sourcemap: false,
     emptyOutDir: true,
     lib: {
       entry: {

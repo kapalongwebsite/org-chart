@@ -24,3 +24,4 @@ export {
 } from './dataImport.js';
 export { exportLayout } from './exportLayout.js';
 export { buildChartSVG } from './svgExport.js';
+export { DEFAULT_SETTINGS, normalizeSettings, normalizeRule, resolveNodeStyle } from './theme.js';

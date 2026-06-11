@@ -57,6 +57,19 @@ export const SUBTREE_MODES: SubtreeMode[];
 export const ORIENTATIONS: Orientation[];
 
 // ---- vanilla ----
+export interface ThemeRule {
+  enabled?: boolean;
+  field: 'type' | 'status' | 'level' | 'unit' | 'id' | 'label' | string;
+  value: string;
+  style: { bg?: string; text?: string; border?: string };
+}
+export interface ChartSettings {
+  spacingX?: number; spacingY?: number; gridSize?: number;
+  orientation?: Orientation; subtreeMode?: SubtreeMode;
+  showGrid?: boolean; snapGrid?: boolean; alignGrid?: boolean;
+  themeRules?: ThemeRule[];
+}
+
 export interface CreateOptions extends LayoutOptions {
   nodes?: OrgNode[];
   showGrid?: boolean;
@@ -65,6 +78,9 @@ export interface CreateOptions extends LayoutOptions {
   enablePan?: boolean;
   enableZoom?: boolean;
   readonly?: boolean;
+  editMode?: boolean;
+  inspector?: boolean;
+  settings?: ChartSettings;
   fitOnInit?: boolean;
   toolbar?: boolean;
   persist?: boolean;
@@ -73,7 +89,8 @@ export interface CreateOptions extends LayoutOptions {
 
 export type OrgChartEventName =
   | 'node-click' | 'node-select' | 'node-drag-start' | 'node-drag' | 'node-drag-end'
-  | 'layout-change' | 'orientation-change' | 'subtree-mode-change';
+  | 'layout-change' | 'orientation-change' | 'subtree-mode-change'
+  | 'edit-mode-change' | 'node-change' | 'settings-change';
 
 export interface OrgChartInstance {
   root: HTMLElement;
@@ -96,6 +113,18 @@ export interface OrgChartInstance {
   exportPNG(scale?: number): void;
   exportPDF(): void;
   buildSVG(raster?: boolean): string;
+  setEditMode(on: boolean): void;
+  isEditMode(): boolean;
+  updateNode(id: string, patch: Partial<OrgNode>): void;
+  addChild(parentId: string): void;
+  deleteNode(id: string): void;
+  reparentNode(id: string, newParentId: string): void;
+  detachNode(id: string): void;
+  openInspector(id: string): void;
+  closeInspector(): void;
+  getSettings(): ChartSettings;
+  setSettings(settings: ChartSettings): void;
+  toggleSettings(force?: boolean): void;
   getState(): any;
   getNodes(): OrgNode[];
   getPositioned(): PositionedNode[];

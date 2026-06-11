@@ -12,4 +12,5 @@ yarn-error.log*
 coverage/
 .idea/
 .vscode/
+*.map
 # dist IS committed (see README "Install strategy"); do not ignore it.

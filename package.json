@@ -36,7 +36,8 @@
     "dist",
     "src",
     "index.d.ts",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "dev": "vite",
