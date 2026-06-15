@@ -20,6 +20,10 @@ versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 ### Fixed
 - **Waypoint edit handles** now sit on the *rendered orthogonal path* (via `orthoThrough`),
   so the add-waypoint dots and nearest-segment hit-testing line up with the drawn line.
+- **Spine-route handles align by default** — for children that branch to the side (spine
+  routes, e.g. `Alternate` mode) the selected-line endpoint square + add dots now land on
+  the actual line on first selection, instead of floating off the box's top/bottom until
+  dragged. (`edgeControlPoints` mirrors the auto route's side entry by `routeType`.)
 - **Selecting a line shows its waypoints** even outside edit mode (read-only markers);
   the interactive add/endpoint handles still appear only in edit mode.
 - **Panning no longer clears the selection** — a selected node/line stays selected while

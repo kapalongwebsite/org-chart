@@ -78,7 +78,21 @@ export function edgeEndpoints(parent, child, toward1, towardN, cfg, manualOffset
 export function edgeControlPoints(parent, child, wps, cfg, manualOffsets, anchors) {
   const first = wps.length ? wps[0] : effCenter(child, manualOffsets);
   const last = wps.length ? wps[wps.length - 1] : effCenter(parent, manualOffsets);
-  const { S, E } = edgeEndpoints(parent, child, first, last, cfg, manualOffsets, anchors);
+  const ends = edgeEndpoints(parent, child, first, last, cfg, manualOffsets, anchors);
+  const S = ends.S;
+  let E = ends.E;
+  // With no manual waypoints/anchor, the auto route (routeConnector) decides the
+  // child entry by routeType: SPINE routes enter from the side facing the parent,
+  // not the perpendicular center. Match that here so the selected-line edit
+  // handles (add dots + endpoint square) land on the actual drawn line instead of
+  // floating off to the side. (Manual anchors/waypoints keep the toward-based entry.)
+  if (!wps.length && !(anchors && anchors.c) && child.routeType !== 'bus') {
+    const C = effCenter(child, manualOffsets), P = effCenter(parent, manualOffsets);
+    const cw = child.node.width, chh = child.node.height;
+    E = !isHorizontal(cfg)
+      ? { x: (C.x <= P.x) ? C.x + cw / 2 : C.x - cw / 2, y: C.y }
+      : { x: C.x, y: (C.y <= P.y) ? C.y + chh / 2 : C.y - chh / 2 };
+  }
   return [S].concat(wps.map((w) => ({ x: w.x, y: w.y })), [E]);
 }
 
