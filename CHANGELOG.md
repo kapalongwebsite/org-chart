@@ -3,6 +3,24 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.3.0 — 2026-06-15
+
+### Added
+- **Settings drawer Reset** — a **Reset** button in the settings panel + `resetSettings()` method
+  restore spacing / grid / theme rules to the as-configured defaults.
+- **Settings drawer parity with the inspector** — `settingsTarget` (mount the settings panel
+  into an element outside the canvas) and `settingsSlot` / Vue **`#settings`** slot (supply a
+  custom panel body). New `settings-open` / `settings-close` events and `getSettingsBody()`.
+
+## v1.2.1 — 2026-06-15
+
+### Fixed
+- **Grid now covers nodes dragged past the origin.** `sizeSvg()` tracked only the positive
+  extent, so a node moved above/left of the origin (negative space) had no grid under it —
+  most visible with **Show Grid** on (which hides the canvas fallback dots). It now measures
+  the full bounding box (incl. negative coords) and positions the grid to cover it. The
+  extent is also recomputed at drag-end, so the grid grows immediately, not only on refresh.
+
 ## v1.2.0 — 2026-06-15
 
 ### Added

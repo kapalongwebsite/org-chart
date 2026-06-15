@@ -1,5 +1,5 @@
 import "./vanilla.js";
-import { defineComponent as v, ref as u, shallowRef as M, computed as C, onMounted as B, watch as l, onBeforeUnmount as x, h as i, Teleport as p, markRaw as b } from "vue";
+import { defineComponent as M, ref as c, shallowRef as C, computed as B, onMounted as T, watch as l, onBeforeUnmount as x, h as s, Teleport as p, markRaw as O } from "vue";
 import { createOrgChart as G } from "./local-org-chart.js";
 const m = [
   "node-click",
@@ -15,13 +15,15 @@ const m = [
   "settings-change",
   "inspector-open",
   "inspector-close",
+  "settings-open",
+  "settings-close",
   "fullscreen-change"
 ];
-function T(n) {
-  const d = {};
-  return n && (n.bg && (d.background = n.bg), n.text && (d.color = n.text), n.border && (d.borderColor = n.border)), d;
+function P(n) {
+  const i = {};
+  return n && (n.bg && (i.background = n.bg), n.text && (i.color = n.text), n.border && (i.borderColor = n.border)), i;
 }
-const P = v({
+const E = M({
   name: "OrgChart",
   props: {
     nodes: { type: Array, default: () => [] },
@@ -36,7 +38,9 @@ const P = v({
     editMode: { type: Boolean, default: !1 },
     inspector: { type: Boolean, default: !0 },
     inspectorTarget: { type: [String, Object], default: null },
-    // mount the drawer outside the canvas
+    // mount the inspector drawer outside the canvas
+    settingsTarget: { type: [String, Object], default: null },
+    // mount the settings drawer outside the canvas
     fullscreenControl: { type: Boolean, default: !0 },
     // floating fullscreen button on the canvas
     fitOnLayoutChange: { type: [Boolean, String], default: !0 },
@@ -49,25 +53,25 @@ const P = v({
     storageKey: { type: String, default: "local-org-chart.state" }
   },
   emits: m,
-  setup(n, { emit: d, expose: O, slots: a }) {
-    const S = u(null);
+  setup(n, { emit: i, expose: v, slots: a }) {
+    const b = c(null);
     let e = null;
-    const g = u(!1), r = u({}), f = M([]), s = u(null), N = C(() => !(n.nodes && n.nodes.length));
-    function h() {
+    const u = c(!1), r = c({}), f = C([]), g = c(null), S = c(!1), N = B(() => !(n.nodes && n.nodes.length));
+    function y() {
       e && (r.value = e.getState());
     }
-    function y() {
+    function h() {
       if (!e || !a.node) {
         f.value = [];
         return;
       }
       f.value = e.getPositioned().map((t) => {
         const o = e.getNodeSlotEl(t.node.id);
-        return o ? { id: t.node.id, node: b(t.node), target: b(o), themeStyle: T(e.nodeThemeStyle(t.node.id)) } : null;
+        return o ? { id: t.node.id, node: O(t.node), target: O(o), themeStyle: P(e.nodeThemeStyle(t.node.id)) } : null;
       }).filter(Boolean);
     }
-    return B(() => {
-      e = G(S.value, {
+    return T(() => {
+      e = G(b.value, {
         nodes: n.nodes,
         orientation: n.orientation,
         subtreeMode: n.subtreeMode,
@@ -80,6 +84,7 @@ const P = v({
         editMode: n.editMode,
         inspector: n.inspector,
         inspectorTarget: n.inspectorTarget || null,
+        settingsTarget: n.settingsTarget || null,
         fullscreenControl: n.fullscreenControl,
         fitOnLayoutChange: n.fitOnLayoutChange,
         settings: n.settings || void 0,
@@ -88,20 +93,25 @@ const P = v({
         toolbar: a.toolbar ? !1 : n.toolbar,
         nodeSlots: !!a.node,
         inspectorSlot: !!a.inspector,
+        settingsSlot: !!a.settings,
         persist: n.persist,
         storageKey: n.storageKey
-      }), m.forEach((t) => e.on(t, (o) => d(t, o))), e.on("nodes-rendered", y), ["layout-change", "edit-mode-change", "settings-change", "node-select", "node-change"].forEach((t) => e.on(t, h)), e.on("inspector-open", (t) => {
-        s.value = t;
+      }), m.forEach((t) => e.on(t, (o) => i(t, o))), e.on("nodes-rendered", h), ["layout-change", "edit-mode-change", "settings-change", "node-select", "node-change"].forEach((t) => e.on(t, y)), e.on("inspector-open", (t) => {
+        g.value = t;
       }), e.on("inspector-close", () => {
-        s.value = null;
-      }), h(), y(), g.value = !0;
+        g.value = null;
+      }), e.on("settings-open", () => {
+        S.value = !0;
+      }), e.on("settings-close", () => {
+        S.value = !1;
+      }), y(), h(), u.value = !0;
     }), l(() => n.nodes, (t) => {
-      e && (e.setNodes(t || []), y(), h());
+      e && (e.setNodes(t || []), h(), y());
     }), l(() => n.orientation, (t) => e && e.setOrientation(t)), l(() => n.subtreeMode, (t) => e && e.setSubtreeMode(t)), l(() => [n.spacingX, n.spacingY], ([t, o]) => e && e.setSpacing(t, o)), l(() => n.readonly, (t) => e && e.setOption("readonly", t)), l(() => n.editMode, (t) => e && e.setEditMode(t)), l(() => n.settings, (t) => {
       e && t && e.setSettings(t);
     }, { deep: !0 }), l(() => n.enableDragging, (t) => e && e.setOption("enableDragging", t)), l(() => n.enablePan, (t) => e && e.setOption("enablePan", t)), l(() => n.enableZoom, (t) => e && e.setOption("enableZoom", t)), l(() => n.fitOnLayoutChange, (t) => e && e.setOption("fitOnLayoutChange", t)), x(() => {
       e && (e.destroy(), e = null);
-    }), O({
+    }), v({
       // ---- view / layout ----
       fitToScreen: () => e && e.fitToScreen(),
       relayout: () => e && e.relayout(),
@@ -141,8 +151,9 @@ const P = v({
       getSettings: () => e && e.getSettings(),
       setSettings: (t) => e && e.setSettings(t),
       toggleSettings: (t) => e && e.toggleSettings(t),
+      resetSettings: () => e && e.resetSettings(),
       // ---- data ----
-      setNodes: (t, o, c) => e && e.setNodes(t, o, c),
+      setNodes: (t, o, d) => e && e.setNodes(t, o, d),
       loadJSON: (t) => e && e.loadJSON(t),
       getState: () => e && e.getState(),
       getNodes: () => e && e.getNodes(),
@@ -161,13 +172,13 @@ const P = v({
       instance: () => e
     }), () => {
       const t = [];
-      if (a.toolbar && t.push(i(
+      if (a.toolbar && t.push(s(
         "div",
         { class: "loc-vue-toolbar" },
-        g.value ? a.toolbar({ chart: e, state: r.value }) : []
-      )), t.push(i("div", { ref: S, class: "loc-vue-host" })), a.node)
+        u.value ? a.toolbar({ chart: e, state: r.value }) : []
+      )), t.push(s("div", { ref: b, class: "loc-vue-host" })), a.node)
         for (const o of f.value)
-          t.push(i(
+          t.push(s(
             p,
             { to: o.target, key: "n:" + o.id },
             a.node({
@@ -175,32 +186,45 @@ const P = v({
               selected: r.value.selectedNodeId === o.id,
               editMode: !!r.value.editMode,
               themeStyle: o.themeStyle,
-              update: (c) => e && e.updateNode(o.id, c),
+              update: (d) => e && e.updateNode(o.id, d),
               select: () => e && e.openInspector(o.id)
             })
           ));
-      if (a.inspector && g.value && s.value && e) {
+      if (a.inspector && u.value && g.value && e) {
         const o = e.getInspectorBody();
-        o && t.push(i(
+        o && t.push(s(
           p,
           { to: o, key: "inspector" },
           a.inspector({
-            node: s.value.node,
+            node: g.value.node,
             editMode: !!r.value.editMode,
-            update: (c) => e.updateNode(s.value.id, c),
+            update: (d) => e.updateNode(g.value.id, d),
             close: () => e.closeInspector()
           })
         ));
       }
-      return a.empty && N.value && t.push(i("div", { class: "loc-vue-empty" }, a.empty())), i("div", { class: "loc-vue-wrap" }, t);
+      if (a.settings && u.value && S.value && e) {
+        const o = e.getSettingsBody();
+        o && t.push(s(
+          p,
+          { to: o, key: "settings" },
+          a.settings({
+            settings: e.getSettings(),
+            update: (d) => e.setSettings(d),
+            reset: () => e.resetSettings(),
+            close: () => e.toggleSettings(!1)
+          })
+        ));
+      }
+      return a.empty && N.value && t.push(s("div", { class: "loc-vue-empty" }, a.empty())), s("div", { class: "loc-vue-wrap" }, t);
     };
   }
-}), w = {
-  install(n, d = {}) {
-    n.component(d.name || "OrgChart", P);
+}), A = {
+  install(n, i = {}) {
+    n.component(i.name || "OrgChart", E);
   }
 };
 export {
-  P as OrgChart,
-  w as default
+  E as OrgChart,
+  A as default
 };

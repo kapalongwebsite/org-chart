@@ -84,6 +84,9 @@ export interface CreateOptions extends LayoutOptions {
   /** Mount the inspector drawer into an external element (selector or node) instead of the canvas. */
   inspectorTarget?: string | HTMLElement | null;
   inspectorSlot?: boolean;
+  /** Mount the settings drawer into an external element (selector or node) instead of the canvas. */
+  settingsTarget?: string | HTMLElement | null;
+  settingsSlot?: boolean;
   nodeSlots?: boolean;
   /** Show the floating fullscreen button on the canvas (default true). */
   fullscreenControl?: boolean;
@@ -100,7 +103,7 @@ export type OrgChartEventName =
   | 'node-click' | 'node-select' | 'node-drag-start' | 'node-drag' | 'node-drag-end'
   | 'layout-change' | 'orientation-change' | 'subtree-mode-change'
   | 'edit-mode-change' | 'node-change' | 'settings-change'
-  | 'inspector-open' | 'inspector-close' | 'fullscreen-change';
+  | 'inspector-open' | 'inspector-close' | 'settings-open' | 'settings-close' | 'fullscreen-change';
 
 export interface ScreenRect { left: number; top: number; right: number; bottom: number; width: number; height: number; }
 
@@ -148,6 +151,8 @@ export interface OrgChartInstance {
   getSettings(): ChartSettings;
   setSettings(settings: ChartSettings): void;
   toggleSettings(force?: boolean): void;
+  /** Restore spacing / grid / theme rules to the as-configured defaults. */
+  resetSettings(): void;
   getState(): any;
   getNodes(): OrgNode[];
   getPositioned(): PositionedNode[];
@@ -206,6 +211,7 @@ export interface OrgChartVueInstance {
   getSettings(): ChartSettings;
   setSettings(settings: ChartSettings): void;
   toggleSettings(force?: boolean): void;
+  resetSettings(): void;
 
   // data
   setNodes(nodes: OrgNode[], meta?: any, options?: { resetEdits?: boolean }): void;

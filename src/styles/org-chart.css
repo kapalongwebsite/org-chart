@@ -279,10 +279,20 @@
 .loc-root.loc-fullscreen, .loc-root:fullscreen { width: 100%; height: 100%; background: var(--loc-bg); }
 .loc-root:fullscreen { background: var(--loc-bg); }
 
-/* ---------- Inspector drawer mounted outside the canvas (inspectorTarget) ---------- */
-/* relocated drawer flows in its host element instead of overlaying the canvas */
-.loc-panel.loc-panel-external {
-  position: relative; top: auto; right: auto; bottom: auto;
+/* ---------- Drawer mounted outside the canvas (inspectorTarget / settingsTarget) ---------- */
+/* a relocated drawer flows in its host element instead of overlaying the canvas */
+.loc-panel.loc-panel-external,
+.loc-settings.loc-panel-external {
+  position: relative; top: auto; right: auto; bottom: auto; left: auto;
   width: 100%; max-width: none; height: 100%;
-  transform: none; box-shadow: none; border-left: 0;
+  transform: none; box-shadow: none; border-left: 0; border-right: 0;
 }
+
+/* ---------- Settings: Reset button ---------- */
+.loc-set-foot { padding: 4px 0 2px; }
+.loc-set-reset {
+  width: 100%; padding: 7px 10px; cursor: pointer;
+  border: 1px solid var(--loc-border); border-radius: 6px; background: #fff;
+  color: var(--loc-text-gray); font-size: 12px;
+}
+.loc-set-reset:hover { background: #f1f5f9; color: var(--loc-text-dark); border-color: #cfd6e2; }

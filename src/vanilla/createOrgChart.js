@@ -37,6 +37,8 @@ const DEFAULT_OPTS = {
   inspector: true,    // show the slide-in inspector panel on node click (false = headless: emit node-select only)
   inspectorSlot: false, // leave the inspector body empty for an external (Vue) slot
   inspectorTarget: null, // mount the inspector drawer into an external element (selector or node) instead of the canvas
+  settingsTarget: null,  // mount the settings drawer into an external element (selector or node) instead of the canvas
+  settingsSlot: false,   // leave the settings body empty for an external (Vue) slot
   nodeSlots: false,   // render empty positioned hosts (Vue teleports card content in)
   fullscreenControl: true, // show the floating fullscreen button on the canvas
   fitOnLayoutChange: true, // re-frame after mode/orientation/re-layout: true|'fit' · 'recenter' · false|'none'
@@ -67,6 +69,12 @@ export function createOrgChart(host, userOpts = {}) {
   let edgeAnchors = Object.create(null);     // childId -> { p:{nx,ny}, c:{nx,ny} } manual line endpoints
   let nodeOverrides = Object.create(null);   // id -> {field: value} manual node edits (persisted overlay)
   let themeRules = ((opts.settings && opts.settings.themeRules) || opts.themeRules || []).map(normalizeRule);
+  // snapshot of the as-configured settings — the target that resetSettings() restores to
+  const INITIAL_SETTINGS = {
+    spacingX: opts.spacingX, spacingY: opts.spacingY, gridSize: opts.gridSize,
+    showGrid: !!opts.showGrid, snapGrid: !!opts.snapGrid, alignGrid: !!opts.alignGrid,
+    themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
+  };
   let idCounter = 0;
   let positioned = [], posById = Object.create(null);
 
@@ -137,7 +145,10 @@ export function createOrgChart(host, userOpts = {}) {
     '<div class="loc-panel-head"><span class="loc-panel-title">Settings</span>'
     + '<button class="loc-panel-close" title="Close" data-role="settings-close">✕</button></div>'
     + '<div class="loc-panel-body" data-role="settings-body"></div>';
-  canvas.appendChild(settingsPanel);
+  // like the inspector, the settings drawer can live in an external element.
+  const settingsHost = resolveTarget(opts.settingsTarget) || canvas;
+  settingsHost.appendChild(settingsPanel);
+  if (settingsHost !== canvas) settingsPanel.classList.add('loc-panel-external');
   const settingsBody = settingsPanel.querySelector('[data-role="settings-body"]');
 
   host.appendChild(root);
@@ -276,16 +287,22 @@ export function createOrgChart(host, userOpts = {}) {
     persist();
   }
   function sizeSvg() {
-    let maxX = 0, maxY = 0;
+    // Track the FULL content bounds (incl. negative space from nodes dragged
+    // above/left of the origin) so the grid + canvas extend to cover them.
+    let minX = 0, minY = 0, maxX = 0, maxY = 0;
     for (const p of positioned) {
-      const c = effCenter(p, manualOffsets);
-      maxX = Math.max(maxX, c.x + p.node.width / 2 + 80);
-      maxY = Math.max(maxY, c.y + p.node.height / 2 + 80);
+      const c = effCenter(p, manualOffsets), hw = p.node.width / 2, hh = p.node.height / 2;
+      minX = Math.min(minX, c.x - hw - 80); minY = Math.min(minY, c.y - hh - 80);
+      maxX = Math.max(maxX, c.x + hw + 80); maxY = Math.max(maxY, c.y + hh + 80);
     }
     svg.setAttribute('width', maxX); svg.setAttribute('height', maxY);
     overlay.setAttribute('width', maxX); overlay.setAttribute('height', maxY);
-    gridEl.style.width = maxX + 'px'; gridEl.style.height = maxY + 'px';
-    gridEl.style.backgroundSize = state.gridSize + 'px ' + state.gridSize + 'px';
+    const g = state.gridSize;
+    gridEl.style.left = minX + 'px'; gridEl.style.top = minY + 'px';
+    gridEl.style.width = (maxX - minX) + 'px'; gridEl.style.height = (maxY - minY) + 'px';
+    gridEl.style.backgroundSize = g + 'px ' + g + 'px';
+    // keep grid lines aligned to the content origin so they don't jump as bounds change
+    gridEl.style.backgroundPosition = (((-minX) % g) + g) % g + 'px ' + ((((-minY) % g) + g) % g) + 'px';
   }
   function applyGridOverlay() {
     gridEl.classList.toggle('loc-on', state.showGrid);
@@ -389,7 +406,11 @@ export function createOrgChart(host, userOpts = {}) {
     });
   }
   function onNodePointerUp() {
-    if (drag) { const e = elById[drag.id]; if (e) e.classList.remove('loc-dragging'); emit('node-drag-end', { id: drag.id, node: nodeById[drag.id], offset: manualOffsets[drag.id] }); }
+    if (drag) {
+      const e = elById[drag.id]; if (e) e.classList.remove('loc-dragging');
+      emit('node-drag-end', { id: drag.id, node: nodeById[drag.id], offset: manualOffsets[drag.id] });
+      sizeSvg();   // a dragged node may extend the content bounds → grow grid/canvas now, not only on refresh
+    }
     drag = null;
     rmWin('pointermove', onNodePointerMove); rmWin('pointerup', onNodePointerUp);
     persist();
@@ -693,10 +714,21 @@ export function createOrgChart(host, userOpts = {}) {
     persist();
   }
   function toggleSettings(force) {
-    const open = force == null ? !settingsPanel.classList.contains('loc-open') : !!force;
+    const wasOpen = settingsPanel.classList.contains('loc-open');
+    const open = force == null ? !wasOpen : !!force;
     settingsPanel.classList.toggle('loc-open', open);
     if (toolbarEl) toolbarEl.querySelectorAll('button[data-act="settings"]').forEach((b) => b.classList.toggle('loc-active', open));
     if (open) renderSettings();
+    if (open !== wasOpen) emit(open ? 'settings-open' : 'settings-close', {});
+  }
+  /* restore spacing / grid / theme rules to the as-configured defaults */
+  function resetSettings() {
+    setSettings({
+      spacingX: INITIAL_SETTINGS.spacingX, spacingY: INITIAL_SETTINGS.spacingY, gridSize: INITIAL_SETTINGS.gridSize,
+      showGrid: INITIAL_SETTINGS.showGrid, snapGrid: INITIAL_SETTINGS.snapGrid, alignGrid: INITIAL_SETTINGS.alignGrid,
+      themeRules: INITIAL_SETTINGS.themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
+    });
+    applyThemeAll();
   }
   function setRange(key, label, val, min, max) {
     return `<label class="loc-field"><span>${label}: <b data-rangelabel="${key}">${val}</b></span>`
@@ -719,6 +751,7 @@ export function createOrgChart(host, userOpts = {}) {
       + `</div></div>`;
   }
   function renderSettings() {
+    if (opts.settingsSlot) return;   // body is filled by the external (Vue #settings) slot
     let h = '<div class="loc-set-section"><div class="loc-set-title">Layout</div>'
       + setRange('spacingX', 'Spacing X', state.spacingX, 0, 200)
       + setRange('spacingY', 'Spacing Y', state.spacingY, 0, 260)
@@ -728,6 +761,7 @@ export function createOrgChart(host, userOpts = {}) {
       + '<div class="loc-set-hint">Recolor nodes that match a field = value. Later rules win.</div>';
     themeRules.forEach((r, i) => { h += ruleRow(r, i); });
     h += '<button class="loc-set-add" data-role="add-rule">+ Add rule</button></div>';
+    h += '<div class="loc-set-foot"><button class="loc-set-reset" data-role="reset-settings" title="Restore spacing, grid &amp; theme rules to defaults">↺ Reset settings</button></div>';
     settingsBody.innerHTML = h;
   }
   function colorOn(i, ck) { const c = settingsBody.querySelector(`[data-rule="${i}"][data-rk="${ck}-on"]`); return c && c.checked; }
@@ -962,6 +996,7 @@ export function createOrgChart(host, userOpts = {}) {
   // settings panel
   addL(settingsPanel, 'click', (e) => {
     if (e.target.closest('[data-role="settings-close"]')) { toggleSettings(false); return; }
+    if (e.target.closest('[data-role="reset-settings"]')) { resetSettings(); return; }
     if (e.target.closest('[data-role="add-rule"]')) {
       themeRules.push(normalizeRule({ field: 'type', value: '', style: {} }));
       renderSettings(); applyThemeAll(); persist(); emit('settings-change', getSettings()); return;
@@ -1117,11 +1152,12 @@ export function createOrgChart(host, userOpts = {}) {
     enterFullscreen, exitFullscreen, toggleFullscreen, isFullscreen,
     updateNode, addChild, deleteNode, reparentNode, detachNode,
     openInspector, closeInspector, nodeScreenRect,
-    getSettings, setSettings, toggleSettings,
+    getSettings, setSettings, toggleSettings, resetSettings,
     // slot bridging (used by the Vue wrapper's teleports)
     getNodeHost: (id) => elById[id] || null,
     getNodeSlotEl: (id) => (elById[id] ? elById[id].querySelector('.loc-node-slot') : null),
     getInspectorBody: () => panelBody,
+    getSettingsBody: () => settingsBody,
     nodeThemeStyle: (id) => (nodeById[id] ? resolveNodeStyle(nodeById[id], themeRules) : null),
     getState: () => ({ ...state }),
     getNodes: () => NODES.map((n) => ({ ...n })),

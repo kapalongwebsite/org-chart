@@ -3,7 +3,8 @@
 // bridges Vue SLOTS into the engine via <Teleport>:
 //   #node      -> custom card content, teleported into each engine-positioned host
 //   #toolbar   -> your own controls (built-in toolbar auto-suppressed)
-//   #inspector -> custom body for the slide-in panel
+//   #inspector -> custom body for the right slide-in panel
+//   #settings  -> custom body for the left settings panel
 //   #empty     -> shown when there are no nodes
 // Written with defineComponent + h() so no SFC compiler is needed; Vue stays an
 // external peer dependency.
@@ -17,7 +18,7 @@ const EVENTS = [
   'node-click', 'node-select', 'node-drag-start', 'node-drag', 'node-drag-end',
   'layout-change', 'orientation-change', 'subtree-mode-change',
   'edit-mode-change', 'node-change', 'settings-change',
-  'inspector-open', 'inspector-close', 'fullscreen-change',
+  'inspector-open', 'inspector-close', 'settings-open', 'settings-close', 'fullscreen-change',
 ];
 
 function toStyle(s) {
@@ -40,7 +41,8 @@ export const OrgChart = defineComponent({
     readonly: { type: Boolean, default: false },
     editMode: { type: Boolean, default: false },
     inspector: { type: Boolean, default: true },
-    inspectorTarget: { type: [String, Object], default: null }, // mount the drawer outside the canvas
+    inspectorTarget: { type: [String, Object], default: null }, // mount the inspector drawer outside the canvas
+    settingsTarget: { type: [String, Object], default: null },  // mount the settings drawer outside the canvas
     fullscreenControl: { type: Boolean, default: true },         // floating fullscreen button on the canvas
     fitOnLayoutChange: { type: [Boolean, String], default: true }, // re-frame after relayout: true|'fit' · 'recenter' · false|'none'
     settings: { type: Object, default: null },
@@ -58,6 +60,7 @@ export const OrgChart = defineComponent({
     const liveState = ref({});             // engine state snapshot, refreshed on key events
     const hosts = shallowRef([]);          // [{ id, node, target, themeStyle }] for #node teleports
     const inspectorNode = ref(null);       // { id, node } while the panel is open (for #inspector)
+    const settingsOpen = ref(false);       // whether the settings drawer is open (for #settings)
     const isEmpty = computed(() => !(props.nodes && props.nodes.length));
 
     function refreshState() { if (chart) liveState.value = chart.getState(); }
@@ -83,6 +86,7 @@ export const OrgChart = defineComponent({
         editMode: props.editMode,
         inspector: props.inspector,
         inspectorTarget: props.inspectorTarget || null,
+        settingsTarget: props.settingsTarget || null,
         fullscreenControl: props.fullscreenControl,
         fitOnLayoutChange: props.fitOnLayoutChange,
         settings: props.settings || undefined,
@@ -91,6 +95,7 @@ export const OrgChart = defineComponent({
         toolbar: slots.toolbar ? false : props.toolbar,
         nodeSlots: !!slots.node,
         inspectorSlot: !!slots.inspector,
+        settingsSlot: !!slots.settings,
         persist: props.persist,
         storageKey: props.storageKey,
       });
@@ -99,6 +104,8 @@ export const OrgChart = defineComponent({
       ['layout-change', 'edit-mode-change', 'settings-change', 'node-select', 'node-change'].forEach((n) => chart.on(n, refreshState));
       chart.on('inspector-open', (e) => { inspectorNode.value = e; });
       chart.on('inspector-close', () => { inspectorNode.value = null; });
+      chart.on('settings-open', () => { settingsOpen.value = true; });
+      chart.on('settings-close', () => { settingsOpen.value = false; });
       refreshState();
       syncHosts();          // capture the hosts created during the engine's initial boot
       ready.value = true;
@@ -163,6 +170,7 @@ export const OrgChart = defineComponent({
       getSettings: () => chart && chart.getSettings(),
       setSettings: (s) => chart && chart.setSettings(s),
       toggleSettings: (f) => chart && chart.toggleSettings(f),
+      resetSettings: () => chart && chart.resetSettings(),
 
       // ---- data ----
       setNodes: (nodes, meta, options) => chart && chart.setNodes(nodes, meta, options),
@@ -224,6 +232,20 @@ export const OrgChart = defineComponent({
               editMode: !!liveState.value.editMode,
               update: (patch) => chart.updateNode(inspectorNode.value.id, patch),
               close: () => chart.closeInspector(),
+            })));
+        }
+      }
+
+      // #settings slot — teleport a custom body into the open settings drawer
+      if (slots.settings && ready.value && settingsOpen.value && chart) {
+        const body = chart.getSettingsBody();
+        if (body) {
+          children.push(h(Teleport, { to: body, key: 'settings' },
+            slots.settings({
+              settings: chart.getSettings(),
+              update: (s) => chart.setSettings(s),
+              reset: () => chart.resetSettings(),
+              close: () => chart.toggleSettings(false),
             })));
         }
       }

@@ -204,7 +204,8 @@ you render a chart.
 | `enableZoom` | `Boolean` | `true` | allow wheel zoom |
 | `readonly` | `Boolean` | `false` | disable drag / waypoint edit / collapse |
 | `inspector` | `Boolean` | `true` | open the built-in drawer on node click; `false` = headless (emit `node-select` only) |
-| `inspectorTarget` | `String \| Element` | `null` | mount the drawer into an element outside the canvas |
+| `inspectorTarget` | `String \| Element` | `null` | mount the inspector drawer into an element outside the canvas |
+| `settingsTarget` | `String \| Element` | `null` | mount the settings drawer into an element outside the canvas |
 | `fullscreenControl` | `Boolean` | `true` | show the floating fullscreen button on the canvas |
 | `fitOnLayoutChange` | `Boolean \| String` | `true` | re-frame after a mode/orientation/re-layout change: `true`/`'fit'`, `'recenter'` (keep zoom), `false`/`'none'` |
 | `fitOnInit` | `Boolean` | `true` | frame the chart on mount |
@@ -298,6 +299,7 @@ All methods are available on:
 | `getSettings()` | Get current settings (spacing, grid, theme rules) |
 | `setSettings(s)` | Apply settings (merges; fires `settings-change`) |
 | `toggleSettings(force?)` | Toggle the left settings panel |
+| `resetSettings()` | Restore spacing / grid / theme rules to the as-configured defaults |
 
 ### Data
 
@@ -319,17 +321,20 @@ All methods are available on:
 | `exportJSON(download?)` | Export full layout state as JSON; returns the object |
 | `buildSVG(raster?)` | Build the raw SVG string without downloading |
 
-### Customizing the inspector drawer
+### Customizing the drawers (inspector & settings)
 
-The built-in right-hand drawer is optional and relocatable:
+Both slide-in drawers are optional and relocatable, and behave the same way:
 
-- `inspector: false` — **headless**: the drawer never opens. Each node click still fires
-  `node-select` with `{ id, node, rect }` (`rect` = the node's on-screen box) so you can
-  render your own panel anywhere — even outside the chart.
-- `inspectorTarget: '#my-panel'` (selector or element) — keep the managed drawer but mount
-  it into an element **outside the canvas** (it renders inline there, flagged
-  `loc-panel-external`).
-- Vue: the `#inspector` slot teleports your own body into the managed drawer.
+- **Inspector** (right): `inspector: false` is **headless** — the drawer never opens; each node
+  click still fires `node-select` with `{ id, node, rect }` so you can render your own panel
+  anywhere. `inspectorTarget: '#my-panel'` mounts the managed drawer into an element **outside
+  the canvas**. Vue: the `#inspector` slot teleports your own body in.
+- **Settings** (left): `settingsTarget: '#my-settings'` mounts the settings drawer outside the
+  canvas; `settingsSlot` / the Vue `#settings` slot supplies a custom body. It emits
+  `settings-open` / `settings-close`, and has a built-in **Reset** button (`resetSettings()`).
+
+A relocated drawer renders inline in its host element (flagged `loc-panel-external`) instead of
+overlaying the canvas.
 
 ### Requested toolbar support
 
@@ -510,13 +515,21 @@ pick groups: `subtree`, `orient`, `actions`, `grid`, `mode`, `export`.
     <button @click="close">Close</button>
   </template>
 
+  <!-- custom settings panel body -->
+  <template #settings="{ settings, update, reset, close }">
+    <input type="range" min="0" max="200" :value="settings.spacingX" @input="update({ spacingX: +$event.target.value })" />
+    <button @click="reset">Reset</button>
+    <button @click="close">Close</button>
+  </template>
+
   <!-- shown when nodes is empty -->
   <template #empty>No data yet.</template>
 </OrgChart>
 ```
 
 Slot props: `#node` gets `{ node, selected, editMode, themeStyle, update(patch), select() }`;
-`#toolbar` gets `{ chart, state }`; `#inspector` gets `{ node, editMode, update(patch), close() }`.
+`#toolbar` gets `{ chart, state }`; `#inspector` gets `{ node, editMode, update(patch), close() }`;
+`#settings` gets `{ settings, update(s), reset(), close() }`.
 `themeStyle` is the resolved theme-rule style for that node, so your custom card can honor the
 Settings theming. A custom `#node` slot replaces the default card; the engine keeps doing layout,
 connectors, pan/zoom, drag, and the collapse toggle. See `examples/vue-slots-demo.html`.
