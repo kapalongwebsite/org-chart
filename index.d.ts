@@ -4,7 +4,7 @@ export type Orientation = 'TopToBottom' | 'BottomToTop' | 'LeftToRight' | 'Right
 export type OrientationInput = Orientation | 'Top' | 'Bottom' | 'Left' | 'Right';
 export type SubtreeMode =
   | 'Balanced' | 'Center' | 'Left' | 'Right'
-  | 'Alternate' | 'AlternateLeft' | 'AlternateRight' | 'Matrix';
+  | 'Alternate' | 'AlternateLeft' | 'AlternateRight' | 'Matrix' | 'RowWrap';
 
 export interface OrgNode {
   id: string;
@@ -92,6 +92,10 @@ export interface CreateOptions extends LayoutOptions {
   fullscreenControl?: boolean;
   /** Re-frame the view after a mode/orientation/re-layout change. `true`/`'fit'` (default), `'recenter'` (keep zoom), `false`/`'none'`. */
   fitOnLayoutChange?: boolean | 'fit' | 'recenter' | 'none';
+  /** RowWrap target fill shape (width / height). Default 1.6 (landscape). */
+  targetAspect?: number;
+  /** RowWrap target size (any units) — overrides `targetAspect` with width/height. */
+  targetSize?: { width: number; height: number } | null;
   settings?: ChartSettings;
   fitOnInit?: boolean;
   toolbar?: boolean | Partial<Record<'subtree' | 'orient' | 'actions' | 'search' | 'grid' | 'mode' | 'export', boolean>>;

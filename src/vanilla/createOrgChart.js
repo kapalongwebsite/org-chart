@@ -41,6 +41,9 @@ const DEFAULT_OPTS = {
   settingsSlot: false,   // leave the settings body empty for an external (Vue) slot
   nodeSlots: false,   // render empty positioned hosts (Vue teleports card content in)
   fullscreenControl: true, // show the floating fullscreen button on the canvas
+  // RowWrap fills this target shape. `targetSize` (a tarp's W×H, any units) wins; else targetAspect.
+  targetAspect: 1.6,       // default ≈ landscape tarp (W/H)
+  targetSize: null,        // e.g. { width: 8, height: 4 } → aspect 2.0
   fitOnLayoutChange: true, // re-frame after mode/orientation/re-layout: true|'fit' · 'recenter' · false|'none'
   fitOnInit: true,
   toolbar: true,      // true | false | { subtree, orient, actions, grid, mode, export }
@@ -167,6 +170,7 @@ export function createOrgChart(host, userOpts = {}) {
       orientation: state.orientation, subtreeMode: state.subtreeMode,
       spacingX: state.spacingX, spacingY: state.spacingY,
       gridSize: state.gridSize, alignGrid: state.alignGrid,
+      targetAspect: opts.targetAspect, targetSize: opts.targetSize,
     });
   }
   function runLayout() {
@@ -576,7 +580,10 @@ export function createOrgChart(host, userOpts = {}) {
   }
 
   // ================= edit mode + inspector + node editing =================
-  const SUBMODES = ['', 'Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'Matrix'];
+  // 'Matrix' is intentionally omitted from the picker UIs — for uniform-height
+  // cards it lays out identically to Balanced. It's still accepted by the API
+  // (setSubtreeMode('Matrix') / a node's layoutMode) for mixed-height data.
+  const SUBMODES = ['', 'Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'RowWrap'];
   function escAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
   function applyEditModeUI() { root.classList.toggle('loc-edit', state.editMode); }
   function setEditMode(on) {
@@ -1077,7 +1084,7 @@ export function createOrgChart(host, userOpts = {}) {
     const show = (g) => tcfg[g] !== false;          // each group defaults visible
     const bar = el('div', 'loc-toolbar');
     let html = '';
-    if (show('subtree')) html += group('Subtree', ['Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'Matrix'].map((m) => btn('mode', m, m)).join(''));
+    if (show('subtree')) html += group('Subtree', ['Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'RowWrap'].map((m) => btn('mode', m, m)).join(''));
     if (show('orient')) html += group('Orient', [['TopToBottom', 'Top'], ['BottomToTop', 'Bottom'], ['LeftToRight', 'Left'], ['RightToLeft', 'Right']].map(([o, l]) => btn('orient', o, l)).join(''));
     if (show('actions')) html += group('', '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout">Re-layout</button><button data-act="reset">Reset</button><button data-act="fullscreen" title="Toggle fullscreen">Fullscreen</button>');
     if (show('search')) html += group('Search', '<input type="search" data-role="search" class="loc-search-input" placeholder="Search…" />');

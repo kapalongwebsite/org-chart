@@ -3,7 +3,32 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
-## v1.3.1
+## v1.4.0 — 2026-06-15
+
+### Added
+- **`RowWrap` subtree mode** (new toolbar button) — packs each parent's children into
+  horizontal rows that wrap, then **auto-spreads to fill a target shape** so the chart uses
+  space instead of running straight down. Tunable via:
+  - `targetSize: { width, height }` — your output/tarp dimensions (any units); or
+  - `targetAspect` (width / height), default **1.6** (landscape tarp).
+  Also exposed as Vue props `:target-size` / `:target-aspect`.
+  - **Note:** experimental — aspect fitting is coarse (fills *toward* the target, not exact),
+    and deep single-child chains stay vertical. Banner-style group headers are a separate
+    future item.
+
+## v1.3.2 — 2026-06-15
+
+### Changed
+- **Removed `Matrix` from the picker UIs** (toolbar Subtree group + inspector layout-override
+  dropdown). For uniform-height cards it lays out identically to `Balanced`, so it looked like a
+  duplicate button. The mode is **still accepted by the API** (`setSubtreeMode('Matrix')` and a
+  node's `layoutMode`) for mixed-height data — only the UI entries were dropped.
+
+### Docs
+- Added a complete **`#toolbar` slot** example (full custom toolbar: own buttons, CSS, data
+  handling) and documented per-group vs full-custom toolbar control.
+
+## v1.3.1 — 2026-06-15
 
 ### Fixed
 - **`setNodes()` no longer wipes manual positions on a data refresh.** Manually-dragged node

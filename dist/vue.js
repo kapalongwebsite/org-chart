@@ -1,5 +1,5 @@
 import "./vanilla.js";
-import { defineComponent as M, ref as c, shallowRef as C, computed as B, onMounted as T, watch as l, onBeforeUnmount as x, h as s, Teleport as p, markRaw as O } from "vue";
+import { defineComponent as M, ref as c, shallowRef as C, computed as B, onMounted as T, watch as l, onBeforeUnmount as x, h as r, Teleport as h, markRaw as O } from "vue";
 import { createOrgChart as G } from "./local-org-chart.js";
 const m = [
   "node-click",
@@ -19,11 +19,11 @@ const m = [
   "settings-close",
   "fullscreen-change"
 ];
-function P(n) {
+function A(n) {
   const i = {};
   return n && (n.bg && (i.background = n.bg), n.text && (i.color = n.text), n.border && (i.borderColor = n.border)), i;
 }
-const E = M({
+const P = M({
   name: "OrgChart",
   props: {
     nodes: { type: Array, default: () => [] },
@@ -45,6 +45,10 @@ const E = M({
     // floating fullscreen button on the canvas
     fitOnLayoutChange: { type: [Boolean, String], default: !0 },
     // re-frame after relayout: true|'fit' · 'recenter' · false|'none'
+    targetAspect: { type: Number, default: 1.6 },
+    // RowWrap fill shape (W/H); default ≈ landscape tarp
+    targetSize: { type: Object, default: null },
+    // { width, height } — overrides targetAspect
     settings: { type: Object, default: null },
     fitOnInit: { type: Boolean, default: !0 },
     toolbar: { type: [Boolean, Object], default: !0 },
@@ -56,18 +60,18 @@ const E = M({
   setup(n, { emit: i, expose: v, slots: a }) {
     const b = c(null);
     let e = null;
-    const u = c(!1), r = c({}), f = C([]), g = c(null), S = c(!1), N = B(() => !(n.nodes && n.nodes.length));
+    const u = c(!1), s = c({}), f = C([]), g = c(null), S = c(!1), N = B(() => !(n.nodes && n.nodes.length));
     function y() {
-      e && (r.value = e.getState());
+      e && (s.value = e.getState());
     }
-    function h() {
+    function p() {
       if (!e || !a.node) {
         f.value = [];
         return;
       }
       f.value = e.getPositioned().map((t) => {
         const o = e.getNodeSlotEl(t.node.id);
-        return o ? { id: t.node.id, node: O(t.node), target: O(o), themeStyle: P(e.nodeThemeStyle(t.node.id)) } : null;
+        return o ? { id: t.node.id, node: O(t.node), target: O(o), themeStyle: A(e.nodeThemeStyle(t.node.id)) } : null;
       }).filter(Boolean);
     }
     return T(() => {
@@ -87,6 +91,8 @@ const E = M({
         settingsTarget: n.settingsTarget || null,
         fullscreenControl: n.fullscreenControl,
         fitOnLayoutChange: n.fitOnLayoutChange,
+        targetAspect: n.targetAspect,
+        targetSize: n.targetSize || null,
         settings: n.settings || void 0,
         fitOnInit: n.fitOnInit,
         // a #toolbar slot replaces the built-in toolbar
@@ -96,7 +102,7 @@ const E = M({
         settingsSlot: !!a.settings,
         persist: n.persist,
         storageKey: n.storageKey
-      }), m.forEach((t) => e.on(t, (o) => i(t, o))), e.on("nodes-rendered", h), ["layout-change", "edit-mode-change", "settings-change", "node-select", "node-change"].forEach((t) => e.on(t, y)), e.on("inspector-open", (t) => {
+      }), m.forEach((t) => e.on(t, (o) => i(t, o))), e.on("nodes-rendered", p), ["layout-change", "edit-mode-change", "settings-change", "node-select", "node-change"].forEach((t) => e.on(t, y)), e.on("inspector-open", (t) => {
         g.value = t;
       }), e.on("inspector-close", () => {
         g.value = null;
@@ -104,12 +110,16 @@ const E = M({
         S.value = !0;
       }), e.on("settings-close", () => {
         S.value = !1;
-      }), y(), h(), u.value = !0;
+      }), y(), p(), u.value = !0;
     }), l(() => n.nodes, (t) => {
-      e && (e.setNodes(t || []), h(), y());
+      e && (e.setNodes(t || []), p(), y());
     }), l(() => n.orientation, (t) => e && e.setOrientation(t)), l(() => n.subtreeMode, (t) => e && e.setSubtreeMode(t)), l(() => [n.spacingX, n.spacingY], ([t, o]) => e && e.setSpacing(t, o)), l(() => n.readonly, (t) => e && e.setOption("readonly", t)), l(() => n.editMode, (t) => e && e.setEditMode(t)), l(() => n.settings, (t) => {
       e && t && e.setSettings(t);
-    }, { deep: !0 }), l(() => n.enableDragging, (t) => e && e.setOption("enableDragging", t)), l(() => n.enablePan, (t) => e && e.setOption("enablePan", t)), l(() => n.enableZoom, (t) => e && e.setOption("enableZoom", t)), l(() => n.fitOnLayoutChange, (t) => e && e.setOption("fitOnLayoutChange", t)), x(() => {
+    }, { deep: !0 }), l(() => n.enableDragging, (t) => e && e.setOption("enableDragging", t)), l(() => n.enablePan, (t) => e && e.setOption("enablePan", t)), l(() => n.enableZoom, (t) => e && e.setOption("enableZoom", t)), l(() => n.fitOnLayoutChange, (t) => e && e.setOption("fitOnLayoutChange", t)), l(() => n.targetAspect, (t) => {
+      e && (e.setOption("targetAspect", t), e.relayout());
+    }), l(() => n.targetSize, (t) => {
+      e && (e.setOption("targetSize", t || null), e.relayout());
+    }, { deep: !0 }), x(() => {
       e && (e.destroy(), e = null);
     }), v({
       // ---- view / layout ----
@@ -172,19 +182,19 @@ const E = M({
       instance: () => e
     }), () => {
       const t = [];
-      if (a.toolbar && t.push(s(
+      if (a.toolbar && t.push(r(
         "div",
         { class: "loc-vue-toolbar" },
-        u.value ? a.toolbar({ chart: e, state: r.value }) : []
-      )), t.push(s("div", { ref: b, class: "loc-vue-host" })), a.node)
+        u.value ? a.toolbar({ chart: e, state: s.value }) : []
+      )), t.push(r("div", { ref: b, class: "loc-vue-host" })), a.node)
         for (const o of f.value)
-          t.push(s(
-            p,
+          t.push(r(
+            h,
             { to: o.target, key: "n:" + o.id },
             a.node({
               node: o.node,
-              selected: r.value.selectedNodeId === o.id,
-              editMode: !!r.value.editMode,
+              selected: s.value.selectedNodeId === o.id,
+              editMode: !!s.value.editMode,
               themeStyle: o.themeStyle,
               update: (d) => e && e.updateNode(o.id, d),
               select: () => e && e.openInspector(o.id)
@@ -192,12 +202,12 @@ const E = M({
           ));
       if (a.inspector && u.value && g.value && e) {
         const o = e.getInspectorBody();
-        o && t.push(s(
-          p,
+        o && t.push(r(
+          h,
           { to: o, key: "inspector" },
           a.inspector({
             node: g.value.node,
-            editMode: !!r.value.editMode,
+            editMode: !!s.value.editMode,
             update: (d) => e.updateNode(g.value.id, d),
             close: () => e.closeInspector()
           })
@@ -205,8 +215,8 @@ const E = M({
       }
       if (a.settings && u.value && S.value && e) {
         const o = e.getSettingsBody();
-        o && t.push(s(
-          p,
+        o && t.push(r(
+          h,
           { to: o, key: "settings" },
           a.settings({
             settings: e.getSettings(),
@@ -216,15 +226,15 @@ const E = M({
           })
         ));
       }
-      return a.empty && N.value && t.push(s("div", { class: "loc-vue-empty" }, a.empty())), s("div", { class: "loc-vue-wrap" }, t);
+      return a.empty && N.value && t.push(r("div", { class: "loc-vue-empty" }, a.empty())), r("div", { class: "loc-vue-wrap" }, t);
     };
   }
-}), A = {
+}), w = {
   install(n, i = {}) {
-    n.component(i.name || "OrgChart", E);
+    n.component(i.name || "OrgChart", P);
   }
 };
 export {
-  E as OrgChart,
-  A as default
+  P as OrgChart,
+  w as default
 };

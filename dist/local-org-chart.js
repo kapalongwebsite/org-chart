@@ -1,4 +1,4 @@
-import { makeNode as Le, indexNodes as Ee, normalizeRule as pe, exportLayout as Gn, calculateBounds as _t, fitBounds as Tn, computeDepths as Nn, childCount as Pt, searchNodes as An, resolveNodeStyle as Ht, buildChartSVG as Cn, effCenter as se, normalizeImported as zn, layoutOrgChart as Rn, routeConnector as Ut, normalizeConfig as jn, edgeControlPoints as $n, isHorizontal as kn, orthoThrough as Xn } from "./core.js";
+import { makeNode as Le, indexNodes as Ee, normalizeRule as pe, exportLayout as An, calculateBounds as _t, fitBounds as Gn, computeDepths as Tn, childCount as Pt, searchNodes as Nn, resolveNodeStyle as Ht, buildChartSVG as Cn, effCenter as se, normalizeImported as zn, layoutOrgChart as Rn, routeConnector as Ut, normalizeConfig as jn, edgeControlPoints as $n, isHorizontal as kn, orthoThrough as Xn } from "./core.js";
 import { CANVAS_PAD as Un, DEFAULTS as qn, DEFAULT_SETTINGS as Vn, DEPT_SIZE as Wn, ORIENTATIONS as Jn, POS_SIZE as Kn, SNAKE_STUB as Zn, SUBTREE_MODES as Qn, VIRTUAL_ROOT_ID as eo, applyOrientation as to, buildTree as no, convertMoTree as oo, convertNestedTree as io, edgeEndpoints as so, getVisibleTree as lo, isMoArray as ao, lh as ro, lw as co, normalizeSettings as uo, personNameFromPos as po, visibleDepths as fo, waypointPath as go } from "./core.js";
 const fe = "http://www.w3.org/2000/svg", Yn = 0.5, Dn = { Top: "TopToBottom", Bottom: "BottomToTop", Left: "LeftToRight", Right: "RightToLeft" };
 function ge(K) {
@@ -34,6 +34,11 @@ const Fn = {
   // render empty positioned hosts (Vue teleports card content in)
   fullscreenControl: !0,
   // show the floating fullscreen button on the canvas
+  // RowWrap fills this target shape. `targetSize` (a tarp's W×H, any units) wins; else targetAspect.
+  targetAspect: 1.6,
+  // default ≈ landscape tarp (W/H)
+  targetSize: null,
+  // e.g. { width: 8, height: 4 } → aspect 2.0
   fitOnLayoutChange: !0,
   // re-frame after mode/orientation/re-layout: true|'fit' · 'recenter' · false|'none'
   fitOnInit: !0,
@@ -60,7 +65,7 @@ function _n(K, qt = {}) {
     alignGrid: r.alignGrid,
     editMode: !!r.editMode
   };
-  let h = (r.nodes || []).map(Le), f = Ee(h), p = /* @__PURE__ */ Object.create(null), v = /* @__PURE__ */ Object.create(null), I = /* @__PURE__ */ Object.create(null), L = /* @__PURE__ */ Object.create(null), N = (r.settings && r.settings.themeRules || r.themeRules || []).map(pe);
+  let h = (r.nodes || []).map(Le), f = Ee(h), p = /* @__PURE__ */ Object.create(null), v = /* @__PURE__ */ Object.create(null), I = /* @__PURE__ */ Object.create(null), L = /* @__PURE__ */ Object.create(null), T = (r.settings && r.settings.themeRules || r.themeRules || []).map(pe);
   const U = {
     spacingX: r.spacingX,
     spacingY: r.spacingY,
@@ -68,11 +73,11 @@ function _n(K, qt = {}) {
     showGrid: !!r.showGrid,
     snapGrid: !!r.snapGrid,
     alignGrid: !!r.alignGrid,
-    themeRules: N.map((e) => ({ enabled: e.enabled, field: e.field, value: e.value, style: Object.assign({}, e.style) }))
+    themeRules: T.map((e) => ({ enabled: e.enabled, field: e.field, value: e.value, style: Object.assign({}, e.style) }))
   };
   let Vt = 0, E = [], S = /* @__PURE__ */ Object.create(null);
-  const d = /* @__PURE__ */ Object.create(null), b = /* @__PURE__ */ Object.create(null), A = /* @__PURE__ */ Object.create(null);
-  let G = null, m = null, le = 0, k = /* @__PURE__ */ new Set();
+  const d = /* @__PURE__ */ Object.create(null), b = /* @__PURE__ */ Object.create(null), N = /* @__PURE__ */ Object.create(null);
+  let A = null, m = null, le = 0, k = /* @__PURE__ */ new Set();
   const he = [], Z = /* @__PURE__ */ Object.create(null);
   function Wt(e, t) {
     return (Z[e] || (Z[e] = [])).push(t), Ve;
@@ -95,31 +100,31 @@ function _n(K, qt = {}) {
   C.className = "loc-root";
   const $ = r.toolbar ? Ln() : null;
   $ && C.appendChild($);
-  const w = T("div", "loc-canvas"), Q = T("div", "loc-content"), F = T("div", "loc-grid"), ee = document.createElementNS(fe, "svg");
+  const w = G("div", "loc-canvas"), Q = G("div", "loc-content"), F = G("div", "loc-grid"), ee = document.createElementNS(fe, "svg");
   ee.setAttribute("class", "loc-connectors");
   const ae = document.createElementNS(fe, "g");
   ae.setAttribute("class", "loc-edgehits"), ee.appendChild(ae);
-  const be = T("div", "loc-nodes"), re = document.createElementNS(fe, "svg");
+  const be = G("div", "loc-nodes"), re = document.createElementNS(fe, "svg");
   re.setAttribute("class", "loc-overlay");
   const z = document.createElementNS(fe, "g");
   z.setAttribute("class", "loc-edgehandles"), re.appendChild(z);
-  const Oe = T("div", "loc-zoomreadout");
+  const Oe = G("div", "loc-zoomreadout");
   Oe.textContent = "100%", Q.appendChild(F), Q.appendChild(ee), Q.appendChild(be), Q.appendChild(re), w.appendChild(Q), w.appendChild(Oe);
   let X = null;
-  r.fullscreenControl && (X = T("button", "loc-fsbtn"), X.type = "button", X.title = "Fullscreen", X.setAttribute("aria-label", "Toggle fullscreen"), X.innerHTML = "⛶", O(X, "click", (e) => {
+  r.fullscreenControl && (X = G("button", "loc-fsbtn"), X.type = "button", X.title = "Fullscreen", X.setAttribute("aria-label", "Toggle fullscreen"), X.innerHTML = "⛶", O(X, "click", (e) => {
     e.stopPropagation(), qe();
   }), w.appendChild(X)), C.appendChild(w);
-  const j = T("div", "loc-panel");
+  const j = G("div", "loc-panel");
   j.innerHTML = '<div class="loc-panel-head"><span class="loc-panel-title">Node</span><button class="loc-panel-close" title="Close" data-role="panel-close">✕</button></div><div class="loc-panel-body" data-role="panel-body"></div><div class="loc-panel-foot" data-role="panel-foot"></div>';
   const We = Ze(r.inspectorTarget) || w;
   We.appendChild(j), We !== w && j.classList.add("loc-panel-external");
-  const Ge = j.querySelector('[data-role="panel-body"]'), Je = j.querySelector('[data-role="panel-foot"]'), Kt = j.querySelector(".loc-panel-title"), B = T("div", "loc-settings");
+  const Ae = j.querySelector('[data-role="panel-body"]'), Je = j.querySelector('[data-role="panel-foot"]'), Kt = j.querySelector(".loc-panel-title"), B = G("div", "loc-settings");
   B.innerHTML = '<div class="loc-panel-head"><span class="loc-panel-title">Settings</span><button class="loc-panel-close" title="Close" data-role="settings-close">✕</button></div><div class="loc-panel-body" data-role="settings-body"></div>';
   const Ke = Ze(r.settingsTarget) || w;
   Ke.appendChild(B), Ke !== w && B.classList.add("loc-panel-external");
   const te = B.querySelector('[data-role="settings-body"]');
   K.appendChild(C);
-  function T(e, t) {
+  function G(e, t) {
     const n = document.createElement(e);
     return t && (n.className = t), n;
   }
@@ -135,7 +140,9 @@ function _n(K, qt = {}) {
       spacingX: i.spacingX,
       spacingY: i.spacingY,
       gridSize: i.gridSize,
-      alignGrid: i.alignGrid
+      alignGrid: i.alignGrid,
+      targetAspect: r.targetAspect,
+      targetSize: r.targetSize
     });
   }
   function Zt() {
@@ -143,7 +150,7 @@ function _n(K, qt = {}) {
     E = e.positioned, S = e.posById;
   }
   function M() {
-    Zt(), tt(), nn(), Qe(), de(), Ae(), x(), g("layout-change", { positioned: E, mode: i.subtreeMode, orientation: i.orientation });
+    Zt(), tt(), nn(), Qe(), de(), Ne(), x(), g("layout-change", { positioned: E, mode: i.subtreeMode, orientation: i.orientation });
   }
   function Qe() {
     const e = /* @__PURE__ */ Object.create(null);
@@ -160,17 +167,17 @@ function _n(K, qt = {}) {
   }
   function Qt(e) {
     if (r.nodeSlots) {
-      const n = T("div", "loc-node loc-node-host loc-" + e.type + (e.status ? " loc-status-" + e.status : ""));
+      const n = G("div", "loc-node loc-node-host loc-" + e.type + (e.status ? " loc-status-" + e.status : ""));
       if (n.dataset.id = e.id, n.innerHTML = '<div class="loc-node-slot"></div>', e.type === "department") {
-        const o = T("div", "loc-toggle");
+        const o = G("div", "loc-toggle");
         o.dataset.role = "toggle", n.appendChild(o);
       }
       return n;
     }
-    const t = T("div", "loc-node loc-" + e.type + (e.status ? " loc-status-" + e.status : ""));
+    const t = G("div", "loc-node loc-" + e.type + (e.status ? " loc-status-" + e.status : ""));
     if (t.dataset.id = e.id, e.type === "department") {
       t.innerHTML = '<span class="loc-lbl"></span>', t.querySelector(".loc-lbl").textContent = e.label;
-      const n = T("div", "loc-toggle");
+      const n = G("div", "loc-toggle");
       n.dataset.role = "toggle", t.appendChild(n);
     } else {
       t.innerHTML = '<div class="loc-photo"></div><div class="loc-ptext"><div class="loc-pname"></div><div class="loc-ptitle"></div><div class="loc-badge"></div></div>';
@@ -220,11 +227,11 @@ function _n(K, qt = {}) {
       const s = Ut(o, t, ce(), p, v, I);
       let l = b[n.id];
       l || (l = me("path"), b[n.id] = l, ee.appendChild(l)), l.setAttribute("d", s), l.classList.toggle("loc-sel", i.selectedEdgeId === n.id);
-      let a = A[n.id];
-      a || (a = me("path"), a.dataset.edge = n.id, A[n.id] = a, ae.appendChild(a)), a.setAttribute("d", s);
+      let a = N[n.id];
+      a || (a = me("path"), a.dataset.edge = n.id, N[n.id] = a, ae.appendChild(a)), a.setAttribute("d", s);
     }
     for (const t in b) e[t] || (b[t].remove(), delete b[t]);
-    for (const t in A) e[t] || (A[t].remove(), delete A[t]);
+    for (const t in N) e[t] || (N[t].remove(), delete N[t]);
     i.selectedEdgeId && !e[i.selectedEdgeId] ? W() : _();
   }
   function q(e) {
@@ -233,10 +240,10 @@ function _n(K, qt = {}) {
     const n = S[t.node.parentId];
     if (!n) return;
     const o = Ut(n, t, ce(), p, v, I);
-    b[e] && b[e].setAttribute("d", o), A[e] && A[e].setAttribute("d", o);
+    b[e] && b[e].setAttribute("d", o), N[e] && N[e].setAttribute("d", o);
   }
   function de() {
-    Q.style.transform = `translate(${i.panX}px, ${i.panY}px) scale(${i.zoom})`, Oe.textContent = Math.round(i.zoom * 100) + "%", i.selectedEdgeId && !G && _(), x();
+    Q.style.transform = `translate(${i.panX}px, ${i.panY}px) scale(${i.zoom})`, Oe.textContent = Math.round(i.zoom * 100) + "%", i.selectedEdgeId && !A && _(), x();
   }
   function tt() {
     let e = 0, t = 0, n = 0, o = 0;
@@ -253,10 +260,10 @@ function _n(K, qt = {}) {
   }
   function V() {
     if (!E.length) return;
-    const e = _t(E, p, 0), t = Tn(e, w.clientWidth, w.clientHeight);
+    const e = _t(E, p, 0), t = Gn(e, w.clientWidth, w.clientHeight);
     i.zoom = t.zoom, i.panX = t.panX, i.panY = t.panY, de();
   }
-  function Te(e) {
+  function Ge(e) {
     const t = S[e];
     if (!t) return;
     const n = se(t, p);
@@ -266,7 +273,7 @@ function _n(K, qt = {}) {
     const e = r.fitOnLayoutChange;
     return e === !0 ? "fit" : e === !1 ? "none" : e === "recenter" || e === "none" || e === "fit" ? e : "fit";
   }
-  function Ne() {
+  function Te() {
     const e = on();
     if (e === "fit") {
       V();
@@ -274,7 +281,7 @@ function _n(K, qt = {}) {
     }
     if (e === "recenter") {
       const t = h.find((o) => !o.parentId), n = i.selectedNodeId && S[i.selectedNodeId] ? i.selectedNodeId : t && t.id;
-      n && Te(n);
+      n && Ge(n);
     }
   }
   function nt() {
@@ -282,7 +289,7 @@ function _n(K, qt = {}) {
     M();
   }
   function ot() {
-    const e = Nn(h, f);
+    const e = Tn(h, f);
     for (const t of h) t.collapsed = e[t.id] >= 1 && Pt(h, t.id) > 0;
     M();
   }
@@ -291,16 +298,16 @@ function _n(K, qt = {}) {
     t && (t.collapsed = !t.collapsed, M());
   }
   function st(e) {
-    if (k = An(h, e), Ae(), k.size) {
+    if (k = Nn(h, e), Ne(), k.size) {
       const t = E.find((n) => k.has(n.node.id));
-      t && Te(t.node.id);
+      t && Ge(t.node.id);
     }
     return k.size;
   }
   function lt() {
-    k = /* @__PURE__ */ new Set(), Ae();
+    k = /* @__PURE__ */ new Set(), Ne();
   }
-  function Ae() {
+  function Ne() {
     const e = k.size > 0;
     for (const t of E) {
       const n = d[t.node.id];
@@ -445,13 +452,13 @@ function _n(K, qt = {}) {
     ne && d[ne] && d[ne].classList.remove("loc-reparent-target"), ne = e, e && d[e] && d[e].classList.add("loc-reparent-target");
   }
   function bt(e) {
-    if (!G || G.kind !== "ep") return;
-    const t = G.id, n = S[t];
+    if (!A || A.kind !== "ep") return;
+    const t = A.id, n = S[t];
     if (!n) return;
     const o = S[n.node.parentId];
     if (!o) return;
     const s = ve(e.clientX, e.clientY);
-    if (I[t] = I[t] || {}, G.which === "child")
+    if (I[t] = I[t] || {}, A.which === "child")
       I[t].c = ht(n, s);
     else {
       I[t].p = ht(o, s);
@@ -461,8 +468,8 @@ function _n(K, qt = {}) {
     q(t), _();
   }
   function mt() {
-    const e = G;
-    if (G = null, H("pointermove", bt), H("pointerup", mt), e && e.which === "parent" && ne) {
+    const e = A;
+    if (A = null, H("pointermove", bt), H("pointerup", mt), e && e.which === "parent" && ne) {
       const t = ne;
       Re(null), je(e.id, t);
       return;
@@ -490,7 +497,7 @@ function _n(K, qt = {}) {
     }
     return o;
   }
-  const un = ["", "Balanced", "Center", "Left", "Right", "Alternate", "AlternateLeft", "AlternateRight", "Matrix"];
+  const un = ["", "Balanced", "Center", "Left", "Right", "Alternate", "AlternateLeft", "AlternateRight", "RowWrap"];
   function Se(e) {
     return String(e ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
   }
@@ -521,7 +528,7 @@ function _n(K, qt = {}) {
       return `<option value="${Se(Bt)}"${String(Bt) === String(u ?? "") ? " selected" : ""}>${On}</option>`;
     }).join("") + "</select>", a = (y, u) => `<label class="loc-field"><span>${y}</span>${u}</label>`;
     let c = a("ID", `<input value="${Se(t.id)}" disabled/>`) + a("Type", l("type", t.type, [["department", "department"], ["position", "position"]])) + a("Label", s("label", t.label));
-    t.type !== "department" && (c += a("Person name", s("personName", t.personName)) + a("Status", l("status", t.status, [["", "—"], ["FILLED", "FILLED"], ["VACANT", "VACANT"], ["UNFUNDED", "UNFUNDED"]])) + a("Photo URL", s("photo_url", t.data && t.data.photo_url || ""))), c += a("Layout override", l("layoutMode", t.layoutMode || "", un.map((y) => [y, y || "(inherit)"]))) + a("Width", s("width", t.width, "number")) + a("Height", s("height", t.height, "number")), Ge.innerHTML = c, Je.innerHTML = n ? '<button data-role="add-child">+ Add child</button>' + (t.parentId ? '<button data-role="detach">Detach</button>' : "") + '<button data-role="del-node" class="loc-danger">Delete</button>' : '<span class="loc-foot-hint">Turn on Edit to modify fields</span>';
+    t.type !== "department" && (c += a("Person name", s("personName", t.personName)) + a("Status", l("status", t.status, [["", "—"], ["FILLED", "FILLED"], ["VACANT", "VACANT"], ["UNFUNDED", "UNFUNDED"]])) + a("Photo URL", s("photo_url", t.data && t.data.photo_url || ""))), c += a("Layout override", l("layoutMode", t.layoutMode || "", un.map((y) => [y, y || "(inherit)"]))) + a("Width", s("width", t.width, "number")) + a("Height", s("height", t.height, "number")), Ae.innerHTML = c, Je.innerHTML = n ? '<button data-role="add-child">+ Add child</button>' + (t.parentId ? '<button data-role="detach">Detach</button>' : "") + '<button data-role="del-node" class="loc-danger">Delete</button>' : '<span class="loc-foot-hint">Turn on Edit to modify fields</span>';
   }
   function pn() {
     let e;
@@ -582,7 +589,7 @@ function _n(K, qt = {}) {
     ["label", "Label"]
   ];
   function xt(e, t) {
-    const n = Ht(t, N);
+    const n = Ht(t, T);
     Fe(e, "--loc-node-bg", n && n.bg), Fe(e, "--loc-node-text", n && n.text), Fe(e, "--loc-node-border", n && n.border);
   }
   function Fe(e, t, n) {
@@ -601,11 +608,11 @@ function _n(K, qt = {}) {
       showGrid: i.showGrid,
       snapGrid: i.snapGrid,
       alignGrid: i.alignGrid,
-      themeRules: N.map((e) => ({ enabled: e.enabled, field: e.field, value: e.value, style: Object.assign({}, e.style) }))
+      themeRules: T.map((e) => ({ enabled: e.enabled, field: e.field, value: e.value, style: Object.assign({}, e.style) }))
     };
   }
   function Mt(e, t) {
-    e = e || {}, typeof e.spacingX == "number" && (i.spacingX = e.spacingX), typeof e.spacingY == "number" && (i.spacingY = e.spacingY), typeof e.gridSize == "number" && (i.gridSize = e.gridSize), e.orientation && (i.orientation = ge(e.orientation)), e.subtreeMode && (i.subtreeMode = e.subtreeMode), "showGrid" in e && (i.showGrid = !!e.showGrid), "snapGrid" in e && (i.snapGrid = !!e.snapGrid), "alignGrid" in e && (i.alignGrid = !!e.alignGrid), Array.isArray(e.themeRules) && (N = e.themeRules.map(pe)), ye(), D(), M(), B.classList.contains("loc-open") && xe(), t && t.silent || g("settings-change", Y()), x();
+    e = e || {}, typeof e.spacingX == "number" && (i.spacingX = e.spacingX), typeof e.spacingY == "number" && (i.spacingY = e.spacingY), typeof e.gridSize == "number" && (i.gridSize = e.gridSize), e.orientation && (i.orientation = ge(e.orientation)), e.subtreeMode && (i.subtreeMode = e.subtreeMode), "showGrid" in e && (i.showGrid = !!e.showGrid), "snapGrid" in e && (i.snapGrid = !!e.snapGrid), "alignGrid" in e && (i.alignGrid = !!e.alignGrid), Array.isArray(e.themeRules) && (T = e.themeRules.map(pe)), ye(), D(), M(), B.classList.contains("loc-open") && xe(), t && t.silent || g("settings-change", Y()), x();
   }
   function Be(e) {
     const t = B.classList.contains("loc-open"), n = e == null ? !t : !!e;
@@ -635,7 +642,7 @@ function _n(K, qt = {}) {
   function xe() {
     if (r.settingsSlot) return;
     let e = '<div class="loc-set-section"><div class="loc-set-title">Layout</div>' + _e("spacingX", "Spacing X", i.spacingX, 0, 200) + _e("spacingY", "Spacing Y", i.spacingY, 0, 260) + _e("gridSize", "Grid size", i.gridSize, 6, 80) + "</div>";
-    e += '<div class="loc-set-section"><div class="loc-set-title">Theme rules</div><div class="loc-set-hint">Recolor nodes that match a field = value. Later rules win.</div>', N.forEach((t, n) => {
+    e += '<div class="loc-set-section"><div class="loc-set-title">Theme rules</div><div class="loc-set-hint">Recolor nodes that match a field = value. Later rules win.</div>', T.forEach((t, n) => {
       e += gn(t, n);
     }), e += '<button class="loc-set-add" data-role="add-rule">+ Add rule</button></div>', e += '<div class="loc-set-foot"><button class="loc-set-reset" data-role="reset-settings" title="Restore spacing, grid &amp; theme rules to defaults">↺ Reset settings</button></div>', te.innerHTML = e;
   }
@@ -667,7 +674,7 @@ function _n(K, qt = {}) {
           edgeWaypoints: v,
           edgeAnchors: I,
           nodeOverrides: L,
-          themeRules: N,
+          themeRules: T,
           collapsed: h.filter((e) => e.collapsed).map((e) => e.id)
         }));
       } catch {
@@ -683,13 +690,13 @@ function _n(K, qt = {}) {
     }
     if (e && (e.orientation && (i.orientation = ge(e.orientation)), e.subtreeMode && (i.subtreeMode = e.subtreeMode), ["spacingX", "spacingY", "zoom", "panX", "panY", "gridSize"].forEach((t) => {
       typeof e[t] == "number" && (i[t] = e[t]);
-    }), i.showGrid = !!e.showGrid, i.snapGrid = !!e.snapGrid, i.alignGrid = !!e.alignGrid, i.editMode = !!e.editMode, e.manualOffsets && (p = e.manualOffsets), e.edgeWaypoints && (v = e.edgeWaypoints), e.edgeAnchors && (I = e.edgeAnchors), e.nodeOverrides && (L = e.nodeOverrides, wt()), Array.isArray(e.themeRules) && (N = e.themeRules.map(pe)), Array.isArray(e.collapsed))) {
+    }), i.showGrid = !!e.showGrid, i.snapGrid = !!e.snapGrid, i.alignGrid = !!e.alignGrid, i.editMode = !!e.editMode, e.manualOffsets && (p = e.manualOffsets), e.edgeWaypoints && (v = e.edgeWaypoints), e.edgeAnchors && (I = e.edgeAnchors), e.nodeOverrides && (L = e.nodeOverrides, wt()), Array.isArray(e.themeRules) && (T = e.themeRules.map(pe)), Array.isArray(e.collapsed))) {
       const t = new Set(e.collapsed);
       for (const n of h) n.collapsed = t.has(n.id);
     }
   }
   function Lt(e) {
-    const t = Gn(i, h, p, v);
+    const t = An(i, h, p, v);
     return t.editMode = i.editMode, t.edgeAnchors = I, t.nodeOverrides = L, t.settings = Y(), e !== !1 && He(new Blob([JSON.stringify(t, null, 2)], { type: "application/json" }), "org-chart-layout.json"), t;
   }
   const Et = document.createElement("canvas").getContext("2d");
@@ -710,7 +717,7 @@ function _n(K, qt = {}) {
   function Ot() {
     return He(new Blob([ue(!1)], { type: "image/svg+xml;charset=utf-8" }), "org-chart.svg"), ue(!1);
   }
-  function Gt(e) {
+  function At(e) {
     e = e || 3;
     const t = _t(E, p, 40), n = 16e3, o = 2e8;
     let s = Math.min(e, n / t.w, n / t.h);
@@ -729,7 +736,7 @@ function _n(K, qt = {}) {
       }
     }, a.onerror = () => URL.revokeObjectURL(l), a.src = l;
   }
-  function Tt() {
+  function Gt() {
     const e = window.open("", "_blank");
     e && (e.document.open(), e.document.write("<!doctype html><html><head><title>Org Chart</title><style>@page{margin:8mm;}html,body{margin:0;padding:0;}svg{width:100%;height:auto;display:block;}</style></head><body>" + ue(!1) + "<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},350);};<\/script></body></html>"), e.document.close());
   }
@@ -737,27 +744,27 @@ function _n(K, qt = {}) {
     const n = URL.createObjectURL(e), o = document.createElement("a");
     o.href = n, o.download = t, document.body.appendChild(o), o.click(), o.remove(), URL.revokeObjectURL(n);
   }
-  function Nt(e, t, n) {
+  function Tt(e, t, n) {
     const o = !(n && n.resetEdits);
     h = (e || []).map(Le), f = Ee(h), o || (p = /* @__PURE__ */ Object.create(null), v = /* @__PURE__ */ Object.create(null), I = /* @__PURE__ */ Object.create(null), L = /* @__PURE__ */ Object.create(null)), i.selectedNodeId = null, i.selectedEdgeId = null, k = /* @__PURE__ */ new Set(), J();
     for (const s in d)
       d[s].remove(), delete d[s];
     for (const s in b)
       b[s].remove(), delete b[s];
-    for (const s in A)
-      A[s].remove(), delete A[s];
-    t && (t.subtreeMode && (i.subtreeMode = t.subtreeMode), t.orientation && (i.orientation = ge(t.orientation)), t.manualOffsets && (p = t.manualOffsets), t.edgeWaypoints && (v = t.edgeWaypoints), t.edgeAnchors && (I = t.edgeAnchors), t.nodeOverrides && (L = t.nodeOverrides), typeof t.editMode == "boolean" && (i.editMode = t.editMode), t.settings && Array.isArray(t.settings.themeRules) && (N = t.settings.themeRules.map(pe))), o && wt(), ke(), D(), M(), r.fitOnInit && V();
+    for (const s in N)
+      N[s].remove(), delete N[s];
+    t && (t.subtreeMode && (i.subtreeMode = t.subtreeMode), t.orientation && (i.orientation = ge(t.orientation)), t.manualOffsets && (p = t.manualOffsets), t.edgeWaypoints && (v = t.edgeWaypoints), t.edgeAnchors && (I = t.edgeAnchors), t.nodeOverrides && (L = t.nodeOverrides), typeof t.editMode == "boolean" && (i.editMode = t.editMode), t.settings && Array.isArray(t.settings.themeRules) && (T = t.settings.themeRules.map(pe))), o && wt(), ke(), D(), M(), r.fitOnInit && V();
   }
   function Sn(e) {
     const { nodes: t, meta: n } = zn(e);
-    return Nt(t, n), t.length;
+    return Tt(t, n), t.length;
   }
-  function At(e) {
+  function Nt(e) {
     const t = ge(e);
-    i.orientation = t, p = /* @__PURE__ */ Object.create(null), v = /* @__PURE__ */ Object.create(null), I = /* @__PURE__ */ Object.create(null), W(), D(), M(), Ne(), g("orientation-change", { orientation: t });
+    i.orientation = t, p = /* @__PURE__ */ Object.create(null), v = /* @__PURE__ */ Object.create(null), I = /* @__PURE__ */ Object.create(null), W(), D(), M(), Te(), g("orientation-change", { orientation: t });
   }
   function Ct(e) {
-    i.subtreeMode = e, p = /* @__PURE__ */ Object.create(null), v = /* @__PURE__ */ Object.create(null), I = /* @__PURE__ */ Object.create(null), W(), D(), M(), Ne(), g("subtree-mode-change", { subtreeMode: e });
+    i.subtreeMode = e, p = /* @__PURE__ */ Object.create(null), v = /* @__PURE__ */ Object.create(null), I = /* @__PURE__ */ Object.create(null), W(), D(), M(), Te(), g("subtree-mode-change", { subtreeMode: e });
   }
   function wn(e, t) {
     e != null && (i.spacingX = e), t != null && (i.spacingY = t), M(), g("settings-change", Y());
@@ -778,7 +785,7 @@ function _n(K, qt = {}) {
     return zt(e ?? !i.showGrid);
   }
   function Ue() {
-    p = /* @__PURE__ */ Object.create(null), v = /* @__PURE__ */ Object.create(null), I = /* @__PURE__ */ Object.create(null), W(), M(), Ne();
+    p = /* @__PURE__ */ Object.create(null), v = /* @__PURE__ */ Object.create(null), I = /* @__PURE__ */ Object.create(null), W(), M(), Te();
   }
   function Rt() {
     lt(), J(), Ue(), V();
@@ -844,7 +851,7 @@ function _n(K, qt = {}) {
     const t = e.target, n = i.selectedEdgeId;
     if (!n) return;
     if (t.dataset.ep) {
-      e.stopPropagation(), e.preventDefault(), G = { id: n, kind: "ep", which: t.dataset.ep }, P("pointermove", bt), P("pointerup", mt);
+      e.stopPropagation(), e.preventDefault(), A = { id: n, kind: "ep", which: t.dataset.ep }, P("pointermove", bt), P("pointerup", mt);
       return;
     }
     let o;
@@ -853,7 +860,7 @@ function _n(K, qt = {}) {
       const s = +t.dataset.add;
       (v[n] || (v[n] = [])).splice(s, 0, Ce(ve(e.clientX, e.clientY))), o = s, q(n);
     } else return;
-    e.stopPropagation(), e.preventDefault(), G = { id: n, idx: o }, P("pointermove", Yt), P("pointerup", Dt);
+    e.stopPropagation(), e.preventDefault(), A = { id: n, idx: o }, P("pointermove", Yt), P("pointerup", Dt);
   }), O(z, "dblclick", (e) => {
     const t = e.target;
     if (t.dataset.ep === "parent") {
@@ -865,12 +872,12 @@ function _n(K, qt = {}) {
     o && (o.splice(+t.dataset.wp, 1), o.length || delete v[n], q(n), _(), x());
   });
   function Yt(e) {
-    if (!G) return;
-    const t = v[G.id];
-    t && (t[G.idx] = Ce(ve(e.clientX, e.clientY)), q(G.id), _());
+    if (!A) return;
+    const t = v[A.id];
+    t && (t[A.idx] = Ce(ve(e.clientX, e.clientY)), q(A.id), _());
   }
   function Dt() {
-    G = null, H("pointermove", Yt), H("pointerup", Dt), x();
+    A = null, H("pointermove", Yt), H("pointerup", Dt), x();
   }
   O(j, "click", (e) => {
     if (e.target.closest('[data-role="panel-close"]')) {
@@ -889,7 +896,7 @@ function _n(K, qt = {}) {
       St(i.selectedNodeId);
       return;
     }
-  }), O(Ge, "input", (e) => {
+  }), O(Ae, "input", (e) => {
     if (!i.editMode) return;
     const t = e.target.closest("[data-field]");
     if (!t) return;
@@ -925,11 +932,11 @@ function _n(K, qt = {}) {
       return;
     }
     if (e.target.closest('[data-role="add-rule"]')) {
-      N.push(pe({ field: "type", value: "", style: {} })), xe(), we(), x(), g("settings-change", Y());
+      T.push(pe({ field: "type", value: "", style: {} })), xe(), we(), x(), g("settings-change", Y());
       return;
     }
     const t = e.target.closest('[data-rk="remove"]');
-    t && (N.splice(+t.dataset.rule, 1), xe(), we(), x(), g("settings-change", Y()));
+    t && (T.splice(+t.dataset.rule, 1), xe(), we(), x(), g("settings-change", Y()));
   }), O(te, "input", (e) => {
     const t = e.target;
     if (t.dataset.set != null) {
@@ -940,7 +947,7 @@ function _n(K, qt = {}) {
       return;
     }
     if (t.dataset.rule != null) {
-      const n = +t.dataset.rule, o = t.dataset.rk, s = N[n];
+      const n = +t.dataset.rule, o = t.dataset.rk, s = T[n];
       if (!s) return;
       if (o === "enabled") s.enabled = t.checked;
       else if (o === "field") s.field = t.value;
@@ -985,13 +992,13 @@ function _n(K, qt = {}) {
     window.removeEventListener(e, t);
   }
   function Ln() {
-    const e = r.toolbar && typeof r.toolbar == "object" ? r.toolbar : {}, t = (a) => e[a] !== !1, n = T("div", "loc-toolbar");
+    const e = r.toolbar && typeof r.toolbar == "object" ? r.toolbar : {}, t = (a) => e[a] !== !1, n = G("div", "loc-toolbar");
     let o = "";
-    return t("subtree") && (o += s("Subtree", ["Balanced", "Center", "Left", "Right", "Alternate", "AlternateLeft", "AlternateRight", "Matrix"].map((a) => l("mode", a, a)).join(""))), t("orient") && (o += s("Orient", [["TopToBottom", "Top"], ["BottomToTop", "Bottom"], ["LeftToRight", "Left"], ["RightToLeft", "Right"]].map(([a, c]) => l("orient", a, c)).join(""))), t("actions") && (o += s("", '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout">Re-layout</button><button data-act="reset">Reset</button><button data-act="fullscreen" title="Toggle fullscreen">Fullscreen</button>')), t("search") && (o += s("Search", '<input type="search" data-role="search" class="loc-search-input" placeholder="Search…" />')), t("grid") && (o += s("Grid", '<button data-flag="showGrid">Show</button><button data-flag="snapGrid">Snap</button><button data-flag="alignGrid">Align</button>')), t("mode") && (o += s("Mode", '<button data-act="edit" title="Toggle edit mode">Edit</button><button data-act="settings" title="Settings &amp; theming">Settings</button>')), t("export") && (o += s("Export", '<button data-act="png">PNG</button><button data-act="svg">SVG</button><button data-act="pdf">PDF</button><button data-act="json">JSON</button>')), n.innerHTML = o, n.addEventListener("click", (a) => {
+    return t("subtree") && (o += s("Subtree", ["Balanced", "Center", "Left", "Right", "Alternate", "AlternateLeft", "AlternateRight", "RowWrap"].map((a) => l("mode", a, a)).join(""))), t("orient") && (o += s("Orient", [["TopToBottom", "Top"], ["BottomToTop", "Bottom"], ["LeftToRight", "Left"], ["RightToLeft", "Right"]].map(([a, c]) => l("orient", a, c)).join(""))), t("actions") && (o += s("", '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout">Re-layout</button><button data-act="reset">Reset</button><button data-act="fullscreen" title="Toggle fullscreen">Fullscreen</button>')), t("search") && (o += s("Search", '<input type="search" data-role="search" class="loc-search-input" placeholder="Search…" />')), t("grid") && (o += s("Grid", '<button data-flag="showGrid">Show</button><button data-flag="snapGrid">Snap</button><button data-flag="alignGrid">Align</button>')), t("mode") && (o += s("Mode", '<button data-act="edit" title="Toggle edit mode">Edit</button><button data-act="settings" title="Settings &amp; theming">Settings</button>')), t("export") && (o += s("Export", '<button data-act="png">PNG</button><button data-act="svg">SVG</button><button data-act="pdf">PDF</button><button data-act="json">JSON</button>')), n.innerHTML = o, n.addEventListener("click", (a) => {
       const c = a.target.closest("button");
       if (c)
         if (c.dataset.mode) Ct(c.dataset.mode);
-        else if (c.dataset.orient) At(c.dataset.orient);
+        else if (c.dataset.orient) Nt(c.dataset.orient);
         else if (c.dataset.flag)
           i[c.dataset.flag] = !i[c.dataset.flag], c.dataset.flag === "showGrid" ? ye() : c.dataset.flag === "alignGrid" && (p = /* @__PURE__ */ Object.create(null), M()), D(), x();
         else switch (c.dataset.act) {
@@ -1020,13 +1027,13 @@ function _n(K, qt = {}) {
             Be();
             break;
           case "png":
-            Gt(3);
+            At(3);
             break;
           case "svg":
             Ot();
             break;
           case "pdf":
-            Tt();
+            Gt();
             break;
           case "json":
             Lt(!0);
@@ -1053,14 +1060,14 @@ function _n(K, qt = {}) {
       Ft = !0, he.forEach(({ target: e, type: t, fn: n, optsL: o }) => e.removeEventListener(t, n, o)), he.length = 0, le && cancelAnimationFrame(le), C.remove();
       for (const e in d) delete d[e];
       for (const e in b) delete b[e];
-      for (const e in A) delete A[e];
+      for (const e in N) delete N[e];
     }
   }
   const Ve = {
     root: C,
-    setNodes: Nt,
+    setNodes: Tt,
     loadJSON: Sn,
-    setOrientation: At,
+    setOrientation: Nt,
     setSubtreeMode: Ct,
     setSpacing: wn,
     setOption: Me,
@@ -1074,13 +1081,13 @@ function _n(K, qt = {}) {
     expandAll: nt,
     collapseAll: ot,
     toggleCollapse: it,
-    centerOnNode: Te,
+    centerOnNode: Ge,
     search: st,
     clearSearch: lt,
     exportJSON: Lt,
     exportSVG: Ot,
-    exportPNG: Gt,
-    exportPDF: Tt,
+    exportPNG: At,
+    exportPDF: Gt,
     buildSVG: ue,
     setEditMode: yt,
     isEditMode: () => i.editMode,
@@ -1103,9 +1110,9 @@ function _n(K, qt = {}) {
     // slot bridging (used by the Vue wrapper's teleports)
     getNodeHost: (e) => d[e] || null,
     getNodeSlotEl: (e) => d[e] ? d[e].querySelector(".loc-node-slot") : null,
-    getInspectorBody: () => Ge,
+    getInspectorBody: () => Ae,
     getSettingsBody: () => te,
-    nodeThemeStyle: (e) => f[e] ? Ht(f[e], N) : null,
+    nodeThemeStyle: (e) => f[e] ? Ht(f[e], T) : null,
     getState: () => ({ ...i }),
     getNodes: () => h.map((e) => ({ ...e })),
     getPositioned: () => E,
@@ -1130,15 +1137,15 @@ export {
   no as buildTree,
   _t as calculateBounds,
   Pt as childCount,
-  Nn as computeDepths,
+  Tn as computeDepths,
   oo as convertMoTree,
   io as convertNestedTree,
   _n as createOrgChart,
   $n as edgeControlPoints,
   so as edgeEndpoints,
   se as effCenter,
-  Gn as exportLayout,
-  Tn as fitBounds,
+  An as exportLayout,
+  Gn as fitBounds,
   lo as getVisibleTree,
   Ee as indexNodes,
   kn as isHorizontal,
@@ -1155,7 +1162,7 @@ export {
   po as personNameFromPos,
   Ht as resolveNodeStyle,
   Ut as routeConnector,
-  An as searchNodes,
+  Nn as searchNodes,
   fo as visibleDepths,
   go as waypointPath
 };

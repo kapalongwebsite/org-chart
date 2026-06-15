@@ -45,6 +45,8 @@ export const OrgChart = defineComponent({
     settingsTarget: { type: [String, Object], default: null },  // mount the settings drawer outside the canvas
     fullscreenControl: { type: Boolean, default: true },         // floating fullscreen button on the canvas
     fitOnLayoutChange: { type: [Boolean, String], default: true }, // re-frame after relayout: true|'fit' · 'recenter' · false|'none'
+    targetAspect: { type: Number, default: 1.6 },                  // RowWrap fill shape (W/H); default ≈ landscape tarp
+    targetSize: { type: Object, default: null },                   // { width, height } — overrides targetAspect
     settings: { type: Object, default: null },
     fitOnInit: { type: Boolean, default: true },
     toolbar: { type: [Boolean, Object], default: true },   // false | true | { subtree, orient, actions, grid, mode, export }
@@ -89,6 +91,8 @@ export const OrgChart = defineComponent({
         settingsTarget: props.settingsTarget || null,
         fullscreenControl: props.fullscreenControl,
         fitOnLayoutChange: props.fitOnLayoutChange,
+        targetAspect: props.targetAspect,
+        targetSize: props.targetSize || null,
         settings: props.settings || undefined,
         fitOnInit: props.fitOnInit,
         // a #toolbar slot replaces the built-in toolbar
@@ -122,6 +126,8 @@ export const OrgChart = defineComponent({
     watch(() => props.enablePan, (v) => chart && chart.setOption('enablePan', v));
     watch(() => props.enableZoom, (v) => chart && chart.setOption('enableZoom', v));
     watch(() => props.fitOnLayoutChange, (v) => chart && chart.setOption('fitOnLayoutChange', v));
+    watch(() => props.targetAspect, (v) => { if (chart) { chart.setOption('targetAspect', v); chart.relayout(); } });
+    watch(() => props.targetSize, (v) => { if (chart) { chart.setOption('targetSize', v || null); chart.relayout(); } }, { deep: true });
 
     onBeforeUnmount(() => { if (chart) { chart.destroy(); chart = null; } });
 
