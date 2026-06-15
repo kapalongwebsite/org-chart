@@ -3,6 +3,14 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.5.0 — 2026-06-15
+
+### Added
+- **Alignment snapping (`snapAlign`, default on).** While dragging a node (or a connector
+  waypoint), it snaps to the **parent's connector axis** and to **sibling center lines**, and a
+  dashed **guide line** is shown while aligned — so edits stay tidy and connectors stay straight.
+  Disable with `snapAlign: false` (vanilla option / Vue `:snap-align`). Independent of `snapGrid`.
+
 ## v1.4.0 — 2026-06-15
 
 ### Added

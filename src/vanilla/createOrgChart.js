@@ -29,6 +29,7 @@ const DEFAULT_OPTS = {
   showGrid: false,
   snapGrid: false,
   alignGrid: false,
+  snapAlign: true,    // while dragging, snap to the parent's connector axis + sibling centers (with guide lines)
   enableDragging: true,
   enablePan: true,
   enableZoom: true,
@@ -109,6 +110,8 @@ export function createOrgChart(host, userOpts = {}) {
   const nodesLayer = el('div', 'loc-nodes');
   const overlay = document.createElementNS(SVGNS, 'svg'); overlay.setAttribute('class', 'loc-overlay');
   const edgeHandlesG = document.createElementNS(SVGNS, 'g'); edgeHandlesG.setAttribute('class', 'loc-edgehandles');
+  const alignG = document.createElementNS(SVGNS, 'g'); alignG.setAttribute('class', 'loc-aligns');
+  overlay.appendChild(alignG);
   overlay.appendChild(edgeHandlesG);
   const zoomReadout = el('div', 'loc-zoomreadout'); zoomReadout.textContent = '100%';
 
@@ -403,6 +406,12 @@ export function createOrgChart(host, userOpts = {}) {
       const g = state.gridSize, base = posById[drag.id];
       if (base) { dx = Math.round((base.cx + dx) / g) * g - base.cx; dy = Math.round((base.cy + dy) / g) * g - base.cy; }
     }
+    const sbase = posById[drag.id];
+    if (sbase) {
+      const snap = alignSnap(drag.id, sbase.cx + dx, sbase.cy + dy);
+      dx = snap.cx - sbase.cx; dy = snap.cy - sbase.cy;
+      drawAlignGuides(snap.gx, snap.gy);
+    }
     manualOffsets[drag.id] = { dx, dy };
     if (!dragRaf) dragRaf = requestAnimationFrame(() => {
       dragRaf = 0; redrawNode(drag.id); redrawIncident(drag.id);
@@ -416,9 +425,47 @@ export function createOrgChart(host, userOpts = {}) {
       sizeSvg();   // a dragged node may extend the content bounds → grow grid/canvas now, not only on refresh
     }
     drag = null;
+    clearAlignGuides();
     rmWin('pointermove', onNodePointerMove); rmWin('pointerup', onNodePointerUp);
     persist();
   }
+
+  // ---- alignment snapping: snap a dragged node/waypoint to the parent's connector
+  //      axis + sibling centers, and show guide lines while aligned ----
+  const ALIGN_PX = 8;
+  function alignSnap(id, cx, cy) {
+    if (!opts.snapAlign) return { cx, cy, gx: null, gy: null };
+    const node = nodeById[id]; if (!node) return { cx, cy, gx: null, gy: null };
+    const th = ALIGN_PX / state.zoom, xs = [], ys = [];
+    const parent = node.parentId && posById[node.parentId];
+    if (parent) xs.push(effCenter(parent, manualOffsets).x);          // the parent's connector axis
+    for (const q of positioned) {
+      if (q.node.id === id || !node.parentId || q.node.parentId !== node.parentId) continue;
+      const c = effCenter(q, manualOffsets); xs.push(c.x); ys.push(c.y); // siblings
+    }
+    let gx = null, bx = th; for (const x of xs) { const d = Math.abs(cx - x); if (d < bx) { bx = d; cx = x; gx = x; } }
+    let gy = null, by = th; for (const y of ys) { const d = Math.abs(cy - y); if (d < by) { by = d; cy = y; gy = y; } }
+    return { cx, cy, gx, gy };
+  }
+  function waypointAlignSnap(id, pt) {
+    if (!opts.snapAlign) return pt;
+    const child = posById[id]; if (!child) return pt;
+    const parent = posById[child.node.parentId];
+    const th = ALIGN_PX / state.zoom, xs = [effCenter(child, manualOffsets).x];
+    if (parent) xs.push(effCenter(parent, manualOffsets).x);
+    let gx = null, bx = th, x = pt.x;
+    for (const cx of xs) { const d = Math.abs(pt.x - cx); if (d < bx) { bx = d; x = cx; gx = cx; } }
+    drawAlignGuides(gx, null);
+    return { x, y: pt.y };
+  }
+  function drawAlignGuides(gx, gy) {
+    alignG.innerHTML = '';
+    const W = +overlay.getAttribute('width') || 0, H = +overlay.getAttribute('height') || 0;
+    const line = (x1, y1, x2, y2) => { const l = createNS('line'); l.setAttribute('x1', x1); l.setAttribute('y1', y1); l.setAttribute('x2', x2); l.setAttribute('y2', y2); l.setAttribute('class', 'loc-align-line'); alignG.appendChild(l); };
+    if (gx != null) line(gx, 0, gx, H);
+    if (gy != null) line(0, gy, W, gy);
+  }
+  function clearAlignGuides() { alignG.innerHTML = ''; }
   function redrawNode(id) {
     const p = posById[id], e = elById[id]; if (!p || !e) return;
     const c = effCenter(p, manualOffsets);
@@ -984,8 +1031,8 @@ export function createOrgChart(host, userOpts = {}) {
     wps.splice(+t.dataset.wp, 1); if (!wps.length) delete edgeWaypoints[id];
     updateEdgeGeom(id); renderEdgeHandles(); persist();
   });
-  function onHandleMove(e) { if (!edgeDrag) return; const wps = edgeWaypoints[edgeDrag.id]; if (!wps) return; wps[edgeDrag.idx] = snapPoint(clientToContent(e.clientX, e.clientY)); updateEdgeGeom(edgeDrag.id); renderEdgeHandles(); }
-  function onHandleUp() { edgeDrag = null; rmWin('pointermove', onHandleMove); rmWin('pointerup', onHandleUp); persist(); }
+  function onHandleMove(e) { if (!edgeDrag) return; const wps = edgeWaypoints[edgeDrag.id]; if (!wps) return; wps[edgeDrag.idx] = waypointAlignSnap(edgeDrag.id, snapPoint(clientToContent(e.clientX, e.clientY))); updateEdgeGeom(edgeDrag.id); renderEdgeHandles(); }
+  function onHandleUp() { edgeDrag = null; clearAlignGuides(); rmWin('pointermove', onHandleMove); rmWin('pointerup', onHandleUp); persist(); }
 
   // inspector panel
   addL(panel, 'click', (e) => {

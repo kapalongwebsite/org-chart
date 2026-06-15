@@ -96,6 +96,8 @@ export interface CreateOptions extends LayoutOptions {
   targetAspect?: number;
   /** RowWrap target size (any units) — overrides `targetAspect` with width/height. */
   targetSize?: { width: number; height: number } | null;
+  /** Snap a dragged node/waypoint to the parent's connector axis + sibling centers, with guide lines. Default true. */
+  snapAlign?: boolean;
   settings?: ChartSettings;
   fitOnInit?: boolean;
   toolbar?: boolean | Partial<Record<'subtree' | 'orient' | 'actions' | 'search' | 'grid' | 'mode' | 'export', boolean>>;

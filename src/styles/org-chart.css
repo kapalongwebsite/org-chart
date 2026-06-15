@@ -296,3 +296,7 @@
   color: var(--loc-text-gray); font-size: 12px;
 }
 .loc-set-reset:hover { background: #f1f5f9; color: var(--loc-text-dark); border-color: #cfd6e2; }
+
+/* ---------- Alignment guides (shown while dragging when snapped) ---------- */
+.loc-overlay .loc-aligns { pointer-events: none; }
+.loc-overlay .loc-align-line { stroke: var(--loc-accent); stroke-width: 1; stroke-dasharray: 5 4; opacity: .75; pointer-events: none; }
