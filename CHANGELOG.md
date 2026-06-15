@@ -3,6 +3,13 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.2.0 — 2026-06-15
+
+### Added
+- **`fitOnLayoutChange`** option — after a subtree-mode / orientation / re-layout change the
+  view no longer gets "lost" off-screen. `true`/`'fit'` (default) re-frames the whole chart,
+  `'recenter'` keeps your zoom and pans to it, `false`/`'none'` keeps the prior behavior.
+
 ## v1.1.0 — 2026-06-14
 
 ### Added

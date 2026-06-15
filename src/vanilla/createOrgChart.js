@@ -39,6 +39,7 @@ const DEFAULT_OPTS = {
   inspectorTarget: null, // mount the inspector drawer into an external element (selector or node) instead of the canvas
   nodeSlots: false,   // render empty positioned hosts (Vue teleports card content in)
   fullscreenControl: true, // show the floating fullscreen button on the canvas
+  fitOnLayoutChange: true, // re-frame after mode/orientation/re-layout: true|'fit' · 'recenter' · false|'none'
   fitOnInit: true,
   toolbar: true,      // true | false | { subtree, orient, actions, grid, mode, export }
   persist: false,
@@ -305,6 +306,24 @@ export function createOrgChart(host, userOpts = {}) {
     state.panX = canvas.clientWidth / 2 - c.x * state.zoom;
     state.panY = canvas.clientHeight / 2 - c.y * state.zoom;
     applyTransform();
+  }
+  /* after a structural relayout (mode / orientation / re-layout) the new tree can
+     sit elsewhere, leaving the old pan/zoom pointed at empty space. This re-frames
+     per `fitOnLayoutChange`: 'fit' (frame all), 'recenter' (keep zoom, pan to it), 'none'. */
+  function layoutChangeMode() {
+    const v = opts.fitOnLayoutChange;
+    if (v === true) return 'fit';
+    if (v === false) return 'none';
+    return (v === 'recenter' || v === 'none' || v === 'fit') ? v : 'fit';
+  }
+  function applyLayoutChangeView() {
+    const mode = layoutChangeMode();
+    if (mode === 'fit') { fitToScreen(); return; }
+    if (mode === 'recenter') {
+      const root = NODES.find((n) => !n.parentId);
+      const id = (state.selectedNodeId && posById[state.selectedNodeId]) ? state.selectedNodeId : (root && root.id);
+      if (id) centerOnNode(id);
+    }
   }
 
   // ================= expand / collapse =================
@@ -822,9 +841,9 @@ export function createOrgChart(host, userOpts = {}) {
   function loadJSON(data) { const { nodes, meta } = normalizeImported(data); setNodes(nodes, meta); return nodes.length; }
   function setOrientation(o) {
     const orientation = normalizeOrientation(o);
-    state.orientation = orientation; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); emit('orientation-change', { orientation });
+    state.orientation = orientation; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); applyLayoutChangeView(); emit('orientation-change', { orientation });
   }
-  function setSubtreeMode(m) { state.subtreeMode = m; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); emit('subtree-mode-change', { subtreeMode: m }); }
+  function setSubtreeMode(m) { state.subtreeMode = m; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); applyLayoutChangeView(); emit('subtree-mode-change', { subtreeMode: m }); }
   function setSpacing(x, y) {
     if (x != null) state.spacingX = x; if (y != null) state.spacingY = y;
     refresh(); emit('settings-change', getSettings());
@@ -843,7 +862,7 @@ export function createOrgChart(host, userOpts = {}) {
   function setSnapToGrid(on) { setOption('snapGrid', !!on); return state.snapGrid; }
   function setAlignToGrid(on) { setOption('alignGrid', !!on); return state.alignGrid; }
   function toggleGrid(force) { return setShowGrid(force == null ? !state.showGrid : force); }
-  function relayout() { manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); refresh(); }
+  function relayout() { manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); refresh(); applyLayoutChangeView(); }
   function resetView() {
     clearSearch();
     closeInspector();

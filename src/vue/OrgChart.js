@@ -42,6 +42,7 @@ export const OrgChart = defineComponent({
     inspector: { type: Boolean, default: true },
     inspectorTarget: { type: [String, Object], default: null }, // mount the drawer outside the canvas
     fullscreenControl: { type: Boolean, default: true },         // floating fullscreen button on the canvas
+    fitOnLayoutChange: { type: [Boolean, String], default: true }, // re-frame after relayout: true|'fit' · 'recenter' · false|'none'
     settings: { type: Object, default: null },
     fitOnInit: { type: Boolean, default: true },
     toolbar: { type: [Boolean, Object], default: true },   // false | true | { subtree, orient, actions, grid, mode, export }
@@ -83,6 +84,7 @@ export const OrgChart = defineComponent({
         inspector: props.inspector,
         inspectorTarget: props.inspectorTarget || null,
         fullscreenControl: props.fullscreenControl,
+        fitOnLayoutChange: props.fitOnLayoutChange,
         settings: props.settings || undefined,
         fitOnInit: props.fitOnInit,
         // a #toolbar slot replaces the built-in toolbar
@@ -112,6 +114,7 @@ export const OrgChart = defineComponent({
     watch(() => props.enableDragging, (v) => chart && chart.setOption('enableDragging', v));
     watch(() => props.enablePan, (v) => chart && chart.setOption('enablePan', v));
     watch(() => props.enableZoom, (v) => chart && chart.setOption('enableZoom', v));
+    watch(() => props.fitOnLayoutChange, (v) => chart && chart.setOption('fitOnLayoutChange', v));
 
     onBeforeUnmount(() => { if (chart) { chart.destroy(); chart = null; } });
 

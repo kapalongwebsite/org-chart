@@ -206,6 +206,7 @@ you render a chart.
 | `inspector` | `Boolean` | `true` | open the built-in drawer on node click; `false` = headless (emit `node-select` only) |
 | `inspectorTarget` | `String \| Element` | `null` | mount the drawer into an element outside the canvas |
 | `fullscreenControl` | `Boolean` | `true` | show the floating fullscreen button on the canvas |
+| `fitOnLayoutChange` | `Boolean \| String` | `true` | re-frame after a mode/orientation/re-layout change: `true`/`'fit'`, `'recenter'` (keep zoom), `false`/`'none'` |
 | `fitOnInit` | `Boolean` | `true` | frame the chart on mount |
 | `toolbar` | `Boolean` | `true` | show the built-in toolbar |
 | `persist` | `Boolean` | `false` | mirror state to `localStorage` |

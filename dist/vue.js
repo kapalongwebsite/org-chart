@@ -1,5 +1,5 @@
 import "./vanilla.js";
-import { defineComponent as O, ref as u, shallowRef as M, computed as x, onMounted as B, watch as l, onBeforeUnmount as C, h as r, Teleport as y, markRaw as b } from "vue";
+import { defineComponent as v, ref as u, shallowRef as M, computed as C, onMounted as B, watch as l, onBeforeUnmount as x, h as i, Teleport as p, markRaw as b } from "vue";
 import { createOrgChart as G } from "./local-org-chart.js";
 const m = [
   "node-click",
@@ -21,7 +21,7 @@ function T(n) {
   const d = {};
   return n && (n.bg && (d.background = n.bg), n.text && (d.color = n.text), n.border && (d.borderColor = n.border)), d;
 }
-const P = O({
+const P = v({
   name: "OrgChart",
   props: {
     nodes: { type: Array, default: () => [] },
@@ -39,6 +39,8 @@ const P = O({
     // mount the drawer outside the canvas
     fullscreenControl: { type: Boolean, default: !0 },
     // floating fullscreen button on the canvas
+    fitOnLayoutChange: { type: [Boolean, String], default: !0 },
+    // re-frame after relayout: true|'fit' · 'recenter' · false|'none'
     settings: { type: Object, default: null },
     fitOnInit: { type: Boolean, default: !0 },
     toolbar: { type: [Boolean, Object], default: !0 },
@@ -47,14 +49,14 @@ const P = O({
     storageKey: { type: String, default: "local-org-chart.state" }
   },
   emits: m,
-  setup(n, { emit: d, expose: N, slots: a }) {
-    const h = u(null);
+  setup(n, { emit: d, expose: O, slots: a }) {
+    const S = u(null);
     let e = null;
-    const g = u(!1), i = u({}), f = M([]), s = u(null), v = x(() => !(n.nodes && n.nodes.length));
-    function p() {
-      e && (i.value = e.getState());
+    const g = u(!1), r = u({}), f = M([]), s = u(null), N = C(() => !(n.nodes && n.nodes.length));
+    function h() {
+      e && (r.value = e.getState());
     }
-    function S() {
+    function y() {
       if (!e || !a.node) {
         f.value = [];
         return;
@@ -65,7 +67,7 @@ const P = O({
       }).filter(Boolean);
     }
     return B(() => {
-      e = G(h.value, {
+      e = G(S.value, {
         nodes: n.nodes,
         orientation: n.orientation,
         subtreeMode: n.subtreeMode,
@@ -79,6 +81,7 @@ const P = O({
         inspector: n.inspector,
         inspectorTarget: n.inspectorTarget || null,
         fullscreenControl: n.fullscreenControl,
+        fitOnLayoutChange: n.fitOnLayoutChange,
         settings: n.settings || void 0,
         fitOnInit: n.fitOnInit,
         // a #toolbar slot replaces the built-in toolbar
@@ -87,18 +90,18 @@ const P = O({
         inspectorSlot: !!a.inspector,
         persist: n.persist,
         storageKey: n.storageKey
-      }), m.forEach((t) => e.on(t, (o) => d(t, o))), e.on("nodes-rendered", S), ["layout-change", "edit-mode-change", "settings-change", "node-select", "node-change"].forEach((t) => e.on(t, p)), e.on("inspector-open", (t) => {
+      }), m.forEach((t) => e.on(t, (o) => d(t, o))), e.on("nodes-rendered", y), ["layout-change", "edit-mode-change", "settings-change", "node-select", "node-change"].forEach((t) => e.on(t, h)), e.on("inspector-open", (t) => {
         s.value = t;
       }), e.on("inspector-close", () => {
         s.value = null;
-      }), p(), S(), g.value = !0;
+      }), h(), y(), g.value = !0;
     }), l(() => n.nodes, (t) => {
-      e && (e.setNodes(t || []), S(), p());
+      e && (e.setNodes(t || []), y(), h());
     }), l(() => n.orientation, (t) => e && e.setOrientation(t)), l(() => n.subtreeMode, (t) => e && e.setSubtreeMode(t)), l(() => [n.spacingX, n.spacingY], ([t, o]) => e && e.setSpacing(t, o)), l(() => n.readonly, (t) => e && e.setOption("readonly", t)), l(() => n.editMode, (t) => e && e.setEditMode(t)), l(() => n.settings, (t) => {
       e && t && e.setSettings(t);
-    }, { deep: !0 }), l(() => n.enableDragging, (t) => e && e.setOption("enableDragging", t)), l(() => n.enablePan, (t) => e && e.setOption("enablePan", t)), l(() => n.enableZoom, (t) => e && e.setOption("enableZoom", t)), C(() => {
+    }, { deep: !0 }), l(() => n.enableDragging, (t) => e && e.setOption("enableDragging", t)), l(() => n.enablePan, (t) => e && e.setOption("enablePan", t)), l(() => n.enableZoom, (t) => e && e.setOption("enableZoom", t)), l(() => n.fitOnLayoutChange, (t) => e && e.setOption("fitOnLayoutChange", t)), x(() => {
       e && (e.destroy(), e = null);
-    }), N({
+    }), O({
       // ---- view / layout ----
       fitToScreen: () => e && e.fitToScreen(),
       relayout: () => e && e.relayout(),
@@ -158,19 +161,19 @@ const P = O({
       instance: () => e
     }), () => {
       const t = [];
-      if (a.toolbar && t.push(r(
+      if (a.toolbar && t.push(i(
         "div",
         { class: "loc-vue-toolbar" },
-        g.value ? a.toolbar({ chart: e, state: i.value }) : []
-      )), t.push(r("div", { ref: h, class: "loc-vue-host" })), a.node)
+        g.value ? a.toolbar({ chart: e, state: r.value }) : []
+      )), t.push(i("div", { ref: S, class: "loc-vue-host" })), a.node)
         for (const o of f.value)
-          t.push(r(
-            y,
+          t.push(i(
+            p,
             { to: o.target, key: "n:" + o.id },
             a.node({
               node: o.node,
-              selected: i.value.selectedNodeId === o.id,
-              editMode: !!i.value.editMode,
+              selected: r.value.selectedNodeId === o.id,
+              editMode: !!r.value.editMode,
               themeStyle: o.themeStyle,
               update: (c) => e && e.updateNode(o.id, c),
               select: () => e && e.openInspector(o.id)
@@ -178,18 +181,18 @@ const P = O({
           ));
       if (a.inspector && g.value && s.value && e) {
         const o = e.getInspectorBody();
-        o && t.push(r(
-          y,
+        o && t.push(i(
+          p,
           { to: o, key: "inspector" },
           a.inspector({
             node: s.value.node,
-            editMode: !!i.value.editMode,
+            editMode: !!r.value.editMode,
             update: (c) => e.updateNode(s.value.id, c),
             close: () => e.closeInspector()
           })
         ));
       }
-      return a.empty && v.value && t.push(r("div", { class: "loc-vue-empty" }, a.empty())), r("div", { class: "loc-vue-wrap" }, t);
+      return a.empty && N.value && t.push(i("div", { class: "loc-vue-empty" }, a.empty())), i("div", { class: "loc-vue-wrap" }, t);
     };
   }
 }), w = {

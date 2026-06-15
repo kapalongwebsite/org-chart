@@ -87,6 +87,8 @@ export interface CreateOptions extends LayoutOptions {
   nodeSlots?: boolean;
   /** Show the floating fullscreen button on the canvas (default true). */
   fullscreenControl?: boolean;
+  /** Re-frame the view after a mode/orientation/re-layout change. `true`/`'fit'` (default), `'recenter'` (keep zoom), `false`/`'none'`. */
+  fitOnLayoutChange?: boolean | 'fit' | 'recenter' | 'none';
   settings?: ChartSettings;
   fitOnInit?: boolean;
   toolbar?: boolean | Partial<Record<'subtree' | 'orient' | 'actions' | 'search' | 'grid' | 'mode' | 'export', boolean>>;
