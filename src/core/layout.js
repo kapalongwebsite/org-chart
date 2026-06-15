@@ -174,7 +174,7 @@ function measureRowWrap(entry, cms, cfg) {
     for (const i of row) {
       const m = cms[i];
       childPlacements[i] = { entry: entry.children[i], cx: x, cy: ry + (rowH - m.h) / 2, m };
-      edgeRoutes[i] = { childId: entry.children[i].node.id, routeType: 'bus' };
+      edgeRoutes[i] = { childId: entry.children[i].node.id, routeType: 'grid' };
       x += m.w + spacingX;
     }
   }

@@ -3,6 +3,16 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.6.0 — 2026-06-15
+
+### Added
+- **RowWrap grid connectors** — connectors no longer cross under boxes in `RowWrap`. Each
+  column gets a vertical bus in a reserved left channel, hung off a single trunk below the
+  parent, with short stubs to each child. (TopToBottom; other orientations fall back to bus.)
+- **Settings drawer "Fill target" control** — Width/Height inputs + Portrait/Landscape buttons
+  to set the RowWrap fill shape live. Note: the fill target affects **RowWrap only** (the
+  other modes have fixed shapes and ignore it).
+
 ## v1.5.0 — 2026-06-15
 
 ### Added

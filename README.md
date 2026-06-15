@@ -208,6 +208,9 @@ you render a chart.
 | `settingsTarget` | `String \| Element` | `null` | mount the settings drawer into an element outside the canvas |
 | `fullscreenControl` | `Boolean` | `true` | show the floating fullscreen button on the canvas |
 | `fitOnLayoutChange` | `Boolean \| String` | `true` | re-frame after a mode/orientation/re-layout change: `true`/`'fit'`, `'recenter'` (keep zoom), `false`/`'none'` |
+| `targetAspect` | `Number` | `1.6` | RowWrap fill shape (width / height); default ≈ landscape tarp |
+| `targetSize` | `Object` | `null` | `{ width, height }` (any units) — RowWrap fills this; overrides `targetAspect` |
+| `snapAlign` | `Boolean` | `true` | while dragging, snap to the parent's connector axis + sibling centers (with guide lines) |
 | `fitOnInit` | `Boolean` | `true` | frame the chart on mount |
 | `toolbar` | `Boolean` | `true` | show the built-in toolbar |
 | `persist` | `Boolean` | `false` | mirror state to `localStorage` |
@@ -267,8 +270,20 @@ All methods are available on:
 | Method | Description |
 |--------|-------------|
 | `setOrientation(o)` | `TopToBottom`, `BottomToTop`, `LeftToRight`, `RightToLeft`; aliases `Top`, `Bottom`, `Left`, `Right` |
-| `setSubtreeMode(m)` | `'Balanced'` · `'Center'` · `'Left'` · `'Right'` · `'Alternate'` · `'AlternateLeft'` · `'AlternateRight'` · `'Matrix'` |
+| `setSubtreeMode(m)` | `'Balanced'` · `'Center'` · `'Left'` · `'Right'` · `'Alternate'` · `'AlternateLeft'` · `'AlternateRight'` · `'Matrix'` (API-only — see note) |
 | `setSpacing(x?, y?)` | Adjust horizontal / vertical gap between nodes |
+
+> **Note on `Matrix`:** it's accepted by the API but **not shown in the toolbar / inspector**,
+> because with uniform-height cards it lays out identically to `Balanced`. It only differs when
+> nodes at the same level have different heights (it locks each depth to one uniform row).
+
+> **`RowWrap` (experimental):** packs children into wrapping rows and **auto-spreads to fill a
+> target shape** (good for printing to a fixed size / tarp). Set the shape with
+> `targetSize: { width, height }` or `targetAspect` (default `1.6`) — or use the **Settings →
+> Fill target** control (Width/Height + Portrait/Landscape). Connectors route in per-column
+> channels so they don't cross boxes (TopToBottom). **The fill target affects RowWrap only** —
+> other modes have fixed shapes and ignore it. Aspect fitting is coarse (fills *toward* the
+> target); deep single-child chains stay vertical.
 
 ### Grid
 
@@ -484,11 +499,59 @@ Later matching rules win. In Vue, pass `:settings="{ themeRules: [...] }"` (watc
 ## 14. Controlling the toolbar & Vue slots
 
 **Show/hide toolbar groups** — `toolbar` accepts `true` (all), `false` (none), or an object to
-pick groups: `subtree`, `orient`, `actions`, `grid`, `mode`, `export`.
+pick groups: `subtree`, `orient`, `actions`, `search`, `grid`, `mode`, `export`. This toggles
+whole **groups** (not individual buttons) and keeps the built-in styling.
 ```html
 <!-- hide the Grid and Export groups, keep the rest -->
 <OrgChart :nodes="nodes" :toolbar="{ grid: false, export: false }" />
 ```
+
+**Fully custom toolbar — the `#toolbar` slot.** For total control of *which* buttons appear,
+their **CSS**, labels, order, and **how they handle data**, render your own bar with the
+`#toolbar` slot. Providing the slot **auto-hides** the built-in toolbar. The slot receives
+`{ chart, state }` — `chart` is the full API, `state` is a live snapshot for active states.
+```vue
+<template>
+  <OrgChart :nodes="nodes">
+    <template #toolbar="{ chart, state }">
+      <div class="my-bar">
+        <!-- include ONLY the buttons you want, styled however you like -->
+        <button class="my-btn" @click="chart.fitToScreen()">Fit</button>
+        <button class="my-btn" @click="chart.resetView()">Reset</button>
+        <button class="my-btn" :class="{ on: state.editMode }"
+                @click="chart.setEditMode(!state.editMode)">
+          {{ state.editMode ? 'Done' : 'Edit' }}
+        </button>
+        <select class="my-select" :value="state.subtreeMode"
+                @change="chart.setSubtreeMode($event.target.value)">
+          <option>Balanced</option><option>Alternate</option><option>Matrix</option>
+        </select>
+        <input class="my-search" placeholder="Search…"
+               @input="chart.search($event.target.value)" />
+        <button class="my-btn" @click="chart.exportSVG()">SVG</button>
+      </div>
+    </template>
+  </OrgChart>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+import { OrgChart } from 'local-org-chart/vue'
+import 'local-org-chart/style.css'
+const nodes = ref([/* … */])
+</script>
+
+<style scoped>
+.my-bar { display: flex; gap: 6px; padding: 8px; }
+.my-btn { padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; cursor: pointer; }
+.my-btn.on { background: #2563eb; color: #fff; border-color: #1d4ed8; }
+.my-search, .my-select { padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+</style>
+```
+Common `chart` methods for buttons: `fitToScreen()`, `resetView()`, `relayout()`, `expandAll()`,
+`collapseAll()`, `setOrientation(o)`, `setSubtreeMode(m)`, `setEditMode(on)`, `toggleFullscreen()`,
+`search(q)`, `toggleSettings()`, `exportSVG()/exportPNG()/exportPDF()/exportJSON()`. Read
+`state.subtreeMode` / `state.orientation` / `state.editMode` / `state.zoom` for active styling.
 
 **Vue slots** (teleported into the engine — the auto-layout still owns positioning):
 

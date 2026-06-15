@@ -25,7 +25,9 @@ export function routeConnector(parent, child, cfg, manualOffsets, edgeWaypoints,
   const cTop = C.y - chh / 2, cBot = C.y + chh / 2, cLeft = C.x - cw / 2, cRight = C.x + cw / 2;
 
   const pts = [];
-  if (child.routeType === 'bus') {
+  // 'grid' (RowWrap) gets a dedicated channel route in the renderer; here it just
+  // falls back to a plain bus (used for non-TopToBottom orientations).
+  if (child.routeType === 'bus' || child.routeType === 'grid') {
     if (!horizontal) {
       const pEdge = (C.y >= P.y) ? pBot : pTop;
       const cEdge = (C.y >= P.y) ? cTop : cBot;

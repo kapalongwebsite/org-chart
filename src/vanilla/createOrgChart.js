@@ -260,13 +260,41 @@ export function createOrgChart(host, userOpts = {}) {
 
   // ================= connectors =================
   function createNS(tag) { return document.createElementNS(SVGNS, tag); }
+  // RowWrap grid connector: a trunk just below the parent + one vertical bus per
+  // column (in a reserved left channel) + a short stub to each child's left edge —
+  // so no line crosses a box. TopToBottom only; other orientations fall back to bus.
+  const GRID_STUB = 16;
+  function gridConnectorPath(child) {
+    const parent = posById[child.node.parentId]; if (!parent) return null;
+    const sibs = positioned.filter((p) => p.node.parentId === child.node.parentId && p.routeType === 'grid');
+    if (!sibs.length) return null;
+    const ec = (p) => effCenter(p, manualOffsets);
+    const P = ec(parent), parentBottom = P.y + parent.node.height / 2;
+    let blockTop = Infinity;
+    for (const s of sibs) blockTop = Math.min(blockTop, ec(s).y - s.node.height / 2);
+    const trunkY = (parentBottom + blockTop) / 2;
+    const c = ec(child);
+    let colLeft = Infinity;
+    for (const s of sibs) { const sc = ec(s); if (Math.abs(sc.x - c.x) < 1) colLeft = Math.min(colLeft, sc.x - s.node.width / 2); }
+    const busX = colLeft - GRID_STUB, childLeft = c.x - child.node.width / 2;
+    const f = (v) => v.toFixed(1);
+    return `M ${f(P.x)} ${f(parentBottom)} L ${f(P.x)} ${f(trunkY)} L ${f(busX)} ${f(trunkY)} L ${f(busX)} ${f(c.y)} L ${f(childLeft)} ${f(c.y)}`;
+  }
+  function connectorD(p) {
+    const id = p.node.id;
+    const hasManual = (edgeWaypoints[id] && edgeWaypoints[id].length) || edgeAnchors[id];
+    if (!hasManual && p.routeType === 'grid' && state.orientation === 'TopToBottom') {
+      const g = gridConnectorPath(p); if (g) return g;
+    }
+    return routeConnector(posById[p.node.parentId], p, cfg(), manualOffsets, edgeWaypoints, edgeAnchors);
+  }
   function drawConnectors() {
     const seen = Object.create(null);
     for (const p of positioned) {
       const n = p.node; if (!n.parentId) continue;
       const parent = posById[n.parentId]; if (!parent) continue;
       seen[n.id] = true;
-      const d = routeConnector(parent, p, cfg(), manualOffsets, edgeWaypoints, edgeAnchors);
+      const d = connectorD(p);
       let path = pathById[n.id];
       if (!path) { path = createNS('path'); pathById[n.id] = path; svg.appendChild(path); }
       path.setAttribute('d', d); path.classList.toggle('loc-sel', state.selectedEdgeId === n.id);
@@ -281,7 +309,7 @@ export function createOrgChart(host, userOpts = {}) {
   function updateEdgeGeom(id) {
     const child = posById[id]; if (!child) return;
     const parent = posById[child.node.parentId]; if (!parent) return;
-    const d = routeConnector(parent, child, cfg(), manualOffsets, edgeWaypoints, edgeAnchors);
+    const d = connectorD(child);
     if (pathById[id]) pathById[id].setAttribute('d', d);
     if (hitById[id]) hitById[id].setAttribute('d', d);
   }
@@ -775,6 +803,12 @@ export function createOrgChart(host, userOpts = {}) {
     if (open) renderSettings();
     if (open !== wasOpen) emit(open ? 'settings-open' : 'settings-close', {});
   }
+  /* set the RowWrap fill target (the settings drawer's Portrait/Landscape buttons) */
+  function setTargetSize(width, height) {
+    setOption('targetSize', { width, height });
+    if (settingsPanel.classList.contains('loc-open')) renderSettings();
+    refresh(); fitToScreen(); persist();
+  }
   /* restore spacing / grid / theme rules to the as-configured defaults */
   function resetSettings() {
     setSettings({
@@ -810,6 +844,14 @@ export function createOrgChart(host, userOpts = {}) {
       + setRange('spacingX', 'Spacing X', state.spacingX, 0, 200)
       + setRange('spacingY', 'Spacing Y', state.spacingY, 0, 260)
       + setRange('gridSize', 'Grid size', state.gridSize, 6, 80)
+      + '</div>';
+    const tgt = (opts.targetSize && opts.targetSize.width > 0 && opts.targetSize.height > 0)
+      ? opts.targetSize : { width: Math.round((opts.targetAspect || 1.6) * 100), height: 100 };
+    h += '<div class="loc-set-section"><div class="loc-set-title">Fill target — RowWrap</div>'
+      + '<div class="loc-set-hint">Only affects the <b>RowWrap</b> mode — it spreads to fill this width : height (e.g. a tarp). Other modes ignore it.</div>'
+      + `<label class="loc-field"><span>Width</span><input type="number" min="1" data-tgt="width" value="${tgt.width}"/></label>`
+      + `<label class="loc-field"><span>Height</span><input type="number" min="1" data-tgt="height" value="${tgt.height}"/></label>`
+      + '<div class="loc-set-orient"><button data-role="tgt-portrait">Portrait</button><button data-role="tgt-landscape">Landscape</button></div>'
       + '</div>';
     h += '<div class="loc-set-section"><div class="loc-set-title">Theme rules</div>'
       + '<div class="loc-set-hint">Recolor nodes that match a field = value. Later rules win.</div>';
@@ -1057,6 +1099,8 @@ export function createOrgChart(host, userOpts = {}) {
   addL(settingsPanel, 'click', (e) => {
     if (e.target.closest('[data-role="settings-close"]')) { toggleSettings(false); return; }
     if (e.target.closest('[data-role="reset-settings"]')) { resetSettings(); return; }
+    if (e.target.closest('[data-role="tgt-portrait"]')) { setTargetSize(3, 4); return; }
+    if (e.target.closest('[data-role="tgt-landscape"]')) { setTargetSize(4, 3); return; }
     if (e.target.closest('[data-role="add-rule"]')) {
       themeRules.push(normalizeRule({ field: 'type', value: '', style: {} }));
       renderSettings(); applyThemeAll(); persist(); emit('settings-change', getSettings()); return;
@@ -1070,6 +1114,12 @@ export function createOrgChart(host, userOpts = {}) {
       const v = parseFloat(t.value); state[t.dataset.set] = v;
       const lab = settingsBody.querySelector(`[data-rangelabel="${t.dataset.set}"]`); if (lab) lab.textContent = v;
       refresh(); emit('settings-change', getSettings()); persist(); return;
+    }
+    if (t.dataset.tgt != null) {
+      const w = +(settingsBody.querySelector('[data-tgt="width"]') || {}).value || 0;
+      const hh = +(settingsBody.querySelector('[data-tgt="height"]') || {}).value || 0;
+      if (w > 0 && hh > 0) { setOption('targetSize', { width: w, height: hh }); refresh(); fitToScreen(); persist(); }
+      return;
     }
     if (t.dataset.rule != null) {
       const i = +t.dataset.rule, rk = t.dataset.rk, r = themeRules[i]; if (!r) return;

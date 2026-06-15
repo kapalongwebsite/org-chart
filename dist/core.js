@@ -1,4 +1,4 @@
-const P = "__virtual_root__", bt = 26, $t = 80, Mt = [
+const P = "__virtual_root__", bt = 26, $t = 80, Tt = [
   "Balanced",
   "Center",
   "Left",
@@ -7,7 +7,7 @@ const P = "__virtual_root__", bt = 26, $t = 80, Mt = [
   "AlternateLeft",
   "AlternateRight",
   "Matrix"
-], Tt = ["TopToBottom", "BottomToTop", "LeftToRight", "RightToLeft"], At = {
+], Mt = ["TopToBottom", "BottomToTop", "LeftToRight", "RightToLeft"], At = {
   orientation: "TopToBottom",
   subtreeMode: "Balanced",
   spacingX: 40,
@@ -234,17 +234,17 @@ function tt(t, e, n, i) {
   const g = d + s / 2, m = Math.max(0, -(d - s / 2));
   for (let p = 0; p < r.length; p++) r[p] += m;
   d += m;
-  const b = Math.max(u + m, g + m), A = l + (o.isVirtual ? 0 : i.spacingY), T = Math.max(...e.map((p) => p.h)), M = [], S = [];
+  const b = Math.max(u + m, g + m), A = l + (o.isVirtual ? 0 : i.spacingY), M = Math.max(...e.map((p) => p.h)), T = [], S = [];
   for (let p = 0; p < e.length; p++)
-    M.push({ entry: t.children[p], cx: r[p], cy: A, m: e[p] }), S.push({ childId: t.children[p].node.id, routeType: "bus" });
+    T.push({ entry: t.children[p], cx: r[p], cy: A, m: e[p] }), S.push({ childId: t.children[p].node.id, routeType: "bus" });
   return {
     w: b,
-    h: A + T,
+    h: A + M,
     anchorLeft: d,
     anchorRight: b - d,
     nodeCenterX: d,
     nodeCenterY: l / 2,
-    childPlacements: M,
+    childPlacements: T,
     edgeRoutes: S
   };
 }
@@ -258,18 +258,18 @@ function et(t, e, n, i) {
     let N;
     r ? N = Math.abs(d - g) < 0.01 ? c : d < g : N = c ? y % 2 === 0 : y % 2 === 1, N ? (m.push({ i: y, side: -1, y: d, m: x }), d += x.h + a) : (m.push({ i: y, side: 1, y: g, m: x }), g += x.h + a);
   }
-  const b = (y) => m.filter((x) => x.side === y).reduce((x, N) => Math.max(x, N.m.w), 0), A = b(-1), T = b(1), M = Math.max(A + 26, s / 2), S = [], p = [];
+  const b = (y) => m.filter((x) => x.side === y).reduce((x, N) => Math.max(x, N.m.w), 0), A = b(-1), M = b(1), T = Math.max(A + 26, s / 2), S = [], p = [];
   for (const y of m) {
-    const x = y.side < 0 ? M - 26 - y.m.w : M + 26;
+    const x = y.side < 0 ? T - 26 - y.m.w : T + 26;
     S[y.i] = { entry: t.children[y.i], cx: x, cy: y.y, m: y.m }, p[y.i] = { childId: t.children[y.i].node.id, routeType: y.side < 0 ? "spine-left" : "spine-right" };
   }
-  const I = Math.max(d, g) - a, $ = Math.max(M + 26 + T, M + s / 2), w = Math.max(I, u);
+  const I = Math.max(d, g) - a, $ = Math.max(T + 26 + M, T + s / 2), w = Math.max(I, u);
   return {
     w: $,
     h: w,
-    anchorLeft: M,
-    anchorRight: $ - M,
-    nodeCenterX: M,
+    anchorLeft: T,
+    anchorRight: $ - T,
+    nodeCenterX: T,
     nodeCenterY: l / 2,
     childPlacements: S,
     edgeRoutes: p
@@ -293,17 +293,17 @@ function nt(t, e, n) {
     let y = (d - I) / 2;
     for (const x of w) {
       const N = e[x];
-      b[x] = { entry: t.children[x], cx: y, cy: p + ($ - N.h) / 2, m: N }, A[x] = { childId: t.children[x].node.id, routeType: "bus" }, y += N.w + c;
+      b[x] = { entry: t.children[x], cx: y, cy: p + ($ - N.h) / 2, m: N }, A[x] = { childId: t.children[x].node.id, routeType: "grid" }, y += N.w + c;
     }
   }
-  const T = Math.max(d, o), M = (T - d) / 2;
-  if (M > 0.01) for (let p = 0; p < l; p++) b[p].cx += M;
-  const S = T / 2;
+  const M = Math.max(d, o), T = (M - d) / 2;
+  if (T > 0.01) for (let p = 0; p < l; p++) b[p].cx += T;
+  const S = M / 2;
   return {
-    w: T,
+    w: M,
     h: m,
     anchorLeft: S,
-    anchorRight: T - S,
+    anchorRight: M - S,
     nodeCenterX: S,
     nodeCenterY: s / 2,
     childPlacements: b,
@@ -374,8 +374,8 @@ function Rt(t, e = {}) {
     const h = [0.4, 0.55, 0.7, 0.85, 1, 1.2, 1.5, 1.8, 2.2, 2.7, 3.3, 4];
     let d = 1, g = 1 / 0;
     for (const m of h) {
-      const b = D(s, { ...n, _rowDensity: m }), A = b.h > 0 ? b.w / b.h : 1, T = Math.abs(Math.log(A) - Math.log(n.targetAspect));
-      T < g && (g = T, d = m);
+      const b = D(s, { ...n, _rowDensity: m }), A = b.h > 0 ? b.w / b.h : 1, M = Math.abs(Math.log(A) - Math.log(n.targetAspect));
+      M < g && (g = M, d = m);
     }
     n._rowDensity = d;
   }
@@ -414,17 +414,17 @@ function C(t, e) {
 function _t(t, e, n, i, o, s) {
   const l = o && o[e.node.id], c = s && s[e.node.id];
   if (l && l.length || c) return ht(t, e, l || [], n, i, c);
-  const r = C(t, i), a = C(e, i), u = t.node.width, f = t.node.height, h = e.node.width, d = e.node.height, g = _(n), m = r.y - f / 2, b = r.y + f / 2, A = r.x - u / 2, T = r.x + u / 2, M = a.y - d / 2, S = a.y + d / 2, p = a.x - h / 2, I = a.x + h / 2, $ = [];
-  if (e.routeType === "bus")
+  const r = C(t, i), a = C(e, i), u = t.node.width, f = t.node.height, h = e.node.width, d = e.node.height, g = _(n), m = r.y - f / 2, b = r.y + f / 2, A = r.x - u / 2, M = r.x + u / 2, T = a.y - d / 2, S = a.y + d / 2, p = a.x - h / 2, I = a.x + h / 2, $ = [];
+  if (e.routeType === "bus" || e.routeType === "grid")
     if (g) {
-      const w = a.x >= r.x ? T : A, y = a.x >= r.x ? p : I, x = (w + y) / 2;
+      const w = a.x >= r.x ? M : A, y = a.x >= r.x ? p : I, x = (w + y) / 2;
       $.push([w, r.y], [x, r.y], [x, a.y], [y, a.y]);
     } else {
-      const w = a.y >= r.y ? b : m, y = a.y >= r.y ? M : S, x = (w + y) / 2;
+      const w = a.y >= r.y ? b : m, y = a.y >= r.y ? T : S, x = (w + y) / 2;
       $.push([r.x, w], [r.x, x], [a.x, x], [a.x, y]);
     }
   else if (g) {
-    const w = a.x >= r.x ? T : A, y = a.y <= r.y ? S : M;
+    const w = a.x >= r.x ? M : A, y = a.y <= r.y ? S : T;
     $.push([w, r.y], [a.x, r.y], [a.x, y]);
   } else {
     const w = a.y >= r.y ? b : m, y = a.x <= r.x ? I : p;
@@ -545,12 +545,12 @@ function gt(t, e, n, i, o, s) {
   f += `<path d="${pt(e, n, l, r, 8)}" fill="#e8edf4"/>`, f += `<line x1="${e}" y1="${n + r}" x2="${e + l}" y2="${n + r}" stroke="#d0d5dd"/>`;
   const h = t.data && t.data.photo_url;
   h && !o ? f += `<image x="${e}" y="${n}" width="${l}" height="${r}" href="${X(h)}" preserveAspectRatio="xMidYMid slice"/>` : f += `<text x="${a.toFixed(1)}" y="${(n + r / 2 + 10).toFixed(1)}" font-family='${R}' font-size="30" fill="#9ca3af" text-anchor="middle">●</text>`;
-  const d = n + r, g = c - r, m = 12.5 * i, b = 11 * i, A = m * 1.15, T = b * 1.15, M = V((t.personName || "—").toUpperCase(), `700 ${m}px ${R}`, u, s), S = V(t.label || "", `${b}px ${R}`, u, s), p = t.status ? 15 : 0, I = t.status ? 5 : 0, $ = M.length * A + S.length * T + I + p;
+  const d = n + r, g = c - r, m = 12.5 * i, b = 11 * i, A = m * 1.15, M = b * 1.15, T = V((t.personName || "—").toUpperCase(), `700 ${m}px ${R}`, u, s), S = V(t.label || "", `${b}px ${R}`, u, s), p = t.status ? 15 : 0, I = t.status ? 5 : 0, $ = T.length * A + S.length * M + I + p;
   let w = d + g / 2 - $ / 2 + m * 0.8, y = "";
-  for (const x of M)
+  for (const x of T)
     y += v(a, w, m, 700, "#1a1a2e", x), w += A;
   for (const x of S)
-    y += v(a, w, b, 400, "#4a5568", x), w += T;
+    y += v(a, w, b, 400, "#4a5568", x), w += M;
   if (t.status) {
     const N = ut[t.status] || { bg: "#eee", fg: "#333" }, O = s(t.status, `700 ${9.5}px ${R}`) + 16, H = a - O / 2, k = w - m * 0.8 + I;
     y += `<rect x="${H.toFixed(1)}" y="${k.toFixed(1)}" width="${O.toFixed(1)}" height="${p}" rx="7.5" fill="${N.bg}"/>`, y += `<text x="${a.toFixed(1)}" y="${(k + 11).toFixed(1)}" font-family='${R}' font-size="${9.5}" font-weight="700" fill="${N.fg}" text-anchor="middle" letter-spacing="0.4">${X(t.status)}</text>`;
@@ -617,10 +617,10 @@ export {
   At as DEFAULTS,
   xt as DEFAULT_SETTINGS,
   L as DEPT_SIZE,
-  Tt as ORIENTATIONS,
+  Mt as ORIENTATIONS,
   E as POS_SIZE,
   bt as SNAKE_STUB,
-  Mt as SUBTREE_MODES,
+  Tt as SUBTREE_MODES,
   P as VIRTUAL_ROOT_ID,
   rt as applyOrientation,
   Lt as buildChartSVG,
