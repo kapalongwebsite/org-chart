@@ -739,7 +739,7 @@ function _n(K, qt = {}) {
   }
   function Nt(e, t, n) {
     const o = !(n && n.resetEdits);
-    h = (e || []).map(Le), f = Ee(h), p = /* @__PURE__ */ Object.create(null), v = /* @__PURE__ */ Object.create(null), I = /* @__PURE__ */ Object.create(null), o || (L = /* @__PURE__ */ Object.create(null)), i.selectedNodeId = null, i.selectedEdgeId = null, k = /* @__PURE__ */ new Set(), J();
+    h = (e || []).map(Le), f = Ee(h), o || (p = /* @__PURE__ */ Object.create(null), v = /* @__PURE__ */ Object.create(null), I = /* @__PURE__ */ Object.create(null), L = /* @__PURE__ */ Object.create(null)), i.selectedNodeId = null, i.selectedEdgeId = null, k = /* @__PURE__ */ new Set(), J();
     for (const s in d)
       d[s].remove(), delete d[s];
     for (const s in b)

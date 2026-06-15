@@ -3,6 +3,16 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.3.1
+
+### Fixed
+- **`setNodes()` no longer wipes manual positions on a data refresh.** Manually-dragged node
+  offsets, connector waypoints, and endpoint anchors now survive a `setNodes()` call by default
+  (same as node field edits) — so a reactive `nodes`-prop change in the Vue wrapper, or any
+  `setNodes()` without `meta`, keeps the user's layout instead of resetting it (which also
+  previously overwrote the saved `localStorage` positions). Pass `{ resetEdits: true }` to clear
+  them explicitly; `meta` (e.g. from `loadJSON` / a saved layout) still overrides as before.
+
 ## v1.3.0 — 2026-06-15
 
 ### Added

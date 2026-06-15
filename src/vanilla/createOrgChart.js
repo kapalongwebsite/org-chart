@@ -851,8 +851,14 @@ export function createOrgChart(host, userOpts = {}) {
   function setNodes(nodes, meta, opts2) {
     const keepEdits = !(opts2 && opts2.resetEdits);
     NODES = (nodes || []).map(makeNode); nodeById = indexNodes(NODES);
-    manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null);
-    if (!keepEdits) nodeOverrides = Object.create(null);
+    // Positional edits (offsets / waypoints / anchors) now survive a data refresh
+    // by default — same as node field edits — so a reactive `nodes` change no
+    // longer wipes manually-dragged positions. Only resetEdits clears them, and
+    // `meta` (e.g. from loadJSON / a saved layout) still overrides per-field below.
+    if (!keepEdits) {
+      manualOffsets = Object.create(null); edgeWaypoints = Object.create(null);
+      edgeAnchors = Object.create(null); nodeOverrides = Object.create(null);
+    }
     state.selectedNodeId = null; state.selectedEdgeId = null; searchMatches = new Set();
     closeInspector();
     for (const id in elById) { elById[id].remove(); delete elById[id]; }
