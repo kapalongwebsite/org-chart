@@ -42,7 +42,7 @@ const DEFAULT_OPTS = {
   settingsSlot: false,   // leave the settings body empty for an external (Vue) slot
   nodeSlots: false,   // render empty positioned hosts (Vue teleports card content in)
   fullscreenControl: true, // show the floating fullscreen button on the canvas
-  // RowWrap fills this target shape. `targetSize` (a tarp's W×H, any units) wins; else targetAspect.
+  // Custom fills this target shape. `targetSize` (a tarp's W×H, any units) wins; else targetAspect.
   targetAspect: 1.6,       // default ≈ landscape tarp (W/H)
   targetSize: null,        // e.g. { width: 8, height: 4 } → aspect 2.0
   fitOnLayoutChange: true, // re-frame after mode/orientation/re-layout: true|'fit' · 'recenter' · false|'none'
@@ -207,6 +207,7 @@ export function createOrgChart(host, userOpts = {}) {
         applyTheme(elNode, n);
       }
       elNode.classList.toggle('loc-selected', state.selectedNodeId === n.id);
+      elNode.classList.toggle('loc-banner', !!p.banner);
       updateToggle(elNode, n);
     }
     for (const id in elById) if (!seen[id]) { elById[id].remove(); delete elById[id]; }
@@ -260,7 +261,7 @@ export function createOrgChart(host, userOpts = {}) {
 
   // ================= connectors =================
   function createNS(tag) { return document.createElementNS(SVGNS, tag); }
-  // RowWrap grid connector: a trunk just below the parent + one vertical bus per
+  // Custom grid connector: a trunk just below the parent + one vertical bus per
   // column (in a reserved left channel) + a short stub to each child's left edge —
   // so no line crosses a box. TopToBottom only; other orientations fall back to bus.
   const GRID_STUB = 16;
@@ -658,7 +659,7 @@ export function createOrgChart(host, userOpts = {}) {
   // 'Matrix' is intentionally omitted from the picker UIs — for uniform-height
   // cards it lays out identically to Balanced. It's still accepted by the API
   // (setSubtreeMode('Matrix') / a node's layoutMode) for mixed-height data.
-  const SUBMODES = ['', 'Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'RowWrap'];
+  const SUBMODES = ['', 'Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'Custom'];
   function escAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
   function applyEditModeUI() { root.classList.toggle('loc-edit', state.editMode); }
   function setEditMode(on) {
@@ -803,7 +804,7 @@ export function createOrgChart(host, userOpts = {}) {
     if (open) renderSettings();
     if (open !== wasOpen) emit(open ? 'settings-open' : 'settings-close', {});
   }
-  /* set the RowWrap fill target (the settings drawer's Portrait/Landscape buttons) */
+  /* set the Custom fill target (the settings drawer's Portrait/Landscape buttons) */
   function setTargetSize(width, height) {
     setOption('targetSize', { width, height });
     if (settingsPanel.classList.contains('loc-open')) renderSettings();
@@ -847,8 +848,8 @@ export function createOrgChart(host, userOpts = {}) {
       + '</div>';
     const tgt = (opts.targetSize && opts.targetSize.width > 0 && opts.targetSize.height > 0)
       ? opts.targetSize : { width: Math.round((opts.targetAspect || 1.6) * 100), height: 100 };
-    h += '<div class="loc-set-section"><div class="loc-set-title">Fill target — RowWrap</div>'
-      + '<div class="loc-set-hint">Only affects the <b>RowWrap</b> mode — it spreads to fill this width : height (e.g. a tarp). Other modes ignore it.</div>'
+    h += '<div class="loc-set-section"><div class="loc-set-title">Fill target — Custom</div>'
+      + '<div class="loc-set-hint">Only affects the <b>Custom</b> mode — it spreads to fill this width : height (e.g. a tarp). Other modes ignore it.</div>'
       + `<label class="loc-field"><span>Width</span><input type="number" min="1" data-tgt="width" value="${tgt.width}"/></label>`
       + `<label class="loc-field"><span>Height</span><input type="number" min="1" data-tgt="height" value="${tgt.height}"/></label>`
       + '<div class="loc-set-orient"><button data-role="tgt-portrait">Portrait</button><button data-role="tgt-landscape">Landscape</button></div>'
@@ -1181,7 +1182,7 @@ export function createOrgChart(host, userOpts = {}) {
     const show = (g) => tcfg[g] !== false;          // each group defaults visible
     const bar = el('div', 'loc-toolbar');
     let html = '';
-    if (show('subtree')) html += group('Subtree', ['Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'RowWrap'].map((m) => btn('mode', m, m)).join(''));
+    if (show('subtree')) html += group('Subtree', ['Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'Custom'].map((m) => btn('mode', m, m)).join(''));
     if (show('orient')) html += group('Orient', [['TopToBottom', 'Top'], ['BottomToTop', 'Bottom'], ['LeftToRight', 'Left'], ['RightToLeft', 'Right']].map(([o, l]) => btn('orient', o, l)).join(''));
     if (show('actions')) html += group('', '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout">Re-layout</button><button data-act="reset">Reset</button><button data-act="fullscreen" title="Toggle fullscreen">Fullscreen</button>');
     if (show('search')) html += group('Search', '<input type="search" data-role="search" class="loc-search-input" placeholder="Search…" />');

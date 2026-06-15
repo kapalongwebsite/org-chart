@@ -46,7 +46,7 @@ const P = M({
     fitOnLayoutChange: { type: [Boolean, String], default: !0 },
     // re-frame after relayout: true|'fit' · 'recenter' · false|'none'
     targetAspect: { type: Number, default: 1.6 },
-    // RowWrap fill shape (W/H); default ≈ landscape tarp
+    // Custom fill shape (W/H); default ≈ landscape tarp
     targetSize: { type: Object, default: null },
     // { width, height } — overrides targetAspect
     snapAlign: { type: Boolean, default: !0 },

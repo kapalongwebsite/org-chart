@@ -208,8 +208,8 @@ you render a chart.
 | `settingsTarget` | `String \| Element` | `null` | mount the settings drawer into an element outside the canvas |
 | `fullscreenControl` | `Boolean` | `true` | show the floating fullscreen button on the canvas |
 | `fitOnLayoutChange` | `Boolean \| String` | `true` | re-frame after a mode/orientation/re-layout change: `true`/`'fit'`, `'recenter'` (keep zoom), `false`/`'none'` |
-| `targetAspect` | `Number` | `1.6` | RowWrap fill shape (width / height); default ≈ landscape tarp |
-| `targetSize` | `Object` | `null` | `{ width, height }` (any units) — RowWrap fills this; overrides `targetAspect` |
+| `targetAspect` | `Number` | `1.6` | Custom fill shape (width / height); default ≈ landscape tarp |
+| `targetSize` | `Object` | `null` | `{ width, height }` (any units) — Custom fills this; overrides `targetAspect` |
 | `snapAlign` | `Boolean` | `true` | while dragging, snap to the parent's connector axis + sibling centers (with guide lines) |
 | `fitOnInit` | `Boolean` | `true` | frame the chart on mount |
 | `toolbar` | `Boolean` | `true` | show the built-in toolbar |
@@ -277,11 +277,11 @@ All methods are available on:
 > because with uniform-height cards it lays out identically to `Balanced`. It only differs when
 > nodes at the same level have different heights (it locks each depth to one uniform row).
 
-> **`RowWrap` (experimental):** packs children into wrapping rows and **auto-spreads to fill a
+> **`Custom` (experimental):** packs children into wrapping rows and **auto-spreads to fill a
 > target shape** (good for printing to a fixed size / tarp). Set the shape with
 > `targetSize: { width, height }` or `targetAspect` (default `1.6`) — or use the **Settings →
 > Fill target** control (Width/Height + Portrait/Landscape). Connectors route in per-column
-> channels so they don't cross boxes (TopToBottom). **The fill target affects RowWrap only** —
+> channels so they don't cross boxes (TopToBottom). **The fill target affects Custom only** —
 > other modes have fixed shapes and ignore it. Aspect fitting is coarse (fills *toward* the
 > target); deep single-child chains stay vertical.
 

@@ -1,4 +1,4 @@
-import { makeNode as Oe, indexNodes as Te, normalizeRule as ye, exportLayout as Xn, calculateBounds as Kt, fitBounds as Yn, computeDepths as Dn, childCount as Zt, searchNodes as Bn, resolveNodeStyle as Qt, buildChartSVG as Fn, effCenter as Y, normalizeImported as Pn, layoutOrgChart as _n, normalizeConfig as Hn, routeConnector as qn, edgeControlPoints as Un, isHorizontal as Wn, orthoThrough as Vn } from "./core.js";
+import { makeNode as Oe, indexNodes as Te, normalizeRule as ye, exportLayout as Xn, calculateBounds as Kt, fitBounds as Yn, computeDepths as Dn, childCount as Zt, searchNodes as Bn, resolveNodeStyle as Qt, buildChartSVG as Fn, effCenter as Y, normalizeImported as Pn, layoutOrgChart as _n, normalizeConfig as Hn, routeConnector as qn, edgeControlPoints as Un, isHorizontal as Vn, orthoThrough as Wn } from "./core.js";
 import { CANVAS_PAD as oo, DEFAULTS as io, DEFAULT_SETTINGS as so, DEPT_SIZE as lo, ORIENTATIONS as ao, POS_SIZE as ro, SNAKE_STUB as co, SUBTREE_MODES as uo, VIRTUAL_ROOT_ID as fo, applyOrientation as po, buildTree as go, convertMoTree as ho, convertNestedTree as bo, edgeEndpoints as mo, getVisibleTree as yo, isMoArray as vo, lh as So, lw as wo, normalizeSettings as xo, personNameFromPos as Mo, visibleDepths as Io, waypointPath as Lo } from "./core.js";
 const de = "http://www.w3.org/2000/svg", Jn = 0.5, Kn = { Top: "TopToBottom", Bottom: "BottomToTop", Left: "LeftToRight", Right: "RightToLeft" };
 function ve(oe) {
@@ -36,7 +36,7 @@ const Zn = {
   // render empty positioned hosts (Vue teleports card content in)
   fullscreenControl: !0,
   // show the floating fullscreen button on the canvas
-  // RowWrap fills this target shape. `targetSize` (a tarp's W×H, any units) wins; else targetAspect.
+  // Custom fills this target shape. `targetSize` (a tarp's W×H, any units) wins; else targetAspect.
   targetAspect: 1.6,
   // default ≈ landscape tarp (W/H)
   targetSize: null,
@@ -106,14 +106,14 @@ function eo(oe, en = {}) {
   le.setAttribute("class", "loc-connectors");
   const fe = document.createElementNS(de, "g");
   fe.setAttribute("class", "loc-edgehits"), le.appendChild(fe);
-  const we = C("div", "loc-nodes"), W = document.createElementNS(de, "svg");
-  W.setAttribute("class", "loc-overlay");
+  const we = C("div", "loc-nodes"), V = document.createElementNS(de, "svg");
+  V.setAttribute("class", "loc-overlay");
   const j = document.createElementNS(de, "g");
   j.setAttribute("class", "loc-edgehandles");
   const pe = document.createElementNS(de, "g");
-  pe.setAttribute("class", "loc-aligns"), W.appendChild(pe), W.appendChild(j);
+  pe.setAttribute("class", "loc-aligns"), V.appendChild(pe), V.appendChild(j);
   const Ge = C("div", "loc-zoomreadout");
-  Ge.textContent = "100%", se.appendChild(U), se.appendChild(le), se.appendChild(we), se.appendChild(W), L.appendChild(se), L.appendChild(Ge);
+  Ge.textContent = "100%", se.appendChild(U), se.appendChild(le), se.appendChild(we), se.appendChild(V), L.appendChild(se), L.appendChild(Ge);
   let F = null;
   r.fullscreenControl && (F = C("button", "loc-fsbtn"), F.type = "button", F.title = "Fullscreen", F.setAttribute("aria-label", "Toggle fullscreen"), F.innerHTML = "⛶", N(F, "click", (e) => {
     e.stopPropagation(), Je();
@@ -126,7 +126,7 @@ function eo(oe, en = {}) {
   P.innerHTML = '<div class="loc-panel-head"><span class="loc-panel-title">Settings</span><button class="loc-panel-close" title="Close" data-role="settings-close">✕</button></div><div class="loc-panel-body" data-role="settings-body"></div>';
   const et = tt(r.settingsTarget) || L;
   et.appendChild(P), et !== L && P.classList.add("loc-panel-external");
-  const V = P.querySelector('[data-role="settings-body"]');
+  const W = P.querySelector('[data-role="settings-body"]');
   oe.appendChild(R);
   function C(e, t) {
     const n = document.createElement(e);
@@ -164,7 +164,7 @@ function eo(oe, en = {}) {
       let o = u[n.id];
       o || (o = an(n), u[n.id] = o, we.appendChild(o)), o.style.width = n.width + "px", o.style.height = n.height + "px";
       const s = Y(t, p);
-      o.style.transform = `translate(${s.x - n.width / 2}px, ${s.y - n.height / 2}px)`, r.nodeSlots || (o.dataset.fitted || (rn(o), o.dataset.fitted = "1"), Tt(o, n)), o.classList.toggle("loc-selected", i.selectedNodeId === n.id), cn(o, n);
+      o.style.transform = `translate(${s.x - n.width / 2}px, ${s.y - n.height / 2}px)`, r.nodeSlots || (o.dataset.fitted || (rn(o), o.dataset.fitted = "1"), Tt(o, n)), o.classList.toggle("loc-selected", i.selectedNodeId === n.id), o.classList.toggle("loc-banner", !!t.banner), cn(o, n);
     }
     for (const t in u) e[t] || (u[t].remove(), delete u[t]);
     b("nodes-rendered", { ids: E.map((t) => t.node.id) });
@@ -277,7 +277,7 @@ function eo(oe, en = {}) {
       const a = Y(l, p), c = l.node.width / 2, f = l.node.height / 2;
       e = Math.min(e, a.x - c - 80), t = Math.min(t, a.y - f - 80), n = Math.max(n, a.x + c + 80), o = Math.max(o, a.y + f + 80);
     }
-    le.setAttribute("width", n), le.setAttribute("height", o), W.setAttribute("width", n), W.setAttribute("height", o);
+    le.setAttribute("width", n), le.setAttribute("height", o), V.setAttribute("width", n), V.setAttribute("height", o);
     const s = i.gridSize;
     U.style.left = e + "px", U.style.top = t + "px", U.style.width = n - e + "px", U.style.height = o - t + "px", U.style.backgroundSize = s + "px " + s + "px", U.style.backgroundPosition = (-e % s + s) % s + "px " + (-t % s + s) % s + "px";
   }
@@ -410,7 +410,7 @@ function eo(oe, en = {}) {
   }
   function gt(e, t) {
     pe.innerHTML = "";
-    const n = +W.getAttribute("width") || 0, o = +W.getAttribute("height") || 0, s = (l, a, c, f) => {
+    const n = +V.getAttribute("width") || 0, o = +V.getAttribute("height") || 0, s = (l, a, c, f) => {
       const d = ge("line");
       d.setAttribute("x1", l), d.setAttribute("y1", a), d.setAttribute("x2", c), d.setAttribute("y2", f), d.setAttribute("class", "loc-align-line"), pe.appendChild(d);
     };
@@ -462,9 +462,9 @@ function eo(oe, en = {}) {
     return Un(n, t, o, xe(), p, O[e]);
   }
   function vt(e) {
-    const t = [], n = Wn(xe());
+    const t = [], n = Vn(xe());
     for (let o = 0; o < e.length - 1; o++) {
-      const s = Vn([e[o], e[o + 1]], n);
+      const s = Wn([e[o], e[o + 1]], n);
       for (let l = 0; l < s.length - 1; l++) t.push({ a: s[l], b: s[l + 1], insert: o });
     }
     return t;
@@ -576,7 +576,7 @@ function eo(oe, en = {}) {
     }
     return o;
   }
-  const xn = ["", "Balanced", "Center", "Left", "Right", "Alternate", "AlternateLeft", "AlternateRight", "RowWrap"];
+  const xn = ["", "Balanced", "Center", "Left", "Right", "Alternate", "AlternateLeft", "AlternateRight", "Custom"];
   function Le(e) {
     return String(e ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
   }
@@ -725,16 +725,16 @@ function eo(oe, en = {}) {
     if (r.settingsSlot) return;
     let e = '<div class="loc-set-section"><div class="loc-set-title">Layout</div>' + qe("spacingX", "Spacing X", i.spacingX, 0, 200) + qe("spacingY", "Spacing Y", i.spacingY, 0, 260) + qe("gridSize", "Grid size", i.gridSize, 6, 80) + "</div>";
     const t = r.targetSize && r.targetSize.width > 0 && r.targetSize.height > 0 ? r.targetSize : { width: Math.round((r.targetAspect || 1.6) * 100), height: 100 };
-    e += `<div class="loc-set-section"><div class="loc-set-title">Fill target — RowWrap</div><div class="loc-set-hint">Only affects the <b>RowWrap</b> mode — it spreads to fill this width : height (e.g. a tarp). Other modes ignore it.</div><label class="loc-field"><span>Width</span><input type="number" min="1" data-tgt="width" value="${t.width}"/></label><label class="loc-field"><span>Height</span><input type="number" min="1" data-tgt="height" value="${t.height}"/></label><div class="loc-set-orient"><button data-role="tgt-portrait">Portrait</button><button data-role="tgt-landscape">Landscape</button></div></div>`, e += '<div class="loc-set-section"><div class="loc-set-title">Theme rules</div><div class="loc-set-hint">Recolor nodes that match a field = value. Later rules win.</div>', z.forEach((n, o) => {
+    e += `<div class="loc-set-section"><div class="loc-set-title">Fill target — Custom</div><div class="loc-set-hint">Only affects the <b>Custom</b> mode — it spreads to fill this width : height (e.g. a tarp). Other modes ignore it.</div><label class="loc-field"><span>Width</span><input type="number" min="1" data-tgt="width" value="${t.width}"/></label><label class="loc-field"><span>Height</span><input type="number" min="1" data-tgt="height" value="${t.height}"/></label><div class="loc-set-orient"><button data-role="tgt-portrait">Portrait</button><button data-role="tgt-landscape">Landscape</button></div></div>`, e += '<div class="loc-set-section"><div class="loc-set-title">Theme rules</div><div class="loc-set-hint">Recolor nodes that match a field = value. Later rules win.</div>', z.forEach((n, o) => {
       e += Ln(n, o);
-    }), e += '<button class="loc-set-add" data-role="add-rule">+ Add rule</button></div>', e += '<div class="loc-set-foot"><button class="loc-set-reset" data-role="reset-settings" title="Restore spacing, grid &amp; theme rules to defaults">↺ Reset settings</button></div>', V.innerHTML = e;
+    }), e += '<button class="loc-set-add" data-role="add-rule">+ Add rule</button></div>', e += '<div class="loc-set-foot"><button class="loc-set-reset" data-role="reset-settings" title="Restore spacing, grid &amp; theme rules to defaults">↺ Reset settings</button></div>', W.innerHTML = e;
   }
   function An(e, t) {
-    const n = V.querySelector(`[data-rule="${e}"][data-rk="${t}-on"]`);
+    const n = W.querySelector(`[data-rule="${e}"][data-rk="${t}-on"]`);
     return n && n.checked;
   }
   function En(e, t) {
-    const n = V.querySelector(`[data-rule="${e}"][data-rk="${t}"]`);
+    const n = W.querySelector(`[data-rule="${e}"][data-rk="${t}"]`);
     return n ? n.value : "";
   }
   function M() {
@@ -780,7 +780,7 @@ function eo(oe, en = {}) {
   }
   function zt(e) {
     const t = Xn(i, y, p, x);
-    return t.editMode = i.editMode, t.edgeAnchors = O, t.nodeOverrides = T, t.settings = H(), e !== !1 && We(new Blob([JSON.stringify(t, null, 2)], { type: "application/json" }), "org-chart-layout.json"), t;
+    return t.editMode = i.editMode, t.edgeAnchors = O, t.nodeOverrides = T, t.settings = H(), e !== !1 && Ve(new Blob([JSON.stringify(t, null, 2)], { type: "application/json" }), "org-chart-layout.json"), t;
   }
   const $t = document.createElement("canvas").getContext("2d");
   function Tn(e, t) {
@@ -798,7 +798,7 @@ function eo(oe, en = {}) {
     return Fn(E, t, { manualOffsets: p, raster: !!e, measureText: Tn, fitOf: Gn });
   }
   function Rt() {
-    return We(new Blob([me(!1)], { type: "image/svg+xml;charset=utf-8" }), "org-chart.svg"), me(!1);
+    return Ve(new Blob([me(!1)], { type: "image/svg+xml;charset=utf-8" }), "org-chart.svg"), me(!1);
   }
   function jt(e) {
     e = e || 3;
@@ -813,7 +813,7 @@ function eo(oe, en = {}) {
       f.setTransform(s, 0, 0, s, 0, 0), f.drawImage(a, 0, 0), URL.revokeObjectURL(l);
       try {
         c.toBlob((d) => {
-          d && We(d, "org-chart.png");
+          d && Ve(d, "org-chart.png");
         }, "image/png");
       } catch {
       }
@@ -823,7 +823,7 @@ function eo(oe, en = {}) {
     const e = window.open("", "_blank");
     e && (e.document.open(), e.document.write("<!doctype html><html><head><title>Org Chart</title><style>@page{margin:8mm;}html,body{margin:0;padding:0;}svg{width:100%;height:auto;display:block;}</style></head><body>" + me(!1) + "<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},350);};<\/script></body></html>"), e.document.close());
   }
-  function We(e, t) {
+  function Ve(e, t) {
     const n = URL.createObjectURL(e), o = document.createElement("a");
     o.href = n, o.download = t, document.body.appendChild(o), o.click(), o.remove(), URL.revokeObjectURL(n);
   }
@@ -867,11 +867,11 @@ function eo(oe, en = {}) {
   function Rn(e) {
     return Bt(e ?? !i.showGrid);
   }
-  function Ve() {
+  function We() {
     p = /* @__PURE__ */ Object.create(null), x = /* @__PURE__ */ Object.create(null), O = /* @__PURE__ */ Object.create(null), te(), A(), ze();
   }
   function Ft() {
-    dt(), ne(), Ve(), _();
+    dt(), ne(), We(), _();
   }
   function Pt() {
     return document.fullscreenElement || document.webkitFullscreenElement || null;
@@ -943,7 +943,7 @@ function eo(oe, en = {}) {
       const s = +t.dataset.add;
       (x[n] || (x[n] = [])).splice(s, 0, Re(Ie(e.clientX, e.clientY))), o = s, ee(n);
     } else return;
-    e.stopPropagation(), e.preventDefault(), G = { id: n, idx: o }, K("pointermove", Ut), K("pointerup", Wt);
+    e.stopPropagation(), e.preventDefault(), G = { id: n, idx: o }, K("pointermove", Ut), K("pointerup", Vt);
   }), N(j, "dblclick", (e) => {
     const t = e.target;
     if (t.dataset.ep === "parent") {
@@ -959,8 +959,8 @@ function eo(oe, en = {}) {
     const t = x[G.id];
     t && (t[G.idx] = bn(G.id, Re(Ie(e.clientX, e.clientY))), ee(G.id), J());
   }
-  function Wt() {
-    G = null, ht(), Z("pointermove", Ut), Z("pointerup", Wt), M();
+  function Vt() {
+    G = null, ht(), Z("pointermove", Ut), Z("pointerup", Vt), M();
   }
   N(k, "click", (e) => {
     if (e.target.closest('[data-role="panel-close"]')) {
@@ -1028,17 +1028,17 @@ function eo(oe, en = {}) {
     }
     const t = e.target.closest('[data-rk="remove"]');
     t && (z.splice(+t.dataset.rule, 1), be(), Ae(), M(), b("settings-change", H()));
-  }), N(V, "input", (e) => {
+  }), N(W, "input", (e) => {
     const t = e.target;
     if (t.dataset.set != null) {
       const n = parseFloat(t.value);
       i[t.dataset.set] = n;
-      const o = V.querySelector(`[data-rangelabel="${t.dataset.set}"]`);
+      const o = W.querySelector(`[data-rangelabel="${t.dataset.set}"]`);
       o && (o.textContent = n), A(), b("settings-change", H()), M();
       return;
     }
     if (t.dataset.tgt != null) {
-      const n = +(V.querySelector('[data-tgt="width"]') || {}).value || 0, o = +(V.querySelector('[data-tgt="height"]') || {}).value || 0;
+      const n = +(W.querySelector('[data-tgt="width"]') || {}).value || 0, o = +(W.querySelector('[data-tgt="height"]') || {}).value || 0;
       n > 0 && o > 0 && (ce("targetSize", { width: n, height: o }), A(), _(), M());
       return;
     }
@@ -1090,7 +1090,7 @@ function eo(oe, en = {}) {
   function jn() {
     const e = r.toolbar && typeof r.toolbar == "object" ? r.toolbar : {}, t = (a) => e[a] !== !1, n = C("div", "loc-toolbar");
     let o = "";
-    return t("subtree") && (o += s("Subtree", ["Balanced", "Center", "Left", "Right", "Alternate", "AlternateLeft", "AlternateRight", "RowWrap"].map((a) => l("mode", a, a)).join(""))), t("orient") && (o += s("Orient", [["TopToBottom", "Top"], ["BottomToTop", "Bottom"], ["LeftToRight", "Left"], ["RightToLeft", "Right"]].map(([a, c]) => l("orient", a, c)).join(""))), t("actions") && (o += s("", '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout">Re-layout</button><button data-act="reset">Reset</button><button data-act="fullscreen" title="Toggle fullscreen">Fullscreen</button>')), t("search") && (o += s("Search", '<input type="search" data-role="search" class="loc-search-input" placeholder="Search…" />')), t("grid") && (o += s("Grid", '<button data-flag="showGrid">Show</button><button data-flag="snapGrid">Snap</button><button data-flag="alignGrid">Align</button>')), t("mode") && (o += s("Mode", '<button data-act="edit" title="Toggle edit mode">Edit</button><button data-act="settings" title="Settings &amp; theming">Settings</button>')), t("export") && (o += s("Export", '<button data-act="png">PNG</button><button data-act="svg">SVG</button><button data-act="pdf">PDF</button><button data-act="json">JSON</button>')), n.innerHTML = o, n.addEventListener("click", (a) => {
+    return t("subtree") && (o += s("Subtree", ["Balanced", "Center", "Left", "Right", "Alternate", "AlternateLeft", "AlternateRight", "Custom"].map((a) => l("mode", a, a)).join(""))), t("orient") && (o += s("Orient", [["TopToBottom", "Top"], ["BottomToTop", "Bottom"], ["LeftToRight", "Left"], ["RightToLeft", "Right"]].map(([a, c]) => l("orient", a, c)).join(""))), t("actions") && (o += s("", '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout">Re-layout</button><button data-act="reset">Reset</button><button data-act="fullscreen" title="Toggle fullscreen">Fullscreen</button>')), t("search") && (o += s("Search", '<input type="search" data-role="search" class="loc-search-input" placeholder="Search…" />')), t("grid") && (o += s("Grid", '<button data-flag="showGrid">Show</button><button data-flag="snapGrid">Snap</button><button data-flag="alignGrid">Align</button>')), t("mode") && (o += s("Mode", '<button data-act="edit" title="Toggle edit mode">Edit</button><button data-act="settings" title="Settings &amp; theming">Settings</button>')), t("export") && (o += s("Export", '<button data-act="png">PNG</button><button data-act="svg">SVG</button><button data-act="pdf">PDF</button><button data-act="json">JSON</button>')), n.innerHTML = o, n.addEventListener("click", (a) => {
       const c = a.target.closest("button");
       if (c)
         if (c.dataset.mode) Dt(c.dataset.mode);
@@ -1108,7 +1108,7 @@ function eo(oe, en = {}) {
             _();
             break;
           case "relayout":
-            Ve();
+            We();
             break;
           case "reset":
             Ft();
@@ -1150,10 +1150,10 @@ function eo(oe, en = {}) {
     D && (D.querySelectorAll("button[data-mode]").forEach((e) => e.classList.toggle("loc-active", e.dataset.mode === i.subtreeMode)), D.querySelectorAll("button[data-orient]").forEach((e) => e.classList.toggle("loc-active", e.dataset.orient === i.orientation)), D.querySelectorAll("button[data-flag]").forEach((e) => e.classList.toggle("loc-active", !!i[e.dataset.flag])), D.querySelectorAll('button[data-act="edit"]').forEach((e) => e.classList.toggle("loc-active", i.editMode)), D.querySelectorAll('button[data-act="fullscreen"]').forEach((e) => e.classList.toggle("loc-active", Ee())));
   }
   N(document, "fullscreenchange", qt), N(document, "webkitfullscreenchange", qt), On(), q(), Me(), De(), A(), r.fitOnInit && _();
-  let Vt = !1;
+  let Wt = !1;
   function kn() {
-    if (!Vt) {
-      Vt = !0, Se.forEach(({ target: e, type: t, fn: n, optsL: o }) => e.removeEventListener(t, n, o)), Se.length = 0, ue && cancelAnimationFrame(ue), R.remove();
+    if (!Wt) {
+      Wt = !0, Se.forEach(({ target: e, type: t, fn: n, optsL: o }) => e.removeEventListener(t, n, o)), Se.length = 0, ue && cancelAnimationFrame(ue), R.remove();
       for (const e in u) delete u[e];
       for (const e in w) delete w[e];
       for (const e in $) delete $[e];
@@ -1172,7 +1172,7 @@ function eo(oe, en = {}) {
     setAlignToGrid: $n,
     toggleGrid: Rn,
     fitToScreen: _,
-    relayout: Ve,
+    relayout: We,
     resetView: Ft,
     expandAll: lt,
     collapseAll: at,
@@ -1207,7 +1207,7 @@ function eo(oe, en = {}) {
     getNodeHost: (e) => u[e] || null,
     getNodeSlotEl: (e) => u[e] ? u[e].querySelector(".loc-node-slot") : null,
     getInspectorBody: () => Ne,
-    getSettingsBody: () => V,
+    getSettingsBody: () => W,
     nodeThemeStyle: (e) => g[e] ? Qt(g[e], z) : null,
     getState: () => ({ ...i }),
     getNodes: () => y.map((e) => ({ ...e })),
@@ -1244,7 +1244,7 @@ export {
   Yn as fitBounds,
   yo as getVisibleTree,
   Te as indexNodes,
-  Wn as isHorizontal,
+  Vn as isHorizontal,
   vo as isMoArray,
   _n as layoutOrgChart,
   So as lh,
@@ -1254,7 +1254,7 @@ export {
   Pn as normalizeImported,
   ye as normalizeRule,
   xo as normalizeSettings,
-  Vn as orthoThrough,
+  Wn as orthoThrough,
   Mo as personNameFromPos,
   Qt as resolveNodeStyle,
   qn as routeConnector,

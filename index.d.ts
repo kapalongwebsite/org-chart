@@ -4,7 +4,7 @@ export type Orientation = 'TopToBottom' | 'BottomToTop' | 'LeftToRight' | 'Right
 export type OrientationInput = Orientation | 'Top' | 'Bottom' | 'Left' | 'Right';
 export type SubtreeMode =
   | 'Balanced' | 'Center' | 'Left' | 'Right'
-  | 'Alternate' | 'AlternateLeft' | 'AlternateRight' | 'Matrix' | 'RowWrap';
+  | 'Alternate' | 'AlternateLeft' | 'AlternateRight' | 'Matrix' | 'Custom';
 
 export interface OrgNode {
   id: string;
@@ -92,9 +92,9 @@ export interface CreateOptions extends LayoutOptions {
   fullscreenControl?: boolean;
   /** Re-frame the view after a mode/orientation/re-layout change. `true`/`'fit'` (default), `'recenter'` (keep zoom), `false`/`'none'`. */
   fitOnLayoutChange?: boolean | 'fit' | 'recenter' | 'none';
-  /** RowWrap target fill shape (width / height). Default 1.6 (landscape). */
+  /** Custom target fill shape (width / height). Default 1.6 (landscape). */
   targetAspect?: number;
-  /** RowWrap target size (any units) — overrides `targetAspect` with width/height. */
+  /** Custom target size (any units) — overrides `targetAspect` with width/height. */
   targetSize?: { width: number; height: number } | null;
   /** Snap a dragged node/waypoint to the parent's connector axis + sibling centers, with guide lines. Default true. */
   snapAlign?: boolean;

@@ -3,6 +3,18 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.7.0 — 2026-06-15
+
+### Changed
+- **Renamed the `RowWrap` mode → `Custom`** (toolbar button, mode value, types, docs). The
+  fill-target options (`targetSize` / `targetAspect`) and grid connectors carry over unchanged.
+
+### Added
+- **Department banners in `Custom`.** A non-root `type:'department'` node with children now
+  renders as a **wide banner bar spanning its block**, with its children laid out as **rows of
+  cards** directly beneath it (TopToBottom). This gives the "banner over a row of cards" look of
+  a designed departmental chart, with the grid channel connectors keeping lines off the boxes.
+
 ## v1.6.0 — 2026-06-15
 
 ### Added

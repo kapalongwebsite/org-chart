@@ -45,7 +45,7 @@ export const OrgChart = defineComponent({
     settingsTarget: { type: [String, Object], default: null },  // mount the settings drawer outside the canvas
     fullscreenControl: { type: Boolean, default: true },         // floating fullscreen button on the canvas
     fitOnLayoutChange: { type: [Boolean, String], default: true }, // re-frame after relayout: true|'fit' · 'recenter' · false|'none'
-    targetAspect: { type: Number, default: 1.6 },                  // RowWrap fill shape (W/H); default ≈ landscape tarp
+    targetAspect: { type: Number, default: 1.6 },                  // Custom fill shape (W/H); default ≈ landscape tarp
     targetSize: { type: Object, default: null },                   // { width, height } — overrides targetAspect
     snapAlign: { type: Boolean, default: true },                   // snap-to-align (parent axis + siblings) while dragging
     settings: { type: Object, default: null },
