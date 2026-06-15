@@ -3,6 +3,35 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.1.0 — 2026-06-14
+
+### Added
+- **Fullscreen** — `enterFullscreen()`, `exitFullscreen()`, `toggleFullscreen(force?)`,
+  `isFullscreen()`, a `fullscreen-change` event, a toolbar **Fullscreen** button, and a
+  floating canvas-level button (opt out with `fullscreenControl: false`).
+- **Toolbar** — wired a live **Search** box (`search` group) and a **Reset** button
+  (`resetView`); added a `search` toolbar group flag.
+- **Customizable inspector drawer** — `inspector: false` is now fully headless: the
+  built-in drawer never opens and `node-select` carries a `rect` (the node's on-screen
+  box) so you can render your own panel anywhere. `inspectorTarget` (selector or element)
+  mounts the managed drawer into an element outside the canvas.
+- `nodeScreenRect(id)` helper on the instance + Vue ref.
+
+### Fixed
+- **Waypoint edit handles** now sit on the *rendered orthogonal path* (via `orthoThrough`),
+  so the add-waypoint dots and nearest-segment hit-testing line up with the drawn line.
+- **Selecting a line shows its waypoints** even outside edit mode (read-only markers);
+  the interactive add/endpoint handles still appear only in edit mode.
+- **Panning no longer clears the selection** — a selected node/line stays selected while
+  you pan; only a plain click on empty canvas clears it.
+- **Orientation aliases** (`Top`/`Bottom`/`Left`/`Right`) now normalize consistently at
+  *every* entry point — constructor, `setOrientation`, `setSettings`, `setNodes`/meta and
+  restored state — not just some of them.
+
+### Changed
+- Removed redundant duplicate method names; each grid/view action has a single canonical
+  name (`setShowGrid` / `setSnapToGrid` / `setAlignToGrid` / `toggleGrid`, `resetView`).
+
 ## v1.0.0 — 2026-06-10
 
 First packaged release. A dependency-free organizational-chart engine extracted into a reusable

@@ -81,9 +81,15 @@ export interface CreateOptions extends LayoutOptions {
   readonly?: boolean;
   editMode?: boolean;
   inspector?: boolean;
+  /** Mount the inspector drawer into an external element (selector or node) instead of the canvas. */
+  inspectorTarget?: string | HTMLElement | null;
+  inspectorSlot?: boolean;
+  nodeSlots?: boolean;
+  /** Show the floating fullscreen button on the canvas (default true). */
+  fullscreenControl?: boolean;
   settings?: ChartSettings;
   fitOnInit?: boolean;
-  toolbar?: boolean | Partial<Record<'subtree' | 'orient' | 'actions' | 'grid' | 'mode' | 'export', boolean>>;
+  toolbar?: boolean | Partial<Record<'subtree' | 'orient' | 'actions' | 'search' | 'grid' | 'mode' | 'export', boolean>>;
   persist?: boolean;
   storageKey?: string;
 }
@@ -91,7 +97,10 @@ export interface CreateOptions extends LayoutOptions {
 export type OrgChartEventName =
   | 'node-click' | 'node-select' | 'node-drag-start' | 'node-drag' | 'node-drag-end'
   | 'layout-change' | 'orientation-change' | 'subtree-mode-change'
-  | 'edit-mode-change' | 'node-change' | 'settings-change';
+  | 'edit-mode-change' | 'node-change' | 'settings-change'
+  | 'inspector-open' | 'inspector-close' | 'fullscreen-change';
+
+export interface ScreenRect { left: number; top: number; right: number; bottom: number; width: number; height: number; }
 
 export interface OrgChartInstance {
   root: HTMLElement;
@@ -108,11 +117,14 @@ export interface OrgChartInstance {
   fitToScreen(): void;
   relayout(): void;
   resetView(): void;
-  reset(): void;
   expandAll(): void;
   collapseAll(): void;
   toggleCollapse(id: string): void;
   centerOnNode(id: string): void;
+  enterFullscreen(): void;
+  exitFullscreen(): void;
+  toggleFullscreen(force?: boolean): boolean;
+  isFullscreen(): boolean;
   search(query: string): number;
   clearSearch(): void;
   exportJSON(download?: boolean): any;
@@ -129,15 +141,11 @@ export interface OrgChartInstance {
   detachNode(id: string): void;
   openInspector(id: string): void;
   closeInspector(): void;
+  /** The selected node's on-screen rectangle (viewport coords), or null. */
+  nodeScreenRect(id: string): ScreenRect | null;
   getSettings(): ChartSettings;
   setSettings(settings: ChartSettings): void;
   toggleSettings(force?: boolean): void;
-  /** Convenience: toggle grid overlay visibility. */
-  showGrid(on: boolean): boolean;
-  /** Convenience: toggle snap-to-grid during drag. */
-  snapToGrid(on: boolean): boolean;
-  /** Convenience: toggle align-to-grid (snaps layout positions to grid). */
-  alignToGrid(on: boolean): boolean;
   getState(): any;
   getNodes(): OrgNode[];
   getPositioned(): PositionedNode[];
@@ -170,17 +178,17 @@ export interface OrgChartVueInstance {
   setSubtreeMode(m: SubtreeMode): void;
   setSpacing(x?: number, y?: number): void;
 
-  // grid convenience
+  // grid (single canonical name each)
   setShowGrid(on: boolean): boolean;
   setSnapToGrid(on: boolean): boolean;
   setAlignToGrid(on: boolean): boolean;
   toggleGrid(force?: boolean): boolean;
-  /** Toggle grid overlay visibility. */
-  showGrid(on: boolean): boolean;
-  /** Toggle snap-to-grid during drag. */
-  snapToGrid(on: boolean): boolean;
-  /** Toggle align-to-grid (snaps layout positions to grid). */
-  alignToGrid(on: boolean): boolean;
+
+  // fullscreen
+  enterFullscreen(): void;
+  exitFullscreen(): void;
+  toggleFullscreen(force?: boolean): boolean;
+  isFullscreen(): boolean;
 
   // edit mode / inspector / settings
   setEditMode(on: boolean): void;
@@ -192,6 +200,7 @@ export interface OrgChartVueInstance {
   detachNode(id: string): void;
   openInspector(id: string): void;
   closeInspector(): void;
+  nodeScreenRect(id: string): ScreenRect | null;
   getSettings(): ChartSettings;
   setSettings(settings: ChartSettings): void;
   toggleSettings(force?: boolean): void;
@@ -214,9 +223,6 @@ export interface OrgChartVueInstance {
   setOption(key: string, val: any): void;
   on(name: OrgChartEventName, cb: (payload: any) => void): void;
   off(name: OrgChartEventName, cb: (payload: any) => void): void;
-
-  /** Convenience: clear search + relayout + fit to screen. */
-  reset(): void;
 
   /** Access the underlying vanilla OrgChartInstance (escape hatch). */
   instance(): OrgChartInstance;

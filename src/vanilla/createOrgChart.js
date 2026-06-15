@@ -13,6 +13,12 @@ import {
 const SVGNS = 'http://www.w3.org/2000/svg';
 const FIT_MIN = 0.5;
 
+// Short orientation aliases → canonical names. Applied at EVERY entry point
+// (constructor, setOrientation, setSettings, setNodes/meta, restore) so the
+// shorthand resolves consistently no matter how the value arrives.
+const ORIENTATION_ALIASES = { Top: 'TopToBottom', Bottom: 'BottomToTop', Left: 'LeftToRight', Right: 'RightToLeft' };
+function normalizeOrientation(o) { return ORIENTATION_ALIASES[o] || o; }
+
 const DEFAULT_OPTS = {
   nodes: [],
   orientation: 'TopToBottom',
@@ -28,9 +34,11 @@ const DEFAULT_OPTS = {
   enableZoom: true,
   readonly: false,
   editMode: false,    // when true: drag nodes, edit lines, edit fields in the panel
-  inspector: true,    // show the slide-in inspector panel on node click
+  inspector: true,    // show the slide-in inspector panel on node click (false = headless: emit node-select only)
   inspectorSlot: false, // leave the inspector body empty for an external (Vue) slot
+  inspectorTarget: null, // mount the inspector drawer into an external element (selector or node) instead of the canvas
   nodeSlots: false,   // render empty positioned hosts (Vue teleports card content in)
+  fullscreenControl: true, // show the floating fullscreen button on the canvas
   fitOnInit: true,
   toolbar: true,      // true | false | { subtree, orient, actions, grid, mode, export }
   persist: false,
@@ -43,7 +51,7 @@ export function createOrgChart(host, userOpts = {}) {
 
   // ---- per-instance state ----
   const state = {
-    orientation: opts.orientation, subtreeMode: opts.subtreeMode,
+    orientation: normalizeOrientation(opts.orientation), subtreeMode: opts.subtreeMode,
     spacingX: opts.spacingX, spacingY: opts.spacingY,
     zoom: 1, panX: 0, panY: 0,
     selectedNodeId: null, selectedEdgeId: null,
@@ -94,6 +102,16 @@ export function createOrgChart(host, userOpts = {}) {
 
   content.appendChild(gridEl); content.appendChild(svg); content.appendChild(nodesLayer); content.appendChild(overlay);
   canvas.appendChild(content); canvas.appendChild(zoomReadout);
+
+  // floating canvas-level fullscreen control (opt-out via fullscreenControl: false)
+  let fsFloat = null;
+  if (opts.fullscreenControl) {
+    fsFloat = el('button', 'loc-fsbtn'); fsFloat.type = 'button';
+    fsFloat.title = 'Fullscreen'; fsFloat.setAttribute('aria-label', 'Toggle fullscreen');
+    fsFloat.innerHTML = '⛶';
+    addL(fsFloat, 'click', (e) => { e.stopPropagation(); toggleFullscreen(); });
+    canvas.appendChild(fsFloat);
+  }
   root.appendChild(canvas);
 
   // right slide-in inspector panel
@@ -103,7 +121,11 @@ export function createOrgChart(host, userOpts = {}) {
     + '<button class="loc-panel-close" title="Close" data-role="panel-close">✕</button></div>'
     + '<div class="loc-panel-body" data-role="panel-body"></div>'
     + '<div class="loc-panel-foot" data-role="panel-foot"></div>';
-  canvas.appendChild(panel);
+  // The drawer lives inside the canvas by default, but `inspectorTarget` can
+  // mount it into any external element (so it can sit outside the chart).
+  const inspectorHost = resolveTarget(opts.inspectorTarget) || canvas;
+  inspectorHost.appendChild(panel);
+  if (inspectorHost !== canvas) panel.classList.add('loc-panel-external');
   const panelBody = panel.querySelector('[data-role="panel-body"]');
   const panelFoot = panel.querySelector('[data-role="panel-foot"]');
   const panelTitle = panel.querySelector('.loc-panel-title');
@@ -120,6 +142,12 @@ export function createOrgChart(host, userOpts = {}) {
   host.appendChild(root);
 
   function el(tag, cls) { const d = document.createElement(tag); if (cls) d.className = cls; return d; }
+  /* resolve a selector string or element to a mountable node; null if not usable */
+  function resolveTarget(t) {
+    if (!t) return null;
+    const node = typeof t === 'string' ? document.querySelector(t) : t;
+    return (node && node.appendChild) ? node : null;
+  }
 
   // ================= layout pipeline =================
   function cfg() {
@@ -316,7 +344,8 @@ export function createOrgChart(host, userOpts = {}) {
     e.stopPropagation();
     deselectEdge();
     selectNode(id);
-    emit('node-select', { id, node: nodeById[id] });
+    // rect lets a headless/external inspector position itself next to the node.
+    emit('node-select', { id, node: nodeById[id], rect: nodeScreenRect(id) });
     if (opts.inspector) openInspector(id);
     if (opts.readonly || !opts.enableDragging || !state.editMode) return;
     const off = manualOffsets[id] || { dx: 0, dy: 0 };
@@ -361,6 +390,12 @@ export function createOrgChart(host, userOpts = {}) {
     if (state.selectedNodeId && elById[state.selectedNodeId]) elById[state.selectedNodeId].classList.remove('loc-selected');
     state.selectedNodeId = id;
     if (elById[id]) elById[id].classList.add('loc-selected');
+  }
+  /* the selected node's on-screen rectangle (viewport coords), or null */
+  function nodeScreenRect(id) {
+    const e = elById[id]; if (!e) return null;
+    const r = e.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
   }
 
   // ================= edge waypoint editing =================
@@ -407,10 +442,17 @@ export function createOrgChart(host, userOpts = {}) {
   }
   function renderEdgeHandles() {
     edgeHandlesG.innerHTML = '';
-    const id = state.selectedEdgeId; if (!id || opts.readonly || !state.editMode) return;
+    const id = state.selectedEdgeId; if (!id || opts.readonly) return;
     const controls = controlsFor(id); if (!controls) return;
     const wps = edgeWaypoints[id] || [];
     const r = 6 / state.zoom, ra = 5 / state.zoom;
+    // Outside edit mode a selected line still SHOWS its waypoints (read-only) so
+    // you can see where they are; the interactive add/endpoint handles below are
+    // only rendered in edit mode.
+    if (!state.editMode) {
+      for (let i = 0; i < wps.length; i++) { const c = mkCircle(wps[i].x, wps[i].y, r, 'loc-wp-handle loc-wp-readonly'); c.dataset.wp = i; edgeHandlesG.appendChild(c); }
+      return;
+    }
     for (const seg of renderedHandleSegments(controls)) {
       const c = mkCircle((seg.a.x + seg.b.x) / 2, (seg.a.y + seg.b.y) / 2, ra, 'loc-wp-add');
       c.dataset.add = seg.insert; edgeHandlesG.appendChild(c);
@@ -620,7 +662,7 @@ export function createOrgChart(host, userOpts = {}) {
     if (typeof s.spacingX === 'number') state.spacingX = s.spacingX;
     if (typeof s.spacingY === 'number') state.spacingY = s.spacingY;
     if (typeof s.gridSize === 'number') state.gridSize = s.gridSize;
-    if (s.orientation) state.orientation = normalizeOrientationInput(s.orientation);
+    if (s.orientation) state.orientation = normalizeOrientation(s.orientation);
     if (s.subtreeMode) state.subtreeMode = s.subtreeMode;
     if ('showGrid' in s) state.showGrid = !!s.showGrid;
     if ('snapGrid' in s) state.snapGrid = !!s.snapGrid;
@@ -691,7 +733,7 @@ export function createOrgChart(host, userOpts = {}) {
     if (!opts.persist) return;
     let s; try { s = JSON.parse(localStorage.getItem(opts.storageKey) || 'null'); } catch (e) { s = null; }
     if (!s) return;
-    if (s.orientation) state.orientation = s.orientation;
+    if (s.orientation) state.orientation = normalizeOrientation(s.orientation);
     if (s.subtreeMode) state.subtreeMode = s.subtreeMode;
     ['spacingX', 'spacingY', 'zoom', 'panX', 'panY', 'gridSize'].forEach((k) => { if (typeof s[k] === 'number') state[k] = s[k]; });
     state.showGrid = !!s.showGrid; state.snapGrid = !!s.snapGrid; state.alignGrid = !!s.alignGrid;
@@ -765,7 +807,7 @@ export function createOrgChart(host, userOpts = {}) {
     for (const id in hitById) { hitById[id].remove(); delete hitById[id]; }
     if (meta) {
       if (meta.subtreeMode) state.subtreeMode = meta.subtreeMode;
-      if (meta.orientation) state.orientation = meta.orientation;
+      if (meta.orientation) state.orientation = normalizeOrientation(meta.orientation);
       if (meta.manualOffsets) manualOffsets = meta.manualOffsets;
       if (meta.edgeWaypoints) edgeWaypoints = meta.edgeWaypoints;
       if (meta.edgeAnchors) edgeAnchors = meta.edgeAnchors;
@@ -778,15 +820,8 @@ export function createOrgChart(host, userOpts = {}) {
     if (opts.fitOnInit) fitToScreen();
   }
   function loadJSON(data) { const { nodes, meta } = normalizeImported(data); setNodes(nodes, meta); return nodes.length; }
-  const ORIENTATION_ALIASES = {
-    Top: 'TopToBottom',
-    Bottom: 'BottomToTop',
-    Left: 'LeftToRight',
-    Right: 'RightToLeft',
-  };
-  function normalizeOrientationInput(o) { return ORIENTATION_ALIASES[o] || o; }
   function setOrientation(o) {
-    const orientation = normalizeOrientationInput(o);
+    const orientation = normalizeOrientation(o);
     state.orientation = orientation; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); emit('orientation-change', { orientation });
   }
   function setSubtreeMode(m) { state.subtreeMode = m; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); emit('subtree-mode-change', { subtreeMode: m }); }
@@ -815,7 +850,31 @@ export function createOrgChart(host, userOpts = {}) {
     relayout();
     fitToScreen();
   }
-  function reset() { resetView(); }
+
+  // ================= fullscreen =================
+  function fullscreenElement() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+  function isFullscreen() { return fullscreenElement() === root; }
+  function enterFullscreen() {
+    const fn = root.requestFullscreen || root.webkitRequestFullscreen;
+    if (fn) { try { const p = fn.call(root); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ } }
+  }
+  function exitFullscreen() {
+    const fn = document.exitFullscreen || document.webkitExitFullscreen;
+    if (fn && fullscreenElement()) { try { fn.call(document); } catch (e) { /* ignore */ } }
+  }
+  function toggleFullscreen(force) {
+    const want = force == null ? !isFullscreen() : !!force;
+    if (want) enterFullscreen(); else exitFullscreen();
+    return want;
+  }
+  function onFullscreenChange() {
+    const fs = isFullscreen();
+    root.classList.toggle('loc-fullscreen', fs);
+    if (fsFloat) fsFloat.title = fs ? 'Exit fullscreen' : 'Fullscreen';
+    syncToolbar();
+    fitToScreen();
+    emit('fullscreen-change', { fullscreen: fs });
+  }
 
   // ================= global interaction wiring =================
   addL(nodesLayer, 'pointerdown', (e) => { const el2 = e.target.closest('.loc-node'); if (el2) onNodePointerDown(e, el2.dataset.id); });
@@ -909,22 +968,32 @@ export function createOrgChart(host, userOpts = {}) {
     }
   });
 
-  // pan
+  // pan — the current node/edge selection is PRESERVED while panning; only a
+  // click on empty space (a press that doesn't turn into a drag) clears it.
   addL(canvas, 'pointerdown', (e) => {
     if (e.target.closest('.loc-node') || e.target.closest('.loc-edgehits path')
-        || e.target.closest('.loc-edgehandles *') || e.target.closest('.loc-panel') || e.target.closest('.loc-settings')) {
-      // node / edge / handle / panel / settings interaction — don't pan or deselect
-    } else {
+        || e.target.closest('.loc-edgehandles *') || e.target.closest('.loc-panel')
+        || e.target.closest('.loc-settings') || e.target.closest('.loc-fsbtn')) {
+      return; // node / edge / handle / panel / control interaction — don't pan or deselect
+    }
+    const clearSelection = () => {
       if (state.selectedNodeId) { if (elById[state.selectedNodeId]) elById[state.selectedNodeId].classList.remove('loc-selected'); state.selectedNodeId = null; }
       if (state.selectedEdgeId) deselectEdge();
       closeInspector();
-      if (!opts.enablePan) return;
-      canvas.classList.add('loc-panning');
-      const sx = e.clientX, sy = e.clientY, px = state.panX, py = state.panY;
-      const mv = (ev) => { state.panX = px + (ev.clientX - sx); state.panY = py + (ev.clientY - sy); applyTransform(); };
-      const up = () => { canvas.classList.remove('loc-panning'); rmWin('pointermove', mv); rmWin('pointerup', up); };
-      addWin('pointermove', mv); addWin('pointerup', up);
-    }
+    };
+    if (!opts.enablePan) { clearSelection(); return; }
+    const sx = e.clientX, sy = e.clientY, px = state.panX, py = state.panY;
+    let moved = false;
+    canvas.classList.add('loc-panning');
+    const mv = (ev) => {
+      if (!moved && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 3) moved = true;
+      state.panX = px + (ev.clientX - sx); state.panY = py + (ev.clientY - sy); applyTransform();
+    };
+    const up = () => {
+      canvas.classList.remove('loc-panning'); rmWin('pointermove', mv); rmWin('pointerup', up);
+      if (!moved) clearSelection();   // a click (not a pan) on empty space clears selection
+    };
+    addWin('pointermove', mv); addWin('pointerup', up);
   });
   // zoom
   addL(canvas, 'wheel', (e) => {
@@ -950,7 +1019,8 @@ export function createOrgChart(host, userOpts = {}) {
     let html = '';
     if (show('subtree')) html += group('Subtree', ['Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'Matrix'].map((m) => btn('mode', m, m)).join(''));
     if (show('orient')) html += group('Orient', [['TopToBottom', 'Top'], ['BottomToTop', 'Bottom'], ['LeftToRight', 'Left'], ['RightToLeft', 'Right']].map(([o, l]) => btn('orient', o, l)).join(''));
-    if (show('actions')) html += group('', '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout">Re-layout</button>');
+    if (show('actions')) html += group('', '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout">Re-layout</button><button data-act="reset">Reset</button><button data-act="fullscreen" title="Toggle fullscreen">Fullscreen</button>');
+    if (show('search')) html += group('Search', '<input type="search" data-role="search" class="loc-search-input" placeholder="Search…" />');
     if (show('grid')) html += group('Grid', '<button data-flag="showGrid">Show</button><button data-flag="snapGrid">Snap</button><button data-flag="alignGrid">Align</button>');
     if (show('mode')) html += group('Mode', '<button data-act="edit" title="Toggle edit mode">Edit</button><button data-act="settings" title="Settings &amp; theming">Settings</button>');
     if (show('export')) html += group('Export', '<button data-act="png">PNG</button><button data-act="svg">SVG</button><button data-act="pdf">PDF</button><button data-act="json">JSON</button>');
@@ -965,6 +1035,8 @@ export function createOrgChart(host, userOpts = {}) {
         case 'collapse': collapseAll(); break;
         case 'fit': fitToScreen(); break;
         case 'relayout': relayout(); break;
+        case 'reset': resetView(); break;
+        case 'fullscreen': toggleFullscreen(); break;
         case 'edit': setEditMode(!state.editMode); break;
         case 'settings': toggleSettings(); break;
         case 'png': exportPNG(3); break;
@@ -972,6 +1044,9 @@ export function createOrgChart(host, userOpts = {}) {
         case 'pdf': exportPDF(); break;
         case 'json': exportJSON(true); break;
       }
+    });
+    bar.addEventListener('input', (e) => {
+      const s = e.target.closest('[data-role="search"]'); if (s) search(s.value);
     });
     return bar;
     function group(label, inner) { return `<div class="loc-group">${label ? `<span class="loc-label">${label}</span>` : ''}${inner}</div>`; }
@@ -983,7 +1058,13 @@ export function createOrgChart(host, userOpts = {}) {
     toolbarEl.querySelectorAll('button[data-orient]').forEach((b) => b.classList.toggle('loc-active', b.dataset.orient === state.orientation));
     toolbarEl.querySelectorAll('button[data-flag]').forEach((b) => b.classList.toggle('loc-active', !!state[b.dataset.flag]));
     toolbarEl.querySelectorAll('button[data-act="edit"]').forEach((b) => b.classList.toggle('loc-active', state.editMode));
+    toolbarEl.querySelectorAll('button[data-act="fullscreen"]').forEach((b) => b.classList.toggle('loc-active', isFullscreen()));
   }
+
+  // keep toolbar/float button + emitted event in sync with the browser's
+  // fullscreen state (covers Esc / F11 exits too)
+  addL(document, 'fullscreenchange', onFullscreenChange);
+  addL(document, 'webkitfullscreenchange', onFullscreenChange);
 
   // ================= boot =================
   restore();
@@ -1011,16 +1092,13 @@ export function createOrgChart(host, userOpts = {}) {
     root,
     setNodes, loadJSON, setOrientation, setSubtreeMode, setSpacing, setOption,
     setShowGrid, setSnapToGrid, setAlignToGrid, toggleGrid,
-    fitToScreen, relayout, resetView, reset, expandAll, collapseAll, toggleCollapse, centerOnNode,
+    fitToScreen, relayout, resetView, expandAll, collapseAll, toggleCollapse, centerOnNode,
     search, clearSearch, exportJSON, exportSVG, exportPNG, exportPDF, buildSVG,
     setEditMode, isEditMode: () => state.editMode,
+    enterFullscreen, exitFullscreen, toggleFullscreen, isFullscreen,
     updateNode, addChild, deleteNode, reparentNode, detachNode,
-    openInspector, closeInspector,
+    openInspector, closeInspector, nodeScreenRect,
     getSettings, setSettings, toggleSettings,
-    // convenience aliases (match the Vue expose names)
-    showGrid: (on) => setShowGrid(on),
-    snapToGrid: (on) => setSnapToGrid(on),
-    alignToGrid: (on) => setAlignToGrid(on),
     // slot bridging (used by the Vue wrapper's teleports)
     getNodeHost: (id) => elById[id] || null,
     getNodeSlotEl: (id) => (elById[id] ? elById[id].querySelector('.loc-node-slot') : null),

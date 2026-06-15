@@ -1,6 +1,6 @@
 import "./vanilla.js";
-import { defineComponent as O, ref as g, shallowRef as M, computed as G, onMounted as T, watch as d, onBeforeUnmount as B, h as l, Teleport as y, markRaw as b } from "vue";
-import { createOrgChart as x } from "./local-org-chart.js";
+import { defineComponent as O, ref as u, shallowRef as M, computed as x, onMounted as B, watch as l, onBeforeUnmount as C, h as r, Teleport as y, markRaw as b } from "vue";
+import { createOrgChart as G } from "./local-org-chart.js";
 const m = [
   "node-click",
   "node-select",
@@ -12,13 +12,16 @@ const m = [
   "subtree-mode-change",
   "edit-mode-change",
   "node-change",
-  "settings-change"
+  "settings-change",
+  "inspector-open",
+  "inspector-close",
+  "fullscreen-change"
 ];
-function P(o) {
-  const i = {};
-  return o && (o.bg && (i.background = o.bg), o.text && (i.color = o.text), o.border && (i.borderColor = o.border)), i;
+function T(n) {
+  const d = {};
+  return n && (n.bg && (d.background = n.bg), n.text && (d.color = n.text), n.border && (d.borderColor = n.border)), d;
 }
-const C = O({
+const P = O({
   name: "OrgChart",
   props: {
     nodes: { type: Array, default: () => [] },
@@ -32,6 +35,10 @@ const C = O({
     readonly: { type: Boolean, default: !1 },
     editMode: { type: Boolean, default: !1 },
     inspector: { type: Boolean, default: !0 },
+    inspectorTarget: { type: [String, Object], default: null },
+    // mount the drawer outside the canvas
+    fullscreenControl: { type: Boolean, default: !0 },
+    // floating fullscreen button on the canvas
     settings: { type: Object, default: null },
     fitOnInit: { type: Boolean, default: !0 },
     toolbar: { type: [Boolean, Object], default: !0 },
@@ -40,54 +47,56 @@ const C = O({
     storageKey: { type: String, default: "local-org-chart.state" }
   },
   emits: m,
-  setup(o, { emit: i, expose: N, slots: a }) {
-    const S = g(null);
+  setup(n, { emit: d, expose: N, slots: a }) {
+    const h = u(null);
     let e = null;
-    const u = g(!1), r = g({}), f = M([]), s = g(null), v = G(() => !(o.nodes && o.nodes.length));
-    function h() {
-      e && (r.value = e.getState());
-    }
+    const g = u(!1), i = u({}), f = M([]), s = u(null), v = x(() => !(n.nodes && n.nodes.length));
     function p() {
+      e && (i.value = e.getState());
+    }
+    function S() {
       if (!e || !a.node) {
         f.value = [];
         return;
       }
       f.value = e.getPositioned().map((t) => {
-        const n = e.getNodeSlotEl(t.node.id);
-        return n ? { id: t.node.id, node: b(t.node), target: b(n), themeStyle: P(e.nodeThemeStyle(t.node.id)) } : null;
+        const o = e.getNodeSlotEl(t.node.id);
+        return o ? { id: t.node.id, node: b(t.node), target: b(o), themeStyle: T(e.nodeThemeStyle(t.node.id)) } : null;
       }).filter(Boolean);
     }
-    return T(() => {
-      e = x(S.value, {
-        nodes: o.nodes,
-        orientation: o.orientation,
-        subtreeMode: o.subtreeMode,
-        spacingX: o.spacingX,
-        spacingY: o.spacingY,
-        enableDragging: o.enableDragging,
-        enablePan: o.enablePan,
-        enableZoom: o.enableZoom,
-        readonly: o.readonly,
-        editMode: o.editMode,
-        inspector: o.inspector,
-        settings: o.settings || void 0,
-        fitOnInit: o.fitOnInit,
+    return B(() => {
+      e = G(h.value, {
+        nodes: n.nodes,
+        orientation: n.orientation,
+        subtreeMode: n.subtreeMode,
+        spacingX: n.spacingX,
+        spacingY: n.spacingY,
+        enableDragging: n.enableDragging,
+        enablePan: n.enablePan,
+        enableZoom: n.enableZoom,
+        readonly: n.readonly,
+        editMode: n.editMode,
+        inspector: n.inspector,
+        inspectorTarget: n.inspectorTarget || null,
+        fullscreenControl: n.fullscreenControl,
+        settings: n.settings || void 0,
+        fitOnInit: n.fitOnInit,
         // a #toolbar slot replaces the built-in toolbar
-        toolbar: a.toolbar ? !1 : o.toolbar,
+        toolbar: a.toolbar ? !1 : n.toolbar,
         nodeSlots: !!a.node,
         inspectorSlot: !!a.inspector,
-        persist: o.persist,
-        storageKey: o.storageKey
-      }), m.forEach((t) => e.on(t, (n) => i(t, n))), e.on("nodes-rendered", p), ["layout-change", "edit-mode-change", "settings-change", "node-select", "node-change"].forEach((t) => e.on(t, h)), e.on("inspector-open", (t) => {
+        persist: n.persist,
+        storageKey: n.storageKey
+      }), m.forEach((t) => e.on(t, (o) => d(t, o))), e.on("nodes-rendered", S), ["layout-change", "edit-mode-change", "settings-change", "node-select", "node-change"].forEach((t) => e.on(t, p)), e.on("inspector-open", (t) => {
         s.value = t;
       }), e.on("inspector-close", () => {
         s.value = null;
-      }), h(), p(), u.value = !0;
-    }), d(() => o.nodes, (t) => {
-      e && (e.setNodes(t || []), p(), h());
-    }), d(() => o.orientation, (t) => e && e.setOrientation(t)), d(() => o.subtreeMode, (t) => e && e.setSubtreeMode(t)), d(() => [o.spacingX, o.spacingY], ([t, n]) => e && e.setSpacing(t, n)), d(() => o.readonly, (t) => e && e.setOption("readonly", t)), d(() => o.editMode, (t) => e && e.setEditMode(t)), d(() => o.settings, (t) => {
+      }), p(), S(), g.value = !0;
+    }), l(() => n.nodes, (t) => {
+      e && (e.setNodes(t || []), S(), p());
+    }), l(() => n.orientation, (t) => e && e.setOrientation(t)), l(() => n.subtreeMode, (t) => e && e.setSubtreeMode(t)), l(() => [n.spacingX, n.spacingY], ([t, o]) => e && e.setSpacing(t, o)), l(() => n.readonly, (t) => e && e.setOption("readonly", t)), l(() => n.editMode, (t) => e && e.setEditMode(t)), l(() => n.settings, (t) => {
       e && t && e.setSettings(t);
-    }, { deep: !0 }), d(() => o.enableDragging, (t) => e && e.setOption("enableDragging", t)), d(() => o.enablePan, (t) => e && e.setOption("enablePan", t)), d(() => o.enableZoom, (t) => e && e.setOption("enableZoom", t)), B(() => {
+    }, { deep: !0 }), l(() => n.enableDragging, (t) => e && e.setOption("enableDragging", t)), l(() => n.enablePan, (t) => e && e.setOption("enablePan", t)), l(() => n.enableZoom, (t) => e && e.setOption("enableZoom", t)), C(() => {
       e && (e.destroy(), e = null);
     }), N({
       // ---- view / layout ----
@@ -104,30 +113,33 @@ const C = O({
       // ---- orientation / subtree ----
       setOrientation: (t) => e && e.setOrientation(t),
       setSubtreeMode: (t) => e && e.setSubtreeMode(t),
-      setSpacing: (t, n) => e && e.setSpacing(t, n),
-      // ---- grid convenience (so toolbar doesn't need to know option keys) ----
+      setSpacing: (t, o) => e && e.setSpacing(t, o),
+      // ---- grid (single canonical name each; setOption('showGrid', …) also works) ----
       setShowGrid: (t) => e && e.setShowGrid(t),
       setSnapToGrid: (t) => e && e.setSnapToGrid(t),
       setAlignToGrid: (t) => e && e.setAlignToGrid(t),
       toggleGrid: (t) => e && e.toggleGrid(t),
-      showGrid: (t) => e && e.setShowGrid(t),
-      snapToGrid: (t) => e && e.setSnapToGrid(t),
-      alignToGrid: (t) => e && e.setAlignToGrid(t),
+      // ---- fullscreen ----
+      enterFullscreen: () => e && e.enterFullscreen(),
+      exitFullscreen: () => e && e.exitFullscreen(),
+      toggleFullscreen: (t) => e && e.toggleFullscreen(t),
+      isFullscreen: () => !!(e && e.isFullscreen()),
       // ---- edit mode / inspector / settings ----
       setEditMode: (t) => e && e.setEditMode(t),
       isEditMode: () => e && e.isEditMode(),
-      updateNode: (t, n) => e && e.updateNode(t, n),
+      updateNode: (t, o) => e && e.updateNode(t, o),
       addChild: (t) => e && e.addChild(t),
       deleteNode: (t) => e && e.deleteNode(t),
-      reparentNode: (t, n) => e && e.reparentNode(t, n),
+      reparentNode: (t, o) => e && e.reparentNode(t, o),
       detachNode: (t) => e && e.detachNode(t),
       openInspector: (t) => e && e.openInspector(t),
       closeInspector: () => e && e.closeInspector(),
+      nodeScreenRect: (t) => e && e.nodeScreenRect(t),
       getSettings: () => e && e.getSettings(),
       setSettings: (t) => e && e.setSettings(t),
       toggleSettings: (t) => e && e.toggleSettings(t),
       // ---- data ----
-      setNodes: (t, n, c) => e && e.setNodes(t, n, c),
+      setNodes: (t, o, c) => e && e.setNodes(t, o, c),
       loadJSON: (t) => e && e.loadJSON(t),
       getState: () => e && e.getState(),
       getNodes: () => e && e.getNodes(),
@@ -139,55 +151,53 @@ const C = O({
       exportPDF: () => e && e.exportPDF(),
       buildSVG: (t) => e && e.buildSVG(t),
       // ---- generic / advanced ----
-      setOption: (t, n) => e && e.setOption(t, n),
-      on: (t, n) => e && e.on(t, n),
-      off: (t, n) => e && e.off(t, n),
-      // ---- convenience: reset view (clear search + relayout + fit) ----
-      reset: () => e && e.reset(),
+      setOption: (t, o) => e && e.setOption(t, o),
+      on: (t, o) => e && e.on(t, o),
+      off: (t, o) => e && e.off(t, o),
       // ---- raw engine instance (escape hatch) ----
       instance: () => e
     }), () => {
       const t = [];
-      if (a.toolbar && t.push(l(
+      if (a.toolbar && t.push(r(
         "div",
         { class: "loc-vue-toolbar" },
-        u.value ? a.toolbar({ chart: e, state: r.value }) : []
-      )), t.push(l("div", { ref: S, class: "loc-vue-host" })), a.node)
-        for (const n of f.value)
-          t.push(l(
+        g.value ? a.toolbar({ chart: e, state: i.value }) : []
+      )), t.push(r("div", { ref: h, class: "loc-vue-host" })), a.node)
+        for (const o of f.value)
+          t.push(r(
             y,
-            { to: n.target, key: "n:" + n.id },
+            { to: o.target, key: "n:" + o.id },
             a.node({
-              node: n.node,
-              selected: r.value.selectedNodeId === n.id,
-              editMode: !!r.value.editMode,
-              themeStyle: n.themeStyle,
-              update: (c) => e && e.updateNode(n.id, c),
-              select: () => e && e.openInspector(n.id)
+              node: o.node,
+              selected: i.value.selectedNodeId === o.id,
+              editMode: !!i.value.editMode,
+              themeStyle: o.themeStyle,
+              update: (c) => e && e.updateNode(o.id, c),
+              select: () => e && e.openInspector(o.id)
             })
           ));
-      if (a.inspector && u.value && s.value && e) {
-        const n = e.getInspectorBody();
-        n && t.push(l(
+      if (a.inspector && g.value && s.value && e) {
+        const o = e.getInspectorBody();
+        o && t.push(r(
           y,
-          { to: n, key: "inspector" },
+          { to: o, key: "inspector" },
           a.inspector({
             node: s.value.node,
-            editMode: !!r.value.editMode,
+            editMode: !!i.value.editMode,
             update: (c) => e.updateNode(s.value.id, c),
             close: () => e.closeInspector()
           })
         ));
       }
-      return a.empty && v.value && t.push(l("div", { class: "loc-vue-empty" }, a.empty())), l("div", { class: "loc-vue-wrap" }, t);
+      return a.empty && v.value && t.push(r("div", { class: "loc-vue-empty" }, a.empty())), r("div", { class: "loc-vue-wrap" }, t);
     };
   }
-}), A = {
-  install(o, i = {}) {
-    o.component(i.name || "OrgChart", C);
+}), w = {
+  install(n, d = {}) {
+    n.component(d.name || "OrgChart", P);
   }
 };
 export {
-  C as OrgChart,
-  A as default
+  P as OrgChart,
+  w as default
 };

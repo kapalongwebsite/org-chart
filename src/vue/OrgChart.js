@@ -17,6 +17,7 @@ const EVENTS = [
   'node-click', 'node-select', 'node-drag-start', 'node-drag', 'node-drag-end',
   'layout-change', 'orientation-change', 'subtree-mode-change',
   'edit-mode-change', 'node-change', 'settings-change',
+  'inspector-open', 'inspector-close', 'fullscreen-change',
 ];
 
 function toStyle(s) {
@@ -39,6 +40,8 @@ export const OrgChart = defineComponent({
     readonly: { type: Boolean, default: false },
     editMode: { type: Boolean, default: false },
     inspector: { type: Boolean, default: true },
+    inspectorTarget: { type: [String, Object], default: null }, // mount the drawer outside the canvas
+    fullscreenControl: { type: Boolean, default: true },         // floating fullscreen button on the canvas
     settings: { type: Object, default: null },
     fitOnInit: { type: Boolean, default: true },
     toolbar: { type: [Boolean, Object], default: true },   // false | true | { subtree, orient, actions, grid, mode, export }
@@ -78,6 +81,8 @@ export const OrgChart = defineComponent({
         readonly: props.readonly,
         editMode: props.editMode,
         inspector: props.inspector,
+        inspectorTarget: props.inspectorTarget || null,
+        fullscreenControl: props.fullscreenControl,
         settings: props.settings || undefined,
         fitOnInit: props.fitOnInit,
         // a #toolbar slot replaces the built-in toolbar
@@ -129,14 +134,17 @@ export const OrgChart = defineComponent({
       setSubtreeMode: (m) => chart && chart.setSubtreeMode(m),
       setSpacing: (x, y) => chart && chart.setSpacing(x, y),
 
-      // ---- grid convenience (so toolbar doesn't need to know option keys) ----
+      // ---- grid (single canonical name each; setOption('showGrid', …) also works) ----
       setShowGrid: (on) => chart && chart.setShowGrid(on),
       setSnapToGrid: (on) => chart && chart.setSnapToGrid(on),
       setAlignToGrid: (on) => chart && chart.setAlignToGrid(on),
       toggleGrid: (force) => chart && chart.toggleGrid(force),
-      showGrid: (on) => chart && chart.setShowGrid(on),
-      snapToGrid: (on) => chart && chart.setSnapToGrid(on),
-      alignToGrid: (on) => chart && chart.setAlignToGrid(on),
+
+      // ---- fullscreen ----
+      enterFullscreen: () => chart && chart.enterFullscreen(),
+      exitFullscreen: () => chart && chart.exitFullscreen(),
+      toggleFullscreen: (force) => chart && chart.toggleFullscreen(force),
+      isFullscreen: () => !!(chart && chart.isFullscreen()),
 
       // ---- edit mode / inspector / settings ----
       setEditMode: (v) => chart && chart.setEditMode(v),
@@ -148,6 +156,7 @@ export const OrgChart = defineComponent({
       detachNode: (id) => chart && chart.detachNode(id),
       openInspector: (id) => chart && chart.openInspector(id),
       closeInspector: () => chart && chart.closeInspector(),
+      nodeScreenRect: (id) => chart && chart.nodeScreenRect(id),
       getSettings: () => chart && chart.getSettings(),
       setSettings: (s) => chart && chart.setSettings(s),
       toggleSettings: (f) => chart && chart.toggleSettings(f),
@@ -170,9 +179,6 @@ export const OrgChart = defineComponent({
       setOption: (key, val) => chart && chart.setOption(key, val),
       on: (name, cb) => chart && chart.on(name, cb),
       off: (name, cb) => chart && chart.off(name, cb),
-
-      // ---- convenience: reset view (clear search + relayout + fit) ----
-      reset: () => chart && chart.reset(),
 
       // ---- raw engine instance (escape hatch) ----
       instance: () => chart,

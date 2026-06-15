@@ -203,6 +203,9 @@ you render a chart.
 | `enablePan` | `Boolean` | `true` | allow canvas pan |
 | `enableZoom` | `Boolean` | `true` | allow wheel zoom |
 | `readonly` | `Boolean` | `false` | disable drag / waypoint edit / collapse |
+| `inspector` | `Boolean` | `true` | open the built-in drawer on node click; `false` = headless (emit `node-select` only) |
+| `inspectorTarget` | `String \| Element` | `null` | mount the drawer into an element outside the canvas |
+| `fullscreenControl` | `Boolean` | `true` | show the floating fullscreen button on the canvas |
 | `fitOnInit` | `Boolean` | `true` | frame the chart on mount |
 | `toolbar` | `Boolean` | `true` | show the built-in toolbar |
 | `persist` | `Boolean` | `false` | mirror state to `localStorage` |
@@ -232,11 +235,23 @@ All methods are available on:
 | `fitToScreen()` | Zoom & pan to frame all visible nodes |
 | `relayout()` | Recalculate layout; clears manual offsets & waypoints |
 | `resetView()` | Clear search + relayout + fit (one-stop view reset) |
-| `reset()` | Alias for `resetView()` |
 | `expandAll()` | Expand every collapsed node |
 | `collapseAll()` | Collapse every non-root node with children |
 | `toggleCollapse(id)` | Toggle a single node's collapsed state |
 | `centerOnNode(id)` | Pan to center a specific node in the viewport |
+
+### Fullscreen
+
+| Method | Description |
+|--------|-------------|
+| `enterFullscreen()` | Request fullscreen for the chart root |
+| `exitFullscreen()` | Leave fullscreen |
+| `toggleFullscreen(force?)` | Toggle, or force a specific state; returns the intended state |
+| `isFullscreen()` | Whether the chart root is the fullscreen element |
+
+> A **Fullscreen** toolbar button and a floating canvas-corner button are shown by
+> default; emit a `fullscreen-change` event on change. Hide the floating button with
+> `fullscreenControl: false`.
 
 ### Search
 
@@ -261,11 +276,8 @@ All methods are available on:
 | `setSnapToGrid(on)` | Toggle snap-to-grid during node drag |
 | `setAlignToGrid(on)` | Toggle grid-aligned layout positions |
 | `toggleGrid(force?)` | Toggle the grid overlay, or force a specific state |
-| `showGrid(on)` | Alias for `setShowGrid(on)` |
-| `snapToGrid(on)` | Alias for `setSnapToGrid(on)` |
-| `alignToGrid(on)` | Alias for `setAlignToGrid(on)` |
 
-> These convenience methods call `setOption()` under the hood. You can also use
+> These methods call `setOption()` under the hood. You can also use
 > `setOption('showGrid', true)` etc. directly.
 
 ### Edit / Inspector / Settings
@@ -281,6 +293,7 @@ All methods are available on:
 | `detachNode(id)` | Make a node a root (remove `parentId`) |
 | `openInspector(id)` | Open the right slide-in panel for a node |
 | `closeInspector()` | Close the inspector panel |
+| `nodeScreenRect(id)` | The node's on-screen rectangle (viewport coords), or `null` |
 | `getSettings()` | Get current settings (spacing, grid, theme rules) |
 | `setSettings(s)` | Apply settings (merges; fires `settings-change`) |
 | `toggleSettings(force?)` | Toggle the left settings panel |
@@ -305,12 +318,25 @@ All methods are available on:
 | `exportJSON(download?)` | Export full layout state as JSON; returns the object |
 | `buildSVG(raster?)` | Build the raw SVG string without downloading |
 
+### Customizing the inspector drawer
+
+The built-in right-hand drawer is optional and relocatable:
+
+- `inspector: false` — **headless**: the drawer never opens. Each node click still fires
+  `node-select` with `{ id, node, rect }` (`rect` = the node's on-screen box) so you can
+  render your own panel anywhere — even outside the chart.
+- `inspectorTarget: '#my-panel'` (selector or element) — keep the managed drawer but mount
+  it into an element **outside the canvas** (it renders inline there, flagged
+  `loc-panel-external`).
+- Vue: the `#inspector` slot teleports your own body into the managed drawer.
+
 ### Requested toolbar support
 
 Supported: all subtree modes (`Balanced`, `Center`, `Left`, `Right`, `Alternate`,
 `AlternateLeft`, `AlternateRight`, `Matrix`), all four orientations, fit, re-layout,
 reset, expand/collapse, search, show grid, snap to grid, align to grid, edit mode,
-settings panel, PNG, SVG, PDF, JSON export, JSON import, and raw SVG generation.
+settings panel, **fullscreen**, PNG, SVG, PDF, JSON export, JSON import, and raw SVG
+generation.
 
 Current no-op / unsupported list: none for the requested toolbar features. PDF export
 uses the browser print dialog from a generated SVG rather than a binary PDF writer.
@@ -335,7 +361,8 @@ uses the browser print dialog from a generated SVG rather than a binary PDF writ
     <div class="my-toolbar">
       <button @click="chartRef.fitToScreen()">Fit</button>
       <button @click="chartRef.relayout()">Re-layout</button>
-      <button @click="chartRef.reset()">Reset</button>
+      <button @click="chartRef.resetView()">Reset</button>
+      <button @click="chartRef.toggleFullscreen()">Fullscreen</button>
       <button @click="chartRef.expandAll()">Expand</button>
       <button @click="chartRef.collapseAll()">Collapse</button>
       <button @click="chartRef.setOrientation('LeftToRight')">Left→Right</button>

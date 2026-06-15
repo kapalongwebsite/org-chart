@@ -261,3 +261,28 @@
 .loc-node.loc-position { background: var(--loc-node-bg, #fff); border-color: var(--loc-node-border, var(--loc-border)); }
 .loc-node.loc-position .loc-pname { color: var(--loc-node-text, var(--loc-text-dark)); }
 .loc-node.loc-position .loc-ptitle { color: var(--loc-node-text, var(--loc-text-gray)); }
+
+/* ---------- Read-only waypoint markers (a selected line outside edit mode) ---------- */
+.loc-overlay .loc-wp-readonly { fill: #fff; stroke: var(--loc-accent); stroke-width: 2; opacity: .55; cursor: default; pointer-events: none; }
+
+/* ---------- Fullscreen ---------- */
+/* floating canvas-level control */
+.loc-fsbtn {
+  position: absolute; right: 10px; bottom: 10px; z-index: 6;
+  width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  background: #fff; border: 1px solid var(--loc-border); border-radius: 6px;
+  color: var(--loc-text-gray); font-size: 15px; line-height: 1; cursor: pointer;
+  box-shadow: 0 1px 2px rgba(16,24,40,.08);
+}
+.loc-fsbtn:hover { color: var(--loc-accent); border-color: var(--loc-accent); }
+/* when the root is the fullscreen element, fill the screen with the chart bg */
+.loc-root.loc-fullscreen, .loc-root:fullscreen { width: 100%; height: 100%; background: var(--loc-bg); }
+.loc-root:fullscreen { background: var(--loc-bg); }
+
+/* ---------- Inspector drawer mounted outside the canvas (inspectorTarget) ---------- */
+/* relocated drawer flows in its host element instead of overlaying the canvas */
+.loc-panel.loc-panel-external {
+  position: relative; top: auto; right: auto; bottom: auto;
+  width: 100%; max-width: none; height: 100%;
+  transform: none; box-shadow: none; border-left: 0;
+}
