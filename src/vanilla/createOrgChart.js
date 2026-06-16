@@ -42,6 +42,7 @@ const DEFAULT_OPTS = {
   settingsSlot: false,   // leave the settings body empty for an external (Vue) slot
   nodeSlots: false,   // render empty positioned hosts (Vue teleports card content in)
   fullscreenControl: true, // show the floating fullscreen button on the canvas
+  autoEdgeSide: false,     // (opt-in) connector endpoints follow waypoints onto any box side (L/R/top/bottom)
   legend: false,           // show a floating legend (type / status / active theme rules); toggle via toolbar
   legendTarget: null,      // mount the legend into an external element instead of the canvas corner
   legendSlot: false,       // leave the legend body empty for an external (Vue #legend) slot
@@ -75,6 +76,7 @@ export function createOrgChart(host, userOpts = {}) {
     editMode: !!opts.editMode,
     showImages: opts.showImages !== false,
     showLegend: !!opts.legend,
+    autoEdgeSide: !!opts.autoEdgeSide,
   };
   let NODES = (opts.nodes || []).map(makeNode);
   let nodeById = indexNodes(NODES);
@@ -199,6 +201,7 @@ export function createOrgChart(host, userOpts = {}) {
       orientation: state.orientation, subtreeMode: state.subtreeMode,
       spacingX: state.spacingX, spacingY: state.spacingY,
       gridSize: state.gridSize, alignGrid: state.alignGrid,
+      autoEdgeSide: state.autoEdgeSide,
     });
   }
   function runLayout() {
@@ -611,10 +614,10 @@ export function createOrgChart(host, userOpts = {}) {
     };
     addWin('pointermove', apply); addWin('pointerup', up);
   }
-  /* is this edge connected to the currently selected node (as parent OR child end)? */
+  /* is this edge connected to ANY selected node (as parent OR child end)? — so a
+     marquee / multi-selection highlights every incident connector, not just one. */
   function isIncidentEdge(n) {
-    const sel = state.selectedNodeId;
-    return !!sel && (n.id === sel || n.parentId === sel);
+    return selectedIds.has(n.id) || selectedIds.has(n.parentId);
   }
   /* highlight every connector touching the selected node so you can see where it
      connects (both its parent edge and its child edges) */
@@ -1016,7 +1019,7 @@ export function createOrgChart(host, userOpts = {}) {
       spacingX: state.spacingX, spacingY: state.spacingY, gridSize: state.gridSize,
       orientation: state.orientation, subtreeMode: state.subtreeMode,
       showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid,
-      showImages: state.showImages,
+      showImages: state.showImages, autoEdgeSide: state.autoEdgeSide,
       themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
     };
   }
@@ -1034,6 +1037,7 @@ export function createOrgChart(host, userOpts = {}) {
       state.showImages = !!s.showImages;
       for (const id in elById) { elById[id].remove(); delete elById[id]; }   // rebuild cards on image toggle
     }
+    if ('autoEdgeSide' in s) state.autoEdgeSide = !!s.autoEdgeSide;
     if (Array.isArray(s.themeRules)) themeRules = s.themeRules.map(normalizeRule);
     applyGridOverlay(); syncToolbar(); refresh();
     if (settingsPanel.classList.contains('loc-open')) renderSettings();
@@ -1099,6 +1103,7 @@ export function createOrgChart(host, userOpts = {}) {
       + setRange('spacingY', 'Spacing Y', state.spacingY, 0, 260)
       + setRange('gridSize', 'Grid size', state.gridSize, 6, 80)
       + `<label class="loc-color"><input type="checkbox" data-set-toggle="showImages"${state.showImages ? ' checked' : ''}/><span>Show photos (off → user icon)</span></label>`
+      + `<label class="loc-color"><input type="checkbox" data-set-toggle="autoEdgeSide"${state.autoEdgeSide ? ' checked' : ''}/><span>Smart edges (lines follow waypoints to any side)</span></label>`
       + '</div>';
     h += '<div class="loc-set-section"><div class="loc-set-title">Theme rules</div>'
       + '<div class="loc-set-hint">Recolor nodes that match a field = value. Later rules win.</div>';
@@ -1124,7 +1129,7 @@ export function createOrgChart(host, userOpts = {}) {
       subtreeMode: state.subtreeMode, orientation: state.orientation,
       spacingX: state.spacingX, spacingY: state.spacingY, gridSize: state.gridSize,
       showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid,
-      showImages: state.showImages,
+      showImages: state.showImages, autoEdgeSide: state.autoEdgeSide,
       themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
     };
   }
@@ -1137,6 +1142,7 @@ export function createOrgChart(host, userOpts = {}) {
     if ('snapGrid' in v) state.snapGrid = !!v.snapGrid;
     if ('alignGrid' in v) state.alignGrid = !!v.alignGrid;
     if ('showImages' in v) state.showImages = !!v.showImages;
+    if ('autoEdgeSide' in v) state.autoEdgeSide = !!v.autoEdgeSide;
     if (Array.isArray(v.themeRules)) themeRules = v.themeRules.map(normalizeRule);
   }
   function snapshot() {
@@ -1199,6 +1205,7 @@ export function createOrgChart(host, userOpts = {}) {
         zoom: state.zoom, panX: state.panX, panY: state.panY,
         showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid, gridSize: state.gridSize,
         editMode: state.editMode, showImages: state.showImages, showLegend: state.showLegend,
+        autoEdgeSide: state.autoEdgeSide,
         manualOffsets, edgeWaypoints, edgeAnchors, nodeOverrides, themeRules,
         collapsed: NODES.filter((n) => n.collapsed).map((n) => n.id),
       }));
@@ -1215,6 +1222,7 @@ export function createOrgChart(host, userOpts = {}) {
     state.editMode = !!s.editMode;
     if ('showImages' in s) state.showImages = !!s.showImages;
     if ('showLegend' in s) state.showLegend = !!s.showLegend;
+    if ('autoEdgeSide' in s) state.autoEdgeSide = !!s.autoEdgeSide;
     if (s.manualOffsets) manualOffsets = s.manualOffsets;
     if (s.edgeWaypoints) edgeWaypoints = s.edgeWaypoints;
     if (s.edgeAnchors) edgeAnchors = s.edgeAnchors;
@@ -1394,6 +1402,14 @@ export function createOrgChart(host, userOpts = {}) {
   function setSnapToGrid(on) { setOption('snapGrid', !!on); return state.snapGrid; }
   function setAlignToGrid(on) { setOption('alignGrid', !!on); return state.alignGrid; }
   function toggleGrid(force) { return setShowGrid(force == null ? !state.showGrid : force); }
+  /* (opt-in) let connector endpoints follow waypoints onto any box side (left/right/top/bottom) */
+  function setAutoEdgeSide(on) {
+    state.autoEdgeSide = on == null ? !state.autoEdgeSide : !!on;
+    deselectEdge(); refresh();
+    if (settingsPanel.classList.contains('loc-open')) renderSettings();
+    persist(); emit('settings-change', getSettings());
+    return state.autoEdgeSide;
+  }
   /* toggle person photos; when off (or a photo is missing) the user-silhouette icon shows */
   function setShowImages(on) {
     state.showImages = on == null ? !state.showImages : !!on;
@@ -1535,6 +1551,7 @@ export function createOrgChart(host, userOpts = {}) {
       refresh(); emit('settings-change', getSettings()); persist(); return;
     }
     if (t.dataset.setToggle === 'showImages') { setShowImages(t.checked); return; }
+    if (t.dataset.setToggle === 'autoEdgeSide') { setAutoEdgeSide(t.checked); return; }
     if (t.dataset.rule != null) {
       const i = +t.dataset.rule, rk = t.dataset.rk, r = themeRules[i]; if (!r) return;
       if (rk === 'enabled') r.enabled = t.checked;
@@ -1704,6 +1721,7 @@ export function createOrgChart(host, userOpts = {}) {
     setEditMode, isEditMode: () => state.editMode,
     setShowImages, isShowingImages: () => state.showImages,
     setShowLegend, toggleLegend, isShowingLegend: () => state.showLegend, getLegendBody: () => legendBody,
+    setAutoEdgeSide, isAutoEdgeSide: () => state.autoEdgeSide,
     setPhotoHeight: (px) => { opts.photoHeight = px; root.style.setProperty('--loc-photo-h', (px || 104) + 'px'); },
     // multi-select
     getSelection: () => [...selectedIds],

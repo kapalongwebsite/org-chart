@@ -1,6 +1,6 @@
 {
   "name": "local-org-chart",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "private": true,
   "description": "Dependency-free organizational chart engine with automatic subtree layout (Balanced / Alternate / Matrix), 4 orientations, pan/zoom/drag, search, expand-collapse, manual offsets, orthogonal connector waypoints, and SVG/PNG/PDF/JSON export. Ships a framework-independent core, a plain-JS renderer, and a Vue 3 wrapper.",
   "type": "module",

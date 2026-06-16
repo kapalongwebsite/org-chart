@@ -3,6 +3,20 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.11.0 — 2026-06-15
+
+### Added
+- **Smart edges (`autoEdgeSide`, opt-in).** When on, a connector's endpoints follow its
+  waypoints onto **any** box side — drag a waypoint to the left and the line now exits the
+  **left** edge (previously a top-to-bottom chart pinned endpoints to top/bottom, and a
+  left-to-right chart to left/right). Off by default so the classic look is unchanged. Toggle via
+  the **Settings → "Smart edges"** checkbox, the `autoEdgeSide` option, or `setAutoEdgeSide()`.
+
+### Fixed
+- **Multi-select now highlights every selected node's connectors.** Selecting more than one node
+  (Ctrl/⌘+click or marquee) highlighted only **one** line — the incident-edge highlight followed
+  just the primary node. It now highlights all connectors touching **any** node in the selection.
+
 ## v1.10.0 — 2026-06-15
 
 ### Added

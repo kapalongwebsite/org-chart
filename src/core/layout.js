@@ -198,6 +198,7 @@ export function normalizeConfig(options = {}) {
     spacingY: options.spacingY != null ? options.spacingY : 70,
     gridSize: options.gridSize != null ? options.gridSize : 22,
     alignGrid: !!options.alignGrid,
+    autoEdgeSide: !!options.autoEdgeSide,
   };
 }
 

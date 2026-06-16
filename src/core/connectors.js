@@ -79,14 +79,18 @@ export function edgeControlPoints(parent, child, wps, cfg, manualOffsets, anchor
   const first = wps.length ? wps[0] : effCenter(child, manualOffsets);
   const last = wps.length ? wps[wps.length - 1] : effCenter(parent, manualOffsets);
   const ends = edgeEndpoints(parent, child, first, last, cfg, manualOffsets, anchors);
-  const S = ends.S;
-  let E = ends.E;
-  // With no manual waypoints/anchor, the auto route (routeConnector) decides the
-  // child entry by routeType: SPINE routes enter from the side facing the parent,
-  // not the perpendicular center. Match that here so the selected-line edit
-  // handles (add dots + endpoint square) land on the actual drawn line instead of
-  // floating off to the side. (Manual anchors/waypoints keep the toward-based entry.)
-  if (!wps.length && !(anchors && anchors.c) && child.routeType !== 'bus') {
+  let S = ends.S, E = ends.E;
+  if (cfg.autoEdgeSide && wps.length) {
+    // autoEdgeSide (opt-in): when the line has waypoints, each endpoint picks the box
+    // side (top/bottom/LEFT/RIGHT) that FACES its nearest waypoint — so dragging a
+    // waypoint to the side pulls the endpoint onto that side. Manual anchors still win.
+    if (!(anchors && anchors.p)) S = facingEdge(parent, effCenter(parent, manualOffsets), wps[0]);
+    if (!(anchors && anchors.c)) E = facingEdge(child, effCenter(child, manualOffsets), wps[wps.length - 1]);
+  } else if (!wps.length && !(anchors && anchors.c) && child.routeType !== 'bus') {
+    // With no manual waypoints/anchor, the auto route (routeConnector) decides the
+    // child entry by routeType: SPINE routes enter from the side facing the parent,
+    // not the perpendicular center. Match that here so the selected-line edit
+    // handles (add dots + endpoint square) land on the actual drawn line.
     const C = effCenter(child, manualOffsets), P = effCenter(parent, manualOffsets);
     const cw = child.node.width, chh = child.node.height;
     E = !isHorizontal(cfg)
@@ -94,6 +98,14 @@ export function edgeControlPoints(parent, child, wps, cfg, manualOffsets, anchor
       : { x: C.x, y: (C.y <= P.y) ? C.y + chh / 2 : C.y - chh / 2 };
   }
   return [S].concat(wps.map((w) => ({ x: w.x, y: w.y })), [E]);
+}
+
+/* midpoint of whichever box side faces `toward` (aspect-aware diagonal split) */
+function facingEdge(posNode, center, toward) {
+  const w = posNode.node.width, h = posNode.node.height;
+  const dx = toward.x - center.x, dy = toward.y - center.y;
+  if (Math.abs(dx) * h >= Math.abs(dy) * w) return { x: center.x + (dx >= 0 ? w / 2 : -w / 2), y: center.y };
+  return { x: center.x, y: center.y + (dy >= 0 ? h / 2 : -h / 2) };
 }
 
 export function orthoThrough(controls, horizontal) {

@@ -210,6 +210,7 @@ you render a chart.
 | `fitOnLayoutChange` | `Boolean \| String` | `true` | re-frame after a mode/orientation/re-layout change: `true`/`'fit'`, `'recenter'` (keep zoom), `false`/`'none'` |
 | `showImages` | `Boolean` | `true` | show person photos; off (or a missing/broken photo) → a user-silhouette icon |
 | `photoHeight` | `Number` | `104` | person-photo height in px — uniform across cards; larger = bigger profile image |
+| `autoEdgeSide` | `Boolean` | `false` | opt-in "smart edges": connector endpoints follow waypoints onto any box side (left/right/top/bottom) |
 | `legend` | `Boolean` | `false` | show the floating legend (type / status / active theme rules) |
 | `legendTarget` | `String \| Element` | `null` | mount the legend into an element outside the canvas |
 | `userSearch` | `Function` | `null` | `(query, node) => Promise<user[]> \| user[]` — turns the inspector's **Person name** field into a typeahead backed by your API |
@@ -333,6 +334,15 @@ a **marquee** box (hold **Shift** to extend). Dragging any selected node **moves
 > The legend auto-lists the node **types**, **statuses** and **active theme rules** in the data.
 > Toggle it with the **Legend** toolbar button or `legend: true`. Mount it outside the canvas with
 > `legendTarget`, or replace its body with the Vue **`#legend`** slot (gets `{ nodes, settings, close }`).
+
+### Smart edges (`autoEdgeSide`)
+
+By default a connector's endpoints stay on the orientation's axis — top/bottom in a vertical chart,
+left/right in a horizontal one — so dragging a waypoint only ever flips an endpoint between top and
+bottom. Turn on **`autoEdgeSide`** (option, **Settings → "Smart edges"**, or `setAutoEdgeSide(true)`)
+and each endpoint instead picks whichever box side **faces its nearest waypoint** — drag a waypoint
+to the left and the line exits the **left** edge. Opt-in, so the classic look is unchanged by default.
+(Dragging the endpoint square itself to a side still works in any mode.)
 
 ### Person-name typeahead (your backend API)
 

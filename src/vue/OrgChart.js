@@ -52,6 +52,7 @@ export const OrgChart = defineComponent({
     photoHeight: { type: Number, default: 104 },                   // person-photo height in px (uniform, larger = bigger image)
     legend: { type: Boolean, default: false },                     // show the floating legend
     legendTarget: { type: [String, Object], default: null },       // mount the legend into an external element
+    autoEdgeSide: { type: Boolean, default: false },               // (opt-in) endpoints follow waypoints onto any box side
     userSearch: { type: Function, default: null },                 // (query, node) => Promise<user[]> | user[] — person-name typeahead from your API
     userToFields: { type: Function, default: null },               // (user, node) => field patch for a chosen user
     snapAlign: { type: Boolean, default: true },                   // snap-to-align (parent axis + siblings) while dragging
@@ -105,6 +106,7 @@ export const OrgChart = defineComponent({
         legend: props.legend,
         legendTarget: props.legendTarget || null,
         legendSlot: !!slots.legend,
+        autoEdgeSide: props.autoEdgeSide,
         userSearch: props.userSearch || null,
         userToFields: props.userToFields || null,
         snapAlign: props.snapAlign,
@@ -145,6 +147,7 @@ export const OrgChart = defineComponent({
     watch(() => props.showImages, (v) => chart && chart.setShowImages(v));
     watch(() => props.photoHeight, (v) => chart && chart.setPhotoHeight(v));
     watch(() => props.legend, (v) => chart && chart.setShowLegend(v));
+    watch(() => props.autoEdgeSide, (v) => chart && chart.setAutoEdgeSide(v));
     watch(() => props.userSearch, (v) => chart && chart.setOption('userSearch', v || null));
     watch(() => props.userToFields, (v) => chart && chart.setOption('userToFields', v || null));
     watch(() => props.snapAlign, (v) => chart && chart.setOption('snapAlign', v));
@@ -195,6 +198,8 @@ export const OrgChart = defineComponent({
       setShowLegend: (on) => chart && chart.setShowLegend(on),
       toggleLegend: (force) => chart && chart.toggleLegend(force),
       isShowingLegend: () => !!(chart && chart.isShowingLegend()),
+      setAutoEdgeSide: (on) => chart && chart.setAutoEdgeSide(on),
+      isAutoEdgeSide: () => !!(chart && chart.isAutoEdgeSide()),
       getSelection: () => (chart ? chart.getSelection() : []),
       setSelection: (ids) => chart && chart.setSelection(ids),
       clearSelection: () => chart && chart.clearSelection(),
