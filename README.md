@@ -208,8 +208,9 @@ you render a chart.
 | `settingsTarget` | `String \| Element` | `null` | mount the settings drawer into an element outside the canvas |
 | `fullscreenControl` | `Boolean` | `true` | show the floating fullscreen button on the canvas |
 | `fitOnLayoutChange` | `Boolean \| String` | `true` | re-frame after a mode/orientation/re-layout change: `true`/`'fit'`, `'recenter'` (keep zoom), `false`/`'none'` |
-| `targetAspect` | `Number` | `1.6` | Custom fill shape (width / height); default ≈ landscape tarp |
-| `targetSize` | `Object` | `null` | `{ width, height }` (any units) — Custom fills this; overrides `targetAspect` |
+| `showImages` | `Boolean` | `true` | show person photos; off (or a missing/broken photo) → a user-silhouette icon |
+| `userSearch` | `Function` | `null` | `(query, node) => Promise<user[]> \| user[]` — turns the inspector's **Person name** field into a typeahead backed by your API |
+| `userToFields` | `Function` | `null` | `(user, node) => patch` — map a chosen user to node fields (default: name/title/photo_url) |
 | `snapAlign` | `Boolean` | `true` | while dragging, snap to the parent's connector axis + sibling centers (with guide lines) |
 | `fitOnInit` | `Boolean` | `true` | frame the chart on mount |
 | `toolbar` | `Boolean` | `true` | show the built-in toolbar |
@@ -223,7 +224,10 @@ feature flags updates the chart automatically (no manual re-init). When changing
 ## 9. Vue events
 
 `node-click`, `node-select`, `node-drag-start`, `node-drag`, `node-drag-end`,
-`layout-change`, `orientation-change`, `subtree-mode-change`.
+`layout-change`, `orientation-change`, `subtree-mode-change`, `edit-mode-change`,
+`node-change`, `settings-change`, `inspector-open`/`-close`, `settings-open`/`-close`,
+`fullscreen-change`, `history-change` (`{ canUndo, canRedo }`), `attach-start`/`attach-cancel`,
+`user-select` (`{ id, user, node }` — a typeahead pick).
 
 Each payload includes the relevant `{ id, node, ... }`.
 
@@ -277,13 +281,49 @@ All methods are available on:
 > because with uniform-height cards it lays out identically to `Balanced`. It only differs when
 > nodes at the same level have different heights (it locks each depth to one uniform row).
 
-> **`Custom` (experimental):** packs children into wrapping rows and **auto-spreads to fill a
-> target shape** (good for printing to a fixed size / tarp). Set the shape with
-> `targetSize: { width, height }` or `targetAspect` (default `1.6`) — or use the **Settings →
-> Fill target** control (Width/Height + Portrait/Landscape). Connectors route in per-column
-> channels so they don't cross boxes (TopToBottom). **The fill target affects Custom only** —
-> other modes have fixed shapes and ignore it. Aspect fitting is coarse (fills *toward* the
-> target); deep single-child chains stay vertical.
+### Undo / Redo
+
+| Method | Description |
+|--------|-------------|
+| `undo()` / `redo()` | Step back / forward through edits |
+| `canUndo()` / `canRedo()` | Whether a step is available (for enabling buttons) |
+
+> Every node & connector edit — move, field change, add/delete, attach/detach, waypoint/anchor
+> edit, collapse — is one undo step (typing into a field coalesces into one). Toolbar **Undo**/
+> **Redo** buttons (the `history` toolbar group) and **Ctrl/⌘+Z** / **Ctrl/⌘+Shift+Z** (or
+> **Ctrl+Y**) when the chart has focus. A `history-change` event fires with `{ canUndo, canRedo }`.
+
+### Images
+
+| Method | Description |
+|--------|-------------|
+| `setShowImages(on?)` | Toggle person photos (no arg = toggle); off → user-silhouette icon |
+| `isShowingImages()` | Current state |
+
+> Also a **Images** toolbar button and a Settings checkbox. When a photo URL is missing or fails
+> to load, the user-silhouette icon is drawn automatically regardless of this setting.
+
+### Person-name typeahead (your backend API)
+
+Pass a `userSearch` function and the inspector's **Person name** field becomes a typeahead — as
+you type it calls your API and shows a dropdown; picking a result fills the node.
+
+```js
+createOrgChart(el, {
+  editMode: true,
+  // (query, node) => Promise<user[]> | user[]
+  userSearch: async (q) => {
+    const res = await fetch(`/api/users?q=${encodeURIComponent(q)}`);
+    return res.json(); // e.g. [{ id, name, title, photo_url }, ...]
+  },
+  // optional: control how a picked user maps onto the node (default shown)
+  userToFields: (u) => ({ personName: u.name, label: u.title, photo_url: u.photo_url }),
+});
+```
+
+In Vue: `<OrgChart :user-search="searchUsers" @user-select="onPick" />`. The default mapper reads
+`name`/`personName`, `title`, and `photo_url`/`avatar`/`image` — return your own patch from
+`userToFields` for anything else.
 
 ### Grid
 
@@ -306,8 +346,10 @@ All methods are available on:
 | `updateNode(id, patch)` | Merge `patch` into a node's data |
 | `addChild(parentId)` | Create a new child node (edit mode only) |
 | `deleteNode(id)` | Delete a node + its descendants (edit mode only) |
-| `reparentNode(id, newParentId)` | Move a node under a new parent |
-| `detachNode(id)` | Make a node a root (remove `parentId`) |
+| `reparentNode(id, newParentId)` | Re-wire a node's parent — **connection only, no relayout** (positions are kept) |
+| `detachNode(id)` | Detach from parent (remove the connection); nothing moves |
+| `attachNode(id, parentId)` | Attach under a parent (add the connection); nothing moves |
+| `beginAttach(id)` / `cancelAttach()` | Interactive attach: after `beginAttach`, the next node click becomes `id`'s parent |
 | `openInspector(id)` | Open the right slide-in panel for a node |
 | `closeInspector()` | Close the inspector panel |
 | `nodeScreenRect(id)` | The node's on-screen rectangle (viewport coords), or `null` |
@@ -499,7 +541,7 @@ Later matching rules win. In Vue, pass `:settings="{ themeRules: [...] }"` (watc
 ## 14. Controlling the toolbar & Vue slots
 
 **Show/hide toolbar groups** — `toolbar` accepts `true` (all), `false` (none), or an object to
-pick groups: `subtree`, `orient`, `actions`, `search`, `grid`, `mode`, `export`. This toggles
+pick groups: `subtree`, `orient`, `history` (Undo/Redo), `actions`, `search`, `grid`, `mode`, `export`. This toggles
 whole **groups** (not individual buttons) and keeps the built-in styling.
 ```html
 <!-- hide the Grid and Export groups, keep the rest -->

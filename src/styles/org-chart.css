@@ -301,20 +301,31 @@
 .loc-overlay .loc-aligns { pointer-events: none; }
 .loc-overlay .loc-align-line { stroke: var(--loc-accent); stroke-width: 1; stroke-dasharray: 5 4; opacity: .75; pointer-events: none; }
 
-/* ---------- Settings: Custom fill-target controls ---------- */
-.loc-set-orient { display: flex; gap: 6px; margin-top: 4px; }
-.loc-set-orient button {
-  flex: 1 1 0; padding: 6px 8px; cursor: pointer; font-size: 12px;
-  border: 1px solid var(--loc-border); border-radius: 6px; background: #fff; color: var(--loc-text-gray);
-}
-.loc-set-orient button:hover { background: #f1f5f9; color: var(--loc-text-dark); }
-.loc-set-section input[type="number"] { width: 90px; padding: 4px 6px; border: 1px solid var(--loc-border); border-radius: 6px; }
+/* ---------- Incident-edge highlight (click a node → show its connections) ---------- */
+.loc-connectors path.loc-incident { stroke: var(--loc-accent); stroke-width: 2.5; }
 
-/* ---------- Department "banner" bars (Custom/Custom) ---------- */
-.loc-node.loc-banner {
-  border-radius: 6px;
-  box-shadow: 0 2px 6px rgba(16,24,40,.18);
-  font-size: calc(13.5px * var(--loc-fit, 1));
-  letter-spacing: .6px;
+/* ---------- Toolbar disabled buttons (Undo/Redo when nothing to do) ---------- */
+.loc-toolbar button:disabled { opacity: .4; cursor: default; }
+.loc-toolbar button:disabled:hover { background: #fff; }
+
+/* ---------- User-silhouette placeholder (images off / missing / broken) ---------- */
+.loc-photo .loc-usericon { width: 60%; height: 60%; fill: none; stroke: var(--loc-muted); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- Attach mode: clicking a node wires it as the new parent ---------- */
+.loc-root.loc-attaching .loc-canvas { cursor: crosshair; }
+.loc-root.loc-attaching .loc-node:hover { outline: 3px dashed #16a34a; outline-offset: 2px; cursor: crosshair; }
+.loc-root:focus { outline: none; }
+
+/* ---------- Person-name typeahead (backed by opts.userSearch) ---------- */
+.loc-usersearch { position: relative; }
+.loc-usersearch-list {
+  position: absolute; left: 0; right: 0; top: 100%; z-index: 9; margin-top: 2px;
+  background: #fff; border: 1px solid var(--loc-border); border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(16,24,40,.14); max-height: 220px; overflow: auto;
 }
-.loc-node.loc-banner .loc-lbl { width: 100%; text-align: center; }
+.loc-usersearch-item {
+  display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left;
+  padding: 6px 10px; border: 0; background: #fff; cursor: pointer; font: inherit; color: var(--loc-text-dark);
+}
+.loc-usersearch-item:hover { background: #f1f5f9; }
+.loc-usersearch-item small { color: var(--loc-text-gray); font-size: 11px; }

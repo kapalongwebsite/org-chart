@@ -42,9 +42,13 @@ const DEFAULT_OPTS = {
   settingsSlot: false,   // leave the settings body empty for an external (Vue) slot
   nodeSlots: false,   // render empty positioned hosts (Vue teleports card content in)
   fullscreenControl: true, // show the floating fullscreen button on the canvas
-  // Custom fills this target shape. `targetSize` (a tarp's W×H, any units) wins; else targetAspect.
-  targetAspect: 1.6,       // default ≈ landscape tarp (W/H)
-  targetSize: null,        // e.g. { width: 8, height: 4 } → aspect 2.0
+  showImages: true,        // show person photos; when off (or no photo) a user-silhouette icon is drawn
+  // optional async person lookup for the inspector's "Person name" field. A function
+  //   (query, node) => Promise<Array<user>> | Array<user>
+  // turns the field into a typeahead so you can pick a user from your own backend API.
+  userSearch: null,
+  // map a chosen user object to a node field patch (default: name/title/photo_url)
+  userToFields: null,
   fitOnLayoutChange: true, // re-frame after mode/orientation/re-layout: true|'fit' · 'recenter' · false|'none'
   fitOnInit: true,
   toolbar: true,      // true | false | { subtree, orient, actions, grid, mode, export }
@@ -65,6 +69,7 @@ export function createOrgChart(host, userOpts = {}) {
     gridSize: opts.gridSize, showGrid: opts.showGrid,
     snapGrid: opts.snapGrid, alignGrid: opts.alignGrid,
     editMode: !!opts.editMode,
+    showImages: opts.showImages !== false,
   };
   let NODES = (opts.nodes || []).map(makeNode);
   let nodeById = indexNodes(NODES);
@@ -98,6 +103,7 @@ export function createOrgChart(host, userOpts = {}) {
   // ---- DOM scaffold ----
   const root = document.createElement('div');
   root.className = 'loc-root';
+  root.tabIndex = -1;   // focusable (not a tab-stop) so Ctrl+Z / Ctrl+Shift+Z reach the chart, scoped to it
   const toolbarEl = opts.toolbar ? buildToolbar() : null;
   if (toolbarEl) root.appendChild(toolbarEl);
 
@@ -173,7 +179,6 @@ export function createOrgChart(host, userOpts = {}) {
       orientation: state.orientation, subtreeMode: state.subtreeMode,
       spacingX: state.spacingX, spacingY: state.spacingY,
       gridSize: state.gridSize, alignGrid: state.alignGrid,
-      targetAspect: opts.targetAspect, targetSize: opts.targetSize,
     });
   }
   function runLayout() {
@@ -188,6 +193,27 @@ export function createOrgChart(host, userOpts = {}) {
     applyTransform();
     applySearchDim();
     persist();
+    emit('layout-change', { positioned, mode: state.subtreeMode, orientation: state.orientation });
+  }
+  /* Apply a structural change (parent/child wiring) WITHOUT visually moving anything.
+     We snapshot every node's on-screen position, run the change + layout, then pin
+     any node the relayout would have moved back to where it was (via manualOffsets).
+     So "detach"/"attach" just add or remove a connection — the boxes stay put.
+     A later Re-layout clears the pins and reflows normally. */
+  function structuralEditKeepPositions(mutate) {
+    const oldEff = Object.create(null);
+    for (const p of positioned) oldEff[p.node.id] = effCenter(p, manualOffsets);
+    mutate();
+    runLayout();
+    for (const p of positioned) {
+      const o = oldEff[p.node.id]; if (!o) continue;          // brand-new node → keep its laid-out spot
+      const dx = o.x - p.cx, dy = o.y - p.cy;
+      // pin the node to where it was; if the relayout already lands it there, drop
+      // any (now-stale) pin instead of leaving it — else it double-displaces.
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) manualOffsets[p.node.id] = { dx, dy };
+      else delete manualOffsets[p.node.id];
+    }
+    sizeSvg(); drawConnectors(); drawNodes(); applyTransform(); applySearchDim(); persist();
     emit('layout-change', { positioned, mode: state.subtreeMode, orientation: state.orientation });
   }
 
@@ -207,12 +233,15 @@ export function createOrgChart(host, userOpts = {}) {
         applyTheme(elNode, n);
       }
       elNode.classList.toggle('loc-selected', state.selectedNodeId === n.id);
-      elNode.classList.toggle('loc-banner', !!p.banner);
       updateToggle(elNode, n);
     }
     for (const id in elById) if (!seen[id]) { elById[id].remove(); delete elById[id]; }
     emit('nodes-rendered', { ids: positioned.map((p) => p.node.id) });
   }
+  // neutral user-silhouette placeholder drawn when images are off / missing / broken
+  const USER_ICON = '<svg class="loc-usericon" viewBox="0 0 24 24" aria-hidden="true">'
+    + '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>';
+  function showUserIcon(photo) { photo.textContent = ''; photo.innerHTML = USER_ICON; }
   function buildNodeEl(n) {
     // host mode: empty positioned shell; the consumer (Vue #node slot) fills it
     if (opts.nodeSlots) {
@@ -233,10 +262,12 @@ export function createOrgChart(host, userOpts = {}) {
         + '<div class="loc-pname"></div><div class="loc-ptitle"></div><div class="loc-badge"></div></div>';
       const photo = d.querySelector('.loc-photo');
       const url = n.data && n.data.photo_url;
-      if (url) {
-        const img = new Image(); img.alt = ''; img.referrerPolicy = 'no-referrer';
-        img.onerror = () => { photo.textContent = '●'; }; img.src = url; photo.appendChild(img);
-      } else { photo.textContent = '●'; }
+      // when images are toggled off, or there is no URL, fall back to a neutral
+      // user-silhouette icon (the alt placeholder)
+      if (state.showImages && url) {
+        const img = new Image(); img.alt = n.personName || ''; img.referrerPolicy = 'no-referrer';
+        img.onerror = () => { showUserIcon(photo); }; img.src = url; photo.appendChild(img);
+      } else { showUserIcon(photo); }
       d.querySelector('.loc-pname').textContent = n.personName || '—';
       d.querySelector('.loc-ptitle').textContent = n.label;
       const b = d.querySelector('.loc-badge');
@@ -261,32 +292,7 @@ export function createOrgChart(host, userOpts = {}) {
 
   // ================= connectors =================
   function createNS(tag) { return document.createElementNS(SVGNS, tag); }
-  // Custom grid connector: a trunk just below the parent + one vertical bus per
-  // column (in a reserved left channel) + a short stub to each child's left edge —
-  // so no line crosses a box. TopToBottom only; other orientations fall back to bus.
-  const GRID_STUB = 16;
-  function gridConnectorPath(child) {
-    const parent = posById[child.node.parentId]; if (!parent) return null;
-    const sibs = positioned.filter((p) => p.node.parentId === child.node.parentId && p.routeType === 'grid');
-    if (!sibs.length) return null;
-    const ec = (p) => effCenter(p, manualOffsets);
-    const P = ec(parent), parentBottom = P.y + parent.node.height / 2;
-    let blockTop = Infinity;
-    for (const s of sibs) blockTop = Math.min(blockTop, ec(s).y - s.node.height / 2);
-    const trunkY = (parentBottom + blockTop) / 2;
-    const c = ec(child);
-    let colLeft = Infinity;
-    for (const s of sibs) { const sc = ec(s); if (Math.abs(sc.x - c.x) < 1) colLeft = Math.min(colLeft, sc.x - s.node.width / 2); }
-    const busX = colLeft - GRID_STUB, childLeft = c.x - child.node.width / 2;
-    const f = (v) => v.toFixed(1);
-    return `M ${f(P.x)} ${f(parentBottom)} L ${f(P.x)} ${f(trunkY)} L ${f(busX)} ${f(trunkY)} L ${f(busX)} ${f(c.y)} L ${f(childLeft)} ${f(c.y)}`;
-  }
   function connectorD(p) {
-    const id = p.node.id;
-    const hasManual = (edgeWaypoints[id] && edgeWaypoints[id].length) || edgeAnchors[id];
-    if (!hasManual && p.routeType === 'grid' && state.orientation === 'TopToBottom') {
-      const g = gridConnectorPath(p); if (g) return g;
-    }
     return routeConnector(posById[p.node.parentId], p, cfg(), manualOffsets, edgeWaypoints, edgeAnchors);
   }
   function drawConnectors() {
@@ -299,6 +305,7 @@ export function createOrgChart(host, userOpts = {}) {
       let path = pathById[n.id];
       if (!path) { path = createNS('path'); pathById[n.id] = path; svg.appendChild(path); }
       path.setAttribute('d', d); path.classList.toggle('loc-sel', state.selectedEdgeId === n.id);
+      path.classList.toggle('loc-incident', isIncidentEdge(n));
       let hit = hitById[n.id];
       if (!hit) { hit = createNS('path'); hit.dataset.edge = n.id; hitById[n.id] = hit; edgeHitsG.appendChild(hit); }
       hit.setAttribute('d', d);
@@ -380,15 +387,15 @@ export function createOrgChart(host, userOpts = {}) {
   }
 
   // ================= expand / collapse =================
-  function expandAll() { for (const n of NODES) n.collapsed = false; refresh(); }
+  function expandAll() { for (const n of NODES) n.collapsed = false; refresh(); pushHistory(); }
   function collapseAll() {
     const depth = computeDepths(NODES, nodeById);
     for (const n of NODES) n.collapsed = (depth[n.id] >= 1 && childCount(NODES, n.id) > 0);
-    refresh();
+    refresh(); pushHistory();
   }
   function toggleCollapse(id) {
     const n = nodeById[id]; if (!n) return;
-    n.collapsed = !n.collapsed; refresh();
+    n.collapsed = !n.collapsed; refresh(); pushHistory();
   }
 
   // ================= search =================
@@ -414,6 +421,8 @@ export function createOrgChart(host, userOpts = {}) {
   function onNodePointerDown(e, id) {
     if (e.target.closest('[data-role="toggle"]')) return;
     e.stopPropagation();
+    focusRoot();
+    if (attaching) { if (tryAttachTo(id)) return; }   // attach mode: this click picks the parent
     deselectEdge();
     selectNode(id);
     // rect lets a headless/external inspector position itself next to the node.
@@ -448,15 +457,18 @@ export function createOrgChart(host, userOpts = {}) {
     });
   }
   function onNodePointerUp() {
+    let moved = false;
     if (drag) {
       const e = elById[drag.id]; if (e) e.classList.remove('loc-dragging');
       emit('node-drag-end', { id: drag.id, node: nodeById[drag.id], offset: manualOffsets[drag.id] });
       sizeSvg();   // a dragged node may extend the content bounds → grow grid/canvas now, not only on refresh
+      moved = !!drag.moved;
     }
     drag = null;
     clearAlignGuides();
     rmWin('pointermove', onNodePointerMove); rmWin('pointerup', onNodePointerUp);
     persist();
+    if (moved) pushHistory();   // one undo step per drag
   }
 
   // ---- alignment snapping: snap a dragged node/waypoint to the parent's connector
@@ -480,12 +492,16 @@ export function createOrgChart(host, userOpts = {}) {
     if (!opts.snapAlign) return pt;
     const child = posById[id]; if (!child) return pt;
     const parent = posById[child.node.parentId];
-    const th = ALIGN_PX / state.zoom, xs = [effCenter(child, manualOffsets).x];
-    if (parent) xs.push(effCenter(parent, manualOffsets).x);
+    const th = ALIGN_PX / state.zoom;
+    const C = effCenter(child, manualOffsets);
+    const xs = [C.x], ys = [C.y];                     // align to the child + parent center lines
+    if (parent) { const P = effCenter(parent, manualOffsets); xs.push(P.x); ys.push(P.y); }
     let gx = null, bx = th, x = pt.x;
     for (const cx of xs) { const d = Math.abs(pt.x - cx); if (d < bx) { bx = d; x = cx; gx = cx; } }
-    drawAlignGuides(gx, null);
-    return { x, y: pt.y };
+    let gy = null, by = th, y = pt.y;                 // ...on BOTH axes, so the circle snaps left/right AND top/bottom
+    for (const cy of ys) { const d = Math.abs(pt.y - cy); if (d < by) { by = d; y = cy; gy = cy; } }
+    drawAlignGuides(gx, gy);
+    return { x, y };
   }
   function drawAlignGuides(gx, gy) {
     alignG.innerHTML = '';
@@ -510,6 +526,20 @@ export function createOrgChart(host, userOpts = {}) {
     if (state.selectedNodeId && elById[state.selectedNodeId]) elById[state.selectedNodeId].classList.remove('loc-selected');
     state.selectedNodeId = id;
     if (elById[id]) elById[id].classList.add('loc-selected');
+    applyIncident();
+  }
+  /* is this edge connected to the currently selected node (as parent OR child end)? */
+  function isIncidentEdge(n) {
+    const sel = state.selectedNodeId;
+    return !!sel && (n.id === sel || n.parentId === sel);
+  }
+  /* highlight every connector touching the selected node so you can see where it
+     connects (both its parent edge and its child edges) */
+  function applyIncident() {
+    for (const id in pathById) {
+      const p = posById[id];
+      pathById[id].classList.toggle('loc-incident', !!p && isIncidentEdge(p.node));
+    }
   }
   /* the selected node's on-screen rectangle (viewport coords), or null */
   function nodeScreenRect(id) {
@@ -546,6 +576,7 @@ export function createOrgChart(host, userOpts = {}) {
     if (state.selectedNodeId && elById[state.selectedNodeId]) elById[state.selectedNodeId].classList.remove('loc-selected');
     state.selectedNodeId = null; state.selectedEdgeId = id;
     if (pathById[id]) pathById[id].classList.add('loc-sel');
+    applyIncident();
     renderEdgeHandles();
   }
   function deselectEdge() {
@@ -592,6 +623,15 @@ export function createOrgChart(host, userOpts = {}) {
     if (m > 1e-6) { nx /= m; ny /= m; }
     return { nx: Math.max(-1, Math.min(1, nx)), ny: Math.max(-1, Math.min(1, ny)) };
   }
+  // snap a perimeter anchor toward the nearest SIDE MIDPOINT so an endpoint clicks
+  // cleanly onto the center of any side — top, bottom, left OR right (not just top/bottom).
+  const SIDE_SNAP = 0.34;
+  function sideSnapAnchor(a) {
+    let nx = a.nx, ny = a.ny;
+    if (Math.abs(Math.abs(ny) - 1) < 1e-6 && Math.abs(nx) < SIDE_SNAP) nx = 0; // top/bottom → center X
+    else if (Math.abs(Math.abs(nx) - 1) < 1e-6 && Math.abs(ny) < SIDE_SNAP) ny = 0; // left/right → center Y
+    return { nx, ny };
+  }
   /* topmost node whose box contains pt, excluding this edge's child + its subtree */
   function nodeAtContentPoint(pt, edgeId) {
     const banned = new Set([edgeId].concat(descendantsOf(edgeId)));
@@ -613,12 +653,14 @@ export function createOrgChart(host, userOpts = {}) {
     if (!edgeDrag || edgeDrag.kind !== 'ep') return;
     const id = edgeDrag.id, child = posById[id]; if (!child) return;
     const parent = posById[child.node.parentId]; if (!parent) return;
-    const pt = clientToContent(e.clientX, e.clientY);
-    edgeAnchors[id] = edgeAnchors[id] || {};
+    // grid-snap the drag point (so the endpoint square lands on the grid, like a
+    // waypoint), then snap the resulting box anchor to the nearest side midpoint.
+    const pt = snapPoint(clientToContent(e.clientX, e.clientY));
+    edgeAnchors[id] = edgeAnchors[id] || {}; edgeDrag.changed = true;
     if (edgeDrag.which === 'child') {
-      edgeAnchors[id].c = perimeterAnchor(child, pt);
+      edgeAnchors[id].c = sideSnapAnchor(perimeterAnchor(child, pt));
     } else {
-      edgeAnchors[id].p = perimeterAnchor(parent, pt);
+      edgeAnchors[id].p = sideSnapAnchor(perimeterAnchor(parent, pt));
       const tgt = nodeAtContentPoint(pt, id);
       highlightReparentTarget(tgt && tgt !== child.node.parentId ? tgt : null);
     }
@@ -629,20 +671,51 @@ export function createOrgChart(host, userOpts = {}) {
     rmWin('pointermove', onEpMove); rmWin('pointerup', onEpUp);
     if (d && d.which === 'parent' && reparentTarget) { const t = reparentTarget; highlightReparentTarget(null); reparentNode(d.id, t); return; }
     highlightReparentTarget(null); persist();
+    if (d && d.changed) pushHistory();   // an endpoint anchor was moved
   }
+  /* change a node's parent (''/null = detach to a root). Positions are preserved —
+     this only adds/removes the connection, it does not re-flow the chart. */
   function reparentNode(id, newParentId) {
     const n = nodeById[id]; if (!n || newParentId === id) return;
     if (newParentId && descendantsOf(id).indexOf(newParentId) >= 0) return;   // no cycles
-    n.parentId = newParentId || '';
-    nodeOverrides[id] = Object.assign(nodeOverrides[id] || {}, { parentId: n.parentId });
-    delete edgeWaypoints[id]; delete edgeAnchors[id];
+    const pid = newParentId || '';
+    if ((n.parentId || '') === pid) return;                                   // no change
     state.selectedEdgeId = null; edgeHandlesG.innerHTML = '';
-    if (posById[id]) Object.assign(posById[id].node, { parentId: n.parentId });
-    refresh();
-    emit('node-change', { id, node: { ...n }, patch: { parentId: n.parentId }, reparented: true });
-    persist();
+    structuralEditKeepPositions(() => {
+      n.parentId = pid;
+      nodeOverrides[id] = Object.assign(nodeOverrides[id] || {}, { parentId: pid });
+      delete edgeWaypoints[id]; delete edgeAnchors[id];
+      if (posById[id]) Object.assign(posById[id].node, { parentId: pid });
+    });
+    applyIncident();
+    emit('node-change', { id, node: { ...n }, patch: { parentId: pid }, reparented: true });
+    pushHistory();
   }
   function detachNode(id) { reparentNode(id, ''); }
+  function attachNode(id, parentId) { if (parentId) reparentNode(id, parentId); }
+
+  // ---- interactive "Attach": pick this node, then click a target parent ----
+  let attaching = null;
+  function beginAttach(id) {
+    if (!id) return;
+    attaching = id; root.classList.add('loc-attaching');
+    emit('attach-start', { id });
+  }
+  function cancelAttach() {
+    if (!attaching) return;
+    attaching = null; root.classList.remove('loc-attaching');
+    emit('attach-cancel', {});
+  }
+  /* a node was clicked while in attach mode → wire it up as the new parent */
+  function tryAttachTo(targetId) {
+    const id = attaching;
+    if (!id || !targetId || targetId === id) { cancelAttach(); return false; }
+    if (descendantsOf(id).indexOf(targetId) >= 0) { cancelAttach(); return false; } // no cycles
+    attaching = null; root.classList.remove('loc-attaching');
+    attachNode(id, targetId);
+    if (opts.inspector) openInspector(id);
+    return true;
+  }
   function distToSeg(p, a, b) {
     const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy;
     let t = L2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2 : 0; t = Math.max(0, Math.min(1, t));
@@ -659,7 +732,7 @@ export function createOrgChart(host, userOpts = {}) {
   // 'Matrix' is intentionally omitted from the picker UIs — for uniform-height
   // cards it lays out identically to Balanced. It's still accepted by the API
   // (setSubtreeMode('Matrix') / a node's layoutMode) for mixed-height data.
-  const SUBMODES = ['', 'Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'Custom'];
+  const SUBMODES = ['', 'Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight'];
   function escAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
   function applyEditModeUI() { root.classList.toggle('loc-edit', state.editMode); }
   function setEditMode(on) {
@@ -698,8 +771,13 @@ export function createOrgChart(host, userOpts = {}) {
       + fld('Type', sel('type', n.type, [['department', 'department'], ['position', 'position']]))
       + fld('Label', inp('label', n.label));
     if (n.type !== 'department') {
-      h += fld('Person name', inp('personName', n.personName))
-        + fld('Status', sel('status', n.status, [['', '—'], ['FILLED', 'FILLED'], ['VACANT', 'VACANT'], ['UNFUNDED', 'UNFUNDED']]))
+      // when a userSearch function is supplied, the Person name field becomes a
+      // typeahead backed by your API (results dropdown rendered below the input)
+      h += opts.userSearch
+        ? `<label class="loc-field loc-usersearch"><span>Person name</span>${inp('personName', n.personName)}`
+          + '<div class="loc-usersearch-list" data-role="user-results" hidden></div></label>'
+        : fld('Person name', inp('personName', n.personName));
+      h += fld('Status', sel('status', n.status, [['', '—'], ['FILLED', 'FILLED'], ['VACANT', 'VACANT'], ['UNFUNDED', 'UNFUNDED']]))
         + fld('Photo URL', inp('photo_url', (n.data && n.data.photo_url) || ''));
     }
     h += fld('Layout override', sel('layoutMode', n.layoutMode || '', SUBMODES.map((m) => [m, m || '(inherit)'])))
@@ -708,9 +786,52 @@ export function createOrgChart(host, userOpts = {}) {
     panelBody.innerHTML = h;
     panelFoot.innerHTML = ed
       ? '<button data-role="add-child">+ Add child</button>'
-        + (n.parentId ? '<button data-role="detach">Detach</button>' : '')
+        + (n.parentId
+          ? '<button data-role="detach">Detach</button>'
+          : '<button data-role="attach">Attach…</button>')
         + '<button data-role="del-node" class="loc-danger">Delete</button>'
       : '<span class="loc-foot-hint">Turn on Edit to modify fields</span>';
+  }
+  // ---- person-name typeahead backed by opts.userSearch (your backend API) ----
+  let userSearchTimer = 0, userSearchSeq = 0;
+  function runUserSearch(query) {
+    if (!opts.userSearch) return;
+    const box = panelBody.querySelector('[data-role="user-results"]'); if (!box) return;
+    if (userSearchTimer) clearTimeout(userSearchTimer);
+    const q = (query || '').trim();
+    if (!q) { box.hidden = true; box.innerHTML = ''; return; }
+    const seq = ++userSearchSeq;
+    userSearchTimer = setTimeout(() => {
+      try {
+        Promise.resolve(opts.userSearch(q, nodeById[state.selectedNodeId]))
+          .then((list) => { if (seq === userSearchSeq) renderUserResults(box, Array.isArray(list) ? list : []); })
+          .catch(() => {});
+      } catch (e) { /* ignore */ }
+    }, 220);
+  }
+  function renderUserResults(box, list) {
+    if (!list.length) { box.hidden = true; box.innerHTML = ''; return; }
+    box.innerHTML = list.slice(0, 8).map((u, i) => {
+      const name = escAttr(u.name || u.personName || u.label || '');
+      const sub = escAttr(u.title || u.label || u.email || '');
+      return `<button type="button" class="loc-usersearch-item" data-uidx="${i}"><b>${name}</b>${sub ? `<small>${sub}</small>` : ''}</button>`;
+    }).join('');
+    box.hidden = false; box._users = list;
+  }
+  function chooseUser(u) {
+    const id = state.selectedNodeId, n = id && nodeById[id]; if (!n) return;
+    let patch = opts.userToFields ? opts.userToFields(u, n) : null;
+    if (!patch) {
+      patch = {};
+      const name = u.name || u.personName || u.label; if (name) patch.personName = name;
+      if (u.title) patch.label = u.title;
+      const photo = u.photo_url || u.avatar || u.image; if (photo) patch.photo_url = photo;
+    }
+    if ('photo_url' in patch) { const url = patch.photo_url; delete patch.photo_url; patch.data = Object.assign({}, n.data, { photo_url: url || null }); }
+    updateNode(id, patch);
+    const box = panelBody.querySelector('[data-role="user-results"]'); if (box) { box.hidden = true; box.innerHTML = ''; }
+    renderInspector();
+    emit('user-select', { id, user: u, node: { ...nodeById[id] } });
   }
   function genId() { let id; do { id = 'node-' + (++idCounter); } while (nodeById[id]); return id; }
   /* apply a field patch to a node + record it as a persisted overlay */
@@ -725,6 +846,8 @@ export function createOrgChart(host, userOpts = {}) {
     if (structural) refresh(); else { drawNodes(); }
     emit('node-change', { id, node: { ...n }, patch });
     persist();
+    // coalesce successive edits to the same field(s) of the same node into one step
+    pushHistory('field:' + id + ':' + Object.keys(patch).join(','));
   }
   function descendantsOf(id) {
     const out = [], stack = [id];
@@ -738,7 +861,7 @@ export function createOrgChart(host, userOpts = {}) {
     NODES.push(node); nodeById[id] = node;
     nodeOverrides[id] = Object.assign({ __new: true }, node);
     refresh(); selectNode(id); openInspector(id);
-    emit('node-change', { id, node: { ...node }, added: true }); persist();
+    emit('node-change', { id, node: { ...node }, added: true }); persist(); pushHistory();
   }
   function deleteNode(id) {
     if (!state.editMode || !id) return;
@@ -746,7 +869,7 @@ export function createOrgChart(host, userOpts = {}) {
     NODES = NODES.filter((n) => !set.has(n.id)); nodeById = indexNodes(NODES);
     ids.forEach((x) => { nodeOverrides[x] = { __deleted: true }; if (elById[x]) { elById[x].remove(); delete elById[x]; } });
     if (set.has(state.selectedNodeId)) { state.selectedNodeId = null; closeInspector(); }
-    refresh(); emit('node-change', { id, removed: true, ids }); persist();
+    refresh(); emit('node-change', { id, removed: true, ids }); persist(); pushHistory();
   }
   /* re-apply the persisted edit overlay onto the current NODES (after props/restore) */
   function applyOverrides() {
@@ -777,6 +900,7 @@ export function createOrgChart(host, userOpts = {}) {
       spacingX: state.spacingX, spacingY: state.spacingY, gridSize: state.gridSize,
       orientation: state.orientation, subtreeMode: state.subtreeMode,
       showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid,
+      showImages: state.showImages,
       themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
     };
   }
@@ -790,6 +914,10 @@ export function createOrgChart(host, userOpts = {}) {
     if ('showGrid' in s) state.showGrid = !!s.showGrid;
     if ('snapGrid' in s) state.snapGrid = !!s.snapGrid;
     if ('alignGrid' in s) state.alignGrid = !!s.alignGrid;
+    if ('showImages' in s && !!s.showImages !== state.showImages) {
+      state.showImages = !!s.showImages;
+      for (const id in elById) { elById[id].remove(); delete elById[id]; }   // rebuild cards on image toggle
+    }
     if (Array.isArray(s.themeRules)) themeRules = s.themeRules.map(normalizeRule);
     applyGridOverlay(); syncToolbar(); refresh();
     if (settingsPanel.classList.contains('loc-open')) renderSettings();
@@ -803,12 +931,6 @@ export function createOrgChart(host, userOpts = {}) {
     if (toolbarEl) toolbarEl.querySelectorAll('button[data-act="settings"]').forEach((b) => b.classList.toggle('loc-active', open));
     if (open) renderSettings();
     if (open !== wasOpen) emit(open ? 'settings-open' : 'settings-close', {});
-  }
-  /* set the Custom fill target (the settings drawer's Portrait/Landscape buttons) */
-  function setTargetSize(width, height) {
-    setOption('targetSize', { width, height });
-    if (settingsPanel.classList.contains('loc-open')) renderSettings();
-    refresh(); fitToScreen(); persist();
   }
   /* restore spacing / grid / theme rules to the as-configured defaults */
   function resetSettings() {
@@ -845,14 +967,7 @@ export function createOrgChart(host, userOpts = {}) {
       + setRange('spacingX', 'Spacing X', state.spacingX, 0, 200)
       + setRange('spacingY', 'Spacing Y', state.spacingY, 0, 260)
       + setRange('gridSize', 'Grid size', state.gridSize, 6, 80)
-      + '</div>';
-    const tgt = (opts.targetSize && opts.targetSize.width > 0 && opts.targetSize.height > 0)
-      ? opts.targetSize : { width: Math.round((opts.targetAspect || 1.6) * 100), height: 100 };
-    h += '<div class="loc-set-section"><div class="loc-set-title">Fill target — Custom</div>'
-      + '<div class="loc-set-hint">Only affects the <b>Custom</b> mode — it spreads to fill this width : height (e.g. a tarp). Other modes ignore it.</div>'
-      + `<label class="loc-field"><span>Width</span><input type="number" min="1" data-tgt="width" value="${tgt.width}"/></label>`
-      + `<label class="loc-field"><span>Height</span><input type="number" min="1" data-tgt="height" value="${tgt.height}"/></label>`
-      + '<div class="loc-set-orient"><button data-role="tgt-portrait">Portrait</button><button data-role="tgt-landscape">Landscape</button></div>'
+      + `<label class="loc-color"><input type="checkbox" data-set-toggle="showImages"${state.showImages ? ' checked' : ''}/><span>Show photos (off → user icon)</span></label>`
       + '</div>';
     h += '<div class="loc-set-section"><div class="loc-set-title">Theme rules</div>'
       + '<div class="loc-set-hint">Recolor nodes that match a field = value. Later rules win.</div>';
@@ -864,6 +979,59 @@ export function createOrgChart(host, userOpts = {}) {
   function colorOn(i, ck) { const c = settingsBody.querySelector(`[data-rule="${i}"][data-rk="${ck}-on"]`); return c && c.checked; }
   function colorVal(i, ck) { const c = settingsBody.querySelector(`[data-rule="${i}"][data-rk="${ck}"]`); return c ? c.value : ''; }
 
+  // ================= undo / redo =================
+  // A bounded history of editable-state snapshots. Every "change" (move, edit,
+  // add/delete, attach/detach, waypoint/anchor edit, collapse) pushes one entry;
+  // typing into a field coalesces into a single step via a coalesce key.
+  let history = [], histIndex = -1, applyingHistory = false, lastHistKey = null;
+  function cloneData(x) { return x == null ? x : JSON.parse(JSON.stringify(x)); }
+  function snapshot() {
+    return {
+      nodes: NODES.map((n) => cloneData(n)),
+      manualOffsets: cloneData(manualOffsets),
+      edgeWaypoints: cloneData(edgeWaypoints),
+      edgeAnchors: cloneData(edgeAnchors),
+      nodeOverrides: cloneData(nodeOverrides),
+      selectedNodeId: state.selectedNodeId,
+    };
+  }
+  function restoreSnapshot(s) {
+    applyingHistory = true;
+    NODES = (s.nodes || []).map(makeNode); nodeById = indexNodes(NODES);
+    manualOffsets = cloneData(s.manualOffsets) || Object.create(null);
+    edgeWaypoints = cloneData(s.edgeWaypoints) || Object.create(null);
+    edgeAnchors = cloneData(s.edgeAnchors) || Object.create(null);
+    nodeOverrides = cloneData(s.nodeOverrides) || Object.create(null);
+    for (const id in elById) { elById[id].remove(); delete elById[id]; }
+    for (const id in pathById) { pathById[id].remove(); delete pathById[id]; }
+    for (const id in hitById) { hitById[id].remove(); delete hitById[id]; }
+    state.selectedEdgeId = null; edgeHandlesG.innerHTML = '';
+    state.selectedNodeId = (s.selectedNodeId && nodeById[s.selectedNodeId]) ? s.selectedNodeId : null;
+    refresh();
+    if (state.selectedNodeId) selectNode(state.selectedNodeId);
+    if (panel.classList.contains('loc-open')) { if (state.selectedNodeId) renderInspector(); else closeInspector(); }
+    applyingHistory = false;
+  }
+  function pushHistory(key) {
+    if (applyingHistory) return;
+    const snap = snapshot();
+    if (key != null && key === lastHistKey && histIndex >= 0) {
+      history[histIndex] = snap;                       // coalesce successive same-key edits
+    } else {
+      history = history.slice(0, histIndex + 1);
+      history.push(snap); histIndex = history.length - 1;
+      if (history.length > 100) { history.shift(); histIndex--; }   // bound memory
+    }
+    lastHistKey = key != null ? key : null;
+    emitHistory();
+  }
+  function resetHistory() { history = [snapshot()]; histIndex = 0; lastHistKey = null; emitHistory(); }
+  function canUndo() { return histIndex > 0; }
+  function canRedo() { return histIndex >= 0 && histIndex < history.length - 1; }
+  function undo() { if (!canUndo()) return; histIndex--; lastHistKey = null; restoreSnapshot(history[histIndex]); emitHistory(); }
+  function redo() { if (!canRedo()) return; histIndex++; lastHistKey = null; restoreSnapshot(history[histIndex]); emitHistory(); }
+  function emitHistory() { syncToolbar(); emit('history-change', { canUndo: canUndo(), canRedo: canRedo() }); }
+
   // ================= persistence =================
   function persist() {
     if (!opts.persist) return;
@@ -873,7 +1041,7 @@ export function createOrgChart(host, userOpts = {}) {
         spacingX: state.spacingX, spacingY: state.spacingY,
         zoom: state.zoom, panX: state.panX, panY: state.panY,
         showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid, gridSize: state.gridSize,
-        editMode: state.editMode,
+        editMode: state.editMode, showImages: state.showImages,
         manualOffsets, edgeWaypoints, edgeAnchors, nodeOverrides, themeRules,
         collapsed: NODES.filter((n) => n.collapsed).map((n) => n.id),
       }));
@@ -888,6 +1056,7 @@ export function createOrgChart(host, userOpts = {}) {
     ['spacingX', 'spacingY', 'zoom', 'panX', 'panY', 'gridSize'].forEach((k) => { if (typeof s[k] === 'number') state[k] = s[k]; });
     state.showGrid = !!s.showGrid; state.snapGrid = !!s.snapGrid; state.alignGrid = !!s.alignGrid;
     state.editMode = !!s.editMode;
+    if ('showImages' in s) state.showImages = !!s.showImages;
     if (s.manualOffsets) manualOffsets = s.manualOffsets;
     if (s.edgeWaypoints) edgeWaypoints = s.edgeWaypoints;
     if (s.edgeAnchors) edgeAnchors = s.edgeAnchors;
@@ -999,6 +1168,14 @@ export function createOrgChart(host, userOpts = {}) {
   function setSnapToGrid(on) { setOption('snapGrid', !!on); return state.snapGrid; }
   function setAlignToGrid(on) { setOption('alignGrid', !!on); return state.alignGrid; }
   function toggleGrid(force) { return setShowGrid(force == null ? !state.showGrid : force); }
+  /* toggle person photos; when off (or a photo is missing) the user-silhouette icon shows */
+  function setShowImages(on) {
+    state.showImages = on == null ? !state.showImages : !!on;
+    for (const id in elById) { elById[id].remove(); delete elById[id]; }  // rebuild cards
+    drawNodes(); syncToolbar(); persist();
+    emit('settings-change', getSettings());
+    return state.showImages;
+  }
   function relayout() { manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); refresh(); applyLayoutChangeView(); }
   function resetView() {
     clearSearch();
@@ -1049,7 +1226,7 @@ export function createOrgChart(host, userOpts = {}) {
     const pt = snapPoint(clientToContent(e.clientX, e.clientY));
     const arr = edgeWaypoints[id] || (edgeWaypoints[id] = []);
     arr.splice(nearestSegment(controls, pt), 0, pt);
-    updateEdgeGeom(id); renderEdgeHandles(); persist();
+    updateEdgeGeom(id); renderEdgeHandles(); persist(); pushHistory();
   });
   addL(edgeHandlesG, 'pointerdown', (e) => {
     if (opts.readonly || !state.editMode) return;
@@ -1072,17 +1249,20 @@ export function createOrgChart(host, userOpts = {}) {
     if (t.dataset.wp == null) return;
     const id = state.selectedEdgeId, wps = edgeWaypoints[id]; if (!wps) return;
     wps.splice(+t.dataset.wp, 1); if (!wps.length) delete edgeWaypoints[id];
-    updateEdgeGeom(id); renderEdgeHandles(); persist();
+    updateEdgeGeom(id); renderEdgeHandles(); persist(); pushHistory();
   });
   function onHandleMove(e) { if (!edgeDrag) return; const wps = edgeWaypoints[edgeDrag.id]; if (!wps) return; wps[edgeDrag.idx] = waypointAlignSnap(edgeDrag.id, snapPoint(clientToContent(e.clientX, e.clientY))); updateEdgeGeom(edgeDrag.id); renderEdgeHandles(); }
-  function onHandleUp() { edgeDrag = null; clearAlignGuides(); rmWin('pointermove', onHandleMove); rmWin('pointerup', onHandleUp); persist(); }
+  function onHandleUp() { edgeDrag = null; clearAlignGuides(); rmWin('pointermove', onHandleMove); rmWin('pointerup', onHandleUp); persist(); pushHistory(); }
 
   // inspector panel
   addL(panel, 'click', (e) => {
     if (e.target.closest('[data-role="panel-close"]')) { closeInspector(); return; }
     if (e.target.closest('[data-role="add-child"]')) { addChild(state.selectedNodeId); return; }
     if (e.target.closest('[data-role="detach"]')) { detachNode(state.selectedNodeId); return; }
+    if (e.target.closest('[data-role="attach"]')) { const id = state.selectedNodeId; closeInspector(); beginAttach(id); return; }
     if (e.target.closest('[data-role="del-node"]')) { deleteNode(state.selectedNodeId); return; }
+    const ures = e.target.closest('[data-uidx]');
+    if (ures) { const box = ures.closest('[data-role="user-results"]'); const u = box && box._users && box._users[+ures.dataset.uidx]; if (u) chooseUser(u); return; }
   });
   addL(panelBody, 'input', (e) => {
     if (!state.editMode) return;
@@ -1094,14 +1274,13 @@ export function createOrgChart(host, userOpts = {}) {
     if (f === 'photo_url') { const n = nodeById[id]; updateNode(id, { data: Object.assign({}, n.data, { photo_url: v || null }) }); return; }
     if (f === 'layoutMode') { updateNode(id, { layoutMode: v || null }); return; }
     updateNode(id, { [f]: v });
+    if (f === 'personName') runUserSearch(v);   // drive the typeahead from your API
   });
 
   // settings panel
   addL(settingsPanel, 'click', (e) => {
     if (e.target.closest('[data-role="settings-close"]')) { toggleSettings(false); return; }
     if (e.target.closest('[data-role="reset-settings"]')) { resetSettings(); return; }
-    if (e.target.closest('[data-role="tgt-portrait"]')) { setTargetSize(3, 4); return; }
-    if (e.target.closest('[data-role="tgt-landscape"]')) { setTargetSize(4, 3); return; }
     if (e.target.closest('[data-role="add-rule"]')) {
       themeRules.push(normalizeRule({ field: 'type', value: '', style: {} }));
       renderSettings(); applyThemeAll(); persist(); emit('settings-change', getSettings()); return;
@@ -1116,12 +1295,7 @@ export function createOrgChart(host, userOpts = {}) {
       const lab = settingsBody.querySelector(`[data-rangelabel="${t.dataset.set}"]`); if (lab) lab.textContent = v;
       refresh(); emit('settings-change', getSettings()); persist(); return;
     }
-    if (t.dataset.tgt != null) {
-      const w = +(settingsBody.querySelector('[data-tgt="width"]') || {}).value || 0;
-      const hh = +(settingsBody.querySelector('[data-tgt="height"]') || {}).value || 0;
-      if (w > 0 && hh > 0) { setOption('targetSize', { width: w, height: hh }); refresh(); fitToScreen(); persist(); }
-      return;
-    }
+    if (t.dataset.setToggle === 'showImages') { setShowImages(t.checked); return; }
     if (t.dataset.rule != null) {
       const i = +t.dataset.rule, rk = t.dataset.rk, r = themeRules[i]; if (!r) return;
       if (rk === 'enabled') r.enabled = t.checked;
@@ -1141,9 +1315,12 @@ export function createOrgChart(host, userOpts = {}) {
         || e.target.closest('.loc-settings') || e.target.closest('.loc-fsbtn')) {
       return; // node / edge / handle / panel / control interaction — don't pan or deselect
     }
+    focusRoot();
     const clearSelection = () => {
       if (state.selectedNodeId) { if (elById[state.selectedNodeId]) elById[state.selectedNodeId].classList.remove('loc-selected'); state.selectedNodeId = null; }
       if (state.selectedEdgeId) deselectEdge();
+      if (attaching) cancelAttach();
+      applyIncident();
       closeInspector();
     };
     if (!opts.enablePan) { clearSelection(); return; }
@@ -1176,18 +1353,31 @@ export function createOrgChart(host, userOpts = {}) {
   function addWin(type, fn) { window.addEventListener(type, fn); listeners.push({ target: window, type, fn }); }
   function rmWin(type, fn) { window.removeEventListener(type, fn); }
 
+  // keyboard undo/redo — scoped to the chart (root is focusable; we focus it on
+  // canvas/node interaction). Skipped while typing in a field so native text undo works.
+  function focusRoot() { try { root.focus({ preventScroll: true }); } catch (e) { /* ignore */ } }
+  addL(root, 'keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    const k = (e.key || '').toLowerCase();
+    if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+    else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
+  });
+
   // ================= optional toolbar =================
   function buildToolbar() {
     const tcfg = (opts.toolbar && typeof opts.toolbar === 'object') ? opts.toolbar : {};
     const show = (g) => tcfg[g] !== false;          // each group defaults visible
     const bar = el('div', 'loc-toolbar');
     let html = '';
-    if (show('subtree')) html += group('Subtree', ['Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight', 'Custom'].map((m) => btn('mode', m, m)).join(''));
+    if (show('subtree')) html += group('Subtree', ['Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight'].map((m) => btn('mode', m, m)).join(''));
     if (show('orient')) html += group('Orient', [['TopToBottom', 'Top'], ['BottomToTop', 'Bottom'], ['LeftToRight', 'Left'], ['RightToLeft', 'Right']].map(([o, l]) => btn('orient', o, l)).join(''));
+    if (show('history')) html += group('', '<button data-act="undo" title="Undo (Ctrl+Z)">Undo</button><button data-act="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>');
     if (show('actions')) html += group('', '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout">Re-layout</button><button data-act="reset">Reset</button><button data-act="fullscreen" title="Toggle fullscreen">Fullscreen</button>');
     if (show('search')) html += group('Search', '<input type="search" data-role="search" class="loc-search-input" placeholder="Search…" />');
     if (show('grid')) html += group('Grid', '<button data-flag="showGrid">Show</button><button data-flag="snapGrid">Snap</button><button data-flag="alignGrid">Align</button>');
-    if (show('mode')) html += group('Mode', '<button data-act="edit" title="Toggle edit mode">Edit</button><button data-act="settings" title="Settings &amp; theming">Settings</button>');
+    if (show('mode')) html += group('Mode', '<button data-act="edit" title="Toggle edit mode">Edit</button><button data-act="images" title="Toggle photos / user icons">Images</button><button data-act="settings" title="Settings &amp; theming">Settings</button>');
     if (show('export')) html += group('Export', '<button data-act="png">PNG</button><button data-act="svg">SVG</button><button data-act="pdf">PDF</button><button data-act="json">JSON</button>');
     bar.innerHTML = html;
     bar.addEventListener('click', (e) => {
@@ -1196,6 +1386,8 @@ export function createOrgChart(host, userOpts = {}) {
       else if (b.dataset.orient) setOrientation(b.dataset.orient);
       else if (b.dataset.flag) { state[b.dataset.flag] = !state[b.dataset.flag]; if (b.dataset.flag === 'showGrid') applyGridOverlay(); else if (b.dataset.flag === 'alignGrid') { manualOffsets = Object.create(null); refresh(); } syncToolbar(); persist(); }
       else switch (b.dataset.act) {
+        case 'undo': undo(); break;
+        case 'redo': redo(); break;
         case 'expand': expandAll(); break;
         case 'collapse': collapseAll(); break;
         case 'fit': fitToScreen(); break;
@@ -1203,6 +1395,7 @@ export function createOrgChart(host, userOpts = {}) {
         case 'reset': resetView(); break;
         case 'fullscreen': toggleFullscreen(); break;
         case 'edit': setEditMode(!state.editMode); break;
+        case 'images': setShowImages(); break;
         case 'settings': toggleSettings(); break;
         case 'png': exportPNG(3); break;
         case 'svg': exportSVG(); break;
@@ -1223,7 +1416,10 @@ export function createOrgChart(host, userOpts = {}) {
     toolbarEl.querySelectorAll('button[data-orient]').forEach((b) => b.classList.toggle('loc-active', b.dataset.orient === state.orientation));
     toolbarEl.querySelectorAll('button[data-flag]').forEach((b) => b.classList.toggle('loc-active', !!state[b.dataset.flag]));
     toolbarEl.querySelectorAll('button[data-act="edit"]').forEach((b) => b.classList.toggle('loc-active', state.editMode));
+    toolbarEl.querySelectorAll('button[data-act="images"]').forEach((b) => b.classList.toggle('loc-active', state.showImages));
     toolbarEl.querySelectorAll('button[data-act="fullscreen"]').forEach((b) => b.classList.toggle('loc-active', isFullscreen()));
+    toolbarEl.querySelectorAll('button[data-act="undo"]').forEach((b) => { b.disabled = !canUndo(); });
+    toolbarEl.querySelectorAll('button[data-act="redo"]').forEach((b) => { b.disabled = !canRedo(); });
   }
 
   // keep toolbar/float button + emitted event in sync with the browser's
@@ -1237,6 +1433,7 @@ export function createOrgChart(host, userOpts = {}) {
   applyGridOverlay();
   applyEditModeUI();
   refresh();
+  resetHistory();   // baseline snapshot so the first edit is undoable
   if (opts.fitOnInit) fitToScreen();
 
   // ================= destroy =================
@@ -1246,6 +1443,7 @@ export function createOrgChart(host, userOpts = {}) {
     listeners.forEach(({ target, type, fn, optsL }) => target.removeEventListener(type, fn, optsL));
     listeners.length = 0;
     if (dragRaf) cancelAnimationFrame(dragRaf);
+    if (userSearchTimer) clearTimeout(userSearchTimer);
     root.remove();
     for (const k in elById) delete elById[k];
     for (const k in pathById) delete pathById[k];
@@ -1260,8 +1458,11 @@ export function createOrgChart(host, userOpts = {}) {
     fitToScreen, relayout, resetView, expandAll, collapseAll, toggleCollapse, centerOnNode,
     search, clearSearch, exportJSON, exportSVG, exportPNG, exportPDF, buildSVG,
     setEditMode, isEditMode: () => state.editMode,
+    setShowImages, isShowingImages: () => state.showImages,
     enterFullscreen, exitFullscreen, toggleFullscreen, isFullscreen,
-    updateNode, addChild, deleteNode, reparentNode, detachNode,
+    undo, redo, canUndo, canRedo,
+    updateNode, addChild, deleteNode, reparentNode, detachNode, attachNode,
+    beginAttach, cancelAttach, isAttaching: () => !!attaching,
     openInspector, closeInspector, nodeScreenRect,
     getSettings, setSettings, toggleSettings, resetSettings,
     // slot bridging (used by the Vue wrapper's teleports)

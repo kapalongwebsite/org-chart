@@ -12,8 +12,6 @@ import { SNAKE_STUB, CANVAS_PAD } from './constants.js';
 import { buildTree, getVisibleTree, visibleDepths } from './tree.js';
 import { makeNode } from './dataImport.js';
 
-const BANNER_H = 44;   // height of a department "banner" bar in Custom/Custom
-
 export function isHorizontal(cfg) {
   return cfg.orientation === 'LeftToRight' || cfg.orientation === 'RightToLeft';
 }
@@ -28,7 +26,6 @@ function effectiveMode(node, cfg) {
 function isSnake(mode) {
   return mode === 'Alternate' || mode === 'AlternateLeft' || mode === 'AlternateRight';
 }
-function isCustom(mode) { return mode === 'Custom'; }
 
 /* recursive EXTENT-based measurement (logical TopToBottom space) */
 function measureSubtree(entry, cfg) {
@@ -46,7 +43,6 @@ function measureSubtree(entry, cfg) {
   }
   const childMeasures = kids.map((c) => measureSubtree(c, cfg));
   const mode = effectiveMode(node, cfg);
-  if (isCustom(mode)) return measureCustom(entry, childMeasures, cfg);
   return isSnake(mode)
     ? measureSnake(entry, childMeasures, mode, cfg)
     : measureRow(entry, childMeasures, mode, cfg);
@@ -143,65 +139,6 @@ function measureSnake(entry, cms, mode, cfg) {
   };
 }
 
-/* Custom: children flow into horizontal ROWS under the parent, wrapping toward a
-   near-square block (≈√n per row). Reads like "rows of cards under a header" —
-   closer to a designed departmental chart. Bus connectors form a bar per row. */
-function measureCustom(entry, cms, cfg) {
-  const node = entry.node;
-  const n = cms.length;
-  // a non-root department with children becomes a wide "banner" header spanning
-  // its block (TopToBottom only). Its width = block width, height = BANNER_H.
-  const isBanner = !node.isVirtual && node.type === 'department' && !!node.parentId
-    && n > 0 && cfg.orientation === 'TopToBottom';
-  const W = lw(node, cfg);
-  const H = node.isVirtual ? 0 : (isBanner ? BANNER_H : lh(node, cfg));
-  const spacingX = cfg.spacingX, gapY = Math.max(16, cfg.spacingY * 0.45);
-  // wrap by COUNT (≈√n per row, scaled by the aspect-fit density) so a wide-subtree
-  // sibling can't defeat the wrap. density>1 = wider rows (fill width), <1 = narrower.
-  const perRow = Math.max(1, Math.round(Math.sqrt(n) * (cfg._rowDensity || 1)));
-  const rows = [];
-  for (let i = 0; i < n; i += perRow) {
-    const row = []; for (let k = 0; k < perRow && i + k < n; k++) row.push(i + k);
-    rows.push(row);
-  }
-
-  // banner sits closer to its row of cards than a normal parent does
-  const headerGap = node.isVirtual ? 0 : (isBanner ? Math.max(12, cfg.spacingY * 0.3) : cfg.spacingY);
-  const topY = H + headerGap;
-  let y = topY, blockW = 0;
-  const rowInfo = [];
-  for (const row of rows) {
-    const rowW = row.reduce((s, i) => s + cms[i].w, 0) + (row.length - 1) * spacingX;
-    const rowH = Math.max(...row.map((i) => cms[i].h));
-    rowInfo.push({ y, rowW, rowH, row }); blockW = Math.max(blockW, rowW); y += rowH + gapY;
-  }
-  const blockBottom = y - gapY;
-
-  const childPlacements = [], edgeRoutes = [];
-  for (const { y: ry, rowW, rowH, row } of rowInfo) {
-    let x = (blockW - rowW) / 2;                 // center each row in the block
-    for (const i of row) {
-      const m = cms[i];
-      childPlacements[i] = { entry: entry.children[i], cx: x, cy: ry + (rowH - m.h) / 2, m };
-      edgeRoutes[i] = { childId: entry.children[i].node.id, routeType: 'grid' };
-      x += m.w + spacingX;
-    }
-  }
-
-  // a banner spans exactly its block; a normal parent is just centered over it
-  const w = isBanner ? blockW : Math.max(blockW, W);
-  const shift = (w - blockW) / 2;
-  if (shift > 0.01) for (let i = 0; i < n; i++) childPlacements[i].cx += shift;
-  const parentCenter = w / 2;
-  return {
-    w, h: blockBottom,
-    anchorLeft: parentCenter, anchorRight: w - parentCenter,
-    nodeCenterX: parentCenter, nodeCenterY: H / 2,
-    childPlacements, edgeRoutes,
-    banner: isBanner, bannerW: isBanner ? blockW : 0, bannerH: isBanner ? BANNER_H : 0,
-  };
-}
-
 /* assign absolute LOGICAL centers; returns flat positioned records */
 function layoutTree(rootEntry, cfg) {
   const m = measureSubtree(rootEntry, cfg);
@@ -212,11 +149,8 @@ function layoutTree(rootEntry, cfg) {
     const cx = boxLeft + meas.nodeCenterX;
     const cy = boxTop + meas.nodeCenterY;
     if (!node.isVirtual) {
-      // a banner department is resized to span its block (safe: `node` is a fresh
-      // makeNode copy, so this never mutates the caller's data)
-      if (meas.banner) { node.width = meas.bannerW; node.height = meas.bannerH; }
       out.push({ node, lx: cx, ly: cy, w: lw(node, cfg), h: lh(node, cfg),
-                 parentId: node.parentId, routeType: routeOf[node.id] || 'bus', banner: !!meas.banner });
+                 parentId: node.parentId, routeType: routeOf[node.id] || 'bus' });
     }
     for (const r of meas.edgeRoutes) routeOf[r.childId] = r.routeType;
     for (const cp of meas.childPlacements) place(cp.entry, cp.m, boxLeft + cp.cx, boxTop + cp.cy);
@@ -257,11 +191,6 @@ export function applyOrientation(lx, ly, cfg) {
 
 /* normalize a cfg from loose options + defaults */
 export function normalizeConfig(options = {}) {
-  // Custom fills a target shape: aspect = width/height. `targetSize` (e.g. a tarp's
-  // dimensions, any units) overrides; otherwise `targetAspect`; default ≈ landscape tarp.
-  let targetAspect = options.targetAspect != null ? options.targetAspect : 1.6;
-  const ts = options.targetSize;
-  if (ts && ts.width > 0 && ts.height > 0) targetAspect = ts.width / ts.height;
   return {
     orientation: options.orientation || 'TopToBottom',
     subtreeMode: options.subtreeMode || 'Balanced',
@@ -269,7 +198,6 @@ export function normalizeConfig(options = {}) {
     spacingY: options.spacingY != null ? options.spacingY : 70,
     gridSize: options.gridSize != null ? options.gridSize : 22,
     alignGrid: !!options.alignGrid,
-    targetAspect: targetAspect > 0 ? targetAspect : 1.6,
   };
 }
 
@@ -283,19 +211,6 @@ export function layoutOrgChart(nodes, options = {}) {
   const norm = (nodes || []).map(makeNode);
   const tree = buildTree(norm);
   const visible = getVisibleTree(tree);
-
-  // Custom: search a row-density that makes the overall shape best fill targetAspect.
-  if (cfg.subtreeMode === 'Custom') {
-    const candidates = [0.4, 0.55, 0.7, 0.85, 1, 1.2, 1.5, 1.8, 2.2, 2.7, 3.3, 4];
-    let best = 1, bestErr = Infinity;
-    for (const f of candidates) {
-      const m = measureSubtree(visible, { ...cfg, _rowDensity: f });
-      const asp = m.h > 0 ? m.w / m.h : 1;
-      const err = Math.abs(Math.log(asp) - Math.log(cfg.targetAspect));  // ratio-symmetric error
-      if (err < bestErr) { bestErr = err; best = f; }
-    }
-    cfg._rowDensity = best;
-  }
 
   const logical = layoutTree(visible, cfg);
 

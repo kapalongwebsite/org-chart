@@ -19,6 +19,7 @@ const EVENTS = [
   'layout-change', 'orientation-change', 'subtree-mode-change',
   'edit-mode-change', 'node-change', 'settings-change',
   'inspector-open', 'inspector-close', 'settings-open', 'settings-close', 'fullscreen-change',
+  'history-change', 'attach-start', 'attach-cancel', 'user-select',
 ];
 
 function toStyle(s) {
@@ -45,8 +46,9 @@ export const OrgChart = defineComponent({
     settingsTarget: { type: [String, Object], default: null },  // mount the settings drawer outside the canvas
     fullscreenControl: { type: Boolean, default: true },         // floating fullscreen button on the canvas
     fitOnLayoutChange: { type: [Boolean, String], default: true }, // re-frame after relayout: true|'fit' · 'recenter' · false|'none'
-    targetAspect: { type: Number, default: 1.6 },                  // Custom fill shape (W/H); default ≈ landscape tarp
-    targetSize: { type: Object, default: null },                   // { width, height } — overrides targetAspect
+    showImages: { type: Boolean, default: true },                  // show person photos; off → user-silhouette icon
+    userSearch: { type: Function, default: null },                 // (query, node) => Promise<user[]> | user[] — person-name typeahead from your API
+    userToFields: { type: Function, default: null },               // (user, node) => field patch for a chosen user
     snapAlign: { type: Boolean, default: true },                   // snap-to-align (parent axis + siblings) while dragging
     settings: { type: Object, default: null },
     fitOnInit: { type: Boolean, default: true },
@@ -92,8 +94,9 @@ export const OrgChart = defineComponent({
         settingsTarget: props.settingsTarget || null,
         fullscreenControl: props.fullscreenControl,
         fitOnLayoutChange: props.fitOnLayoutChange,
-        targetAspect: props.targetAspect,
-        targetSize: props.targetSize || null,
+        showImages: props.showImages,
+        userSearch: props.userSearch || null,
+        userToFields: props.userToFields || null,
         snapAlign: props.snapAlign,
         settings: props.settings || undefined,
         fitOnInit: props.fitOnInit,
@@ -128,8 +131,9 @@ export const OrgChart = defineComponent({
     watch(() => props.enablePan, (v) => chart && chart.setOption('enablePan', v));
     watch(() => props.enableZoom, (v) => chart && chart.setOption('enableZoom', v));
     watch(() => props.fitOnLayoutChange, (v) => chart && chart.setOption('fitOnLayoutChange', v));
-    watch(() => props.targetAspect, (v) => { if (chart) { chart.setOption('targetAspect', v); chart.relayout(); } });
-    watch(() => props.targetSize, (v) => { if (chart) { chart.setOption('targetSize', v || null); chart.relayout(); } }, { deep: true });
+    watch(() => props.showImages, (v) => chart && chart.setShowImages(v));
+    watch(() => props.userSearch, (v) => chart && chart.setOption('userSearch', v || null));
+    watch(() => props.userToFields, (v) => chart && chart.setOption('userToFields', v || null));
     watch(() => props.snapAlign, (v) => chart && chart.setOption('snapAlign', v));
 
     onBeforeUnmount(() => { if (chart) { chart.destroy(); chart = null; } });
@@ -165,6 +169,16 @@ export const OrgChart = defineComponent({
       toggleFullscreen: (force) => chart && chart.toggleFullscreen(force),
       isFullscreen: () => !!(chart && chart.isFullscreen()),
 
+      // ---- undo / redo ----
+      undo: () => chart && chart.undo(),
+      redo: () => chart && chart.redo(),
+      canUndo: () => !!(chart && chart.canUndo()),
+      canRedo: () => !!(chart && chart.canRedo()),
+
+      // ---- images ----
+      setShowImages: (on) => chart && chart.setShowImages(on),
+      isShowingImages: () => !!(chart && chart.isShowingImages()),
+
       // ---- edit mode / inspector / settings ----
       setEditMode: (v) => chart && chart.setEditMode(v),
       isEditMode: () => chart && chart.isEditMode(),
@@ -173,6 +187,10 @@ export const OrgChart = defineComponent({
       deleteNode: (id) => chart && chart.deleteNode(id),
       reparentNode: (id, newParentId) => chart && chart.reparentNode(id, newParentId),
       detachNode: (id) => chart && chart.detachNode(id),
+      attachNode: (id, parentId) => chart && chart.attachNode(id, parentId),
+      beginAttach: (id) => chart && chart.beginAttach(id),
+      cancelAttach: () => chart && chart.cancelAttach(),
+      isAttaching: () => !!(chart && chart.isAttaching()),
       openInspector: (id) => chart && chart.openInspector(id),
       closeInspector: () => chart && chart.closeInspector(),
       nodeScreenRect: (id) => chart && chart.nodeScreenRect(id),

@@ -3,6 +3,41 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.8.0 — 2026-06-15
+
+### Added
+- **Undo / redo.** Every node & connector edit — move, field change, add/delete, attach/detach,
+  waypoint/anchor edit, collapse — is now undoable. Toolbar **Undo**/**Redo** buttons (new
+  `history` toolbar group), **Ctrl/⌘+Z** / **Ctrl/⌘+Shift+Z** (also **Ctrl+Y**) when the chart
+  has focus, a `history-change` event, and `undo()` / `redo()` / `canUndo()` / `canRedo()`.
+  Typing into a field coalesces into a single step.
+- **Attach.** Counterpart to Detach. The inspector shows **Attach…** for a node with no parent —
+  click it, then click a target node to wire it up. Also `attachNode(id, parentId)`,
+  `beginAttach(id)`, `cancelAttach()`, and `attach-start` / `attach-cancel` events.
+- **Click a node → its connections highlight.** Selecting a node now highlights every connector
+  touching it (its parent edge + all child edges) so you can see where it connects.
+- **Image toggle + user-icon placeholder.** A **Images** toolbar button (and a Settings checkbox /
+  `showImages` option / `setShowImages()`) hides photos; when images are off — or a photo is
+  missing or fails to load — a neutral **user-silhouette icon** is drawn as the placeholder.
+- **API-backed person-name typeahead.** Supply `userSearch: (query, node) => Promise<user[]>`
+  (e.g. fetch from your backend) and the inspector's **Person name** field becomes a typeahead;
+  picking a result fills the node (name/title/photo by default, or via `userToFields`). Emits
+  `user-select`.
+
+### Changed
+- **Detach / attach / re-parent no longer auto-layout.** They now *only add or remove the
+  connection* — the boxes stay exactly where they are (positions are pinned). Use **Re-layout**
+  to reflow from scratch.
+- **Endpoint anchors ("blue box") snap to the grid** while dragging (like waypoints), and snap to
+  **any of the four side midpoints** — left / right / top / bottom (previously top/bottom only).
+- **Waypoint handles ("circle") snap on both axes** — to the parent/child center lines
+  horizontally **and** vertically (previously horizontal only), with guide lines on both.
+
+### Removed
+- **The `Custom` subtree mode and department "banner" headers (from v1.7.0) were removed** — they
+  weren't the right direction. The `targetSize` / `targetAspect` options and the Settings
+  "Fill target" controls go with them. (The other modes are unchanged.)
+
 ## v1.7.0 — 2026-06-15
 
 ### Changed
