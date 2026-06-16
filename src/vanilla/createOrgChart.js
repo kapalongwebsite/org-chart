@@ -961,9 +961,24 @@ export function createOrgChart(host, userOpts = {}) {
       + colorField(i, 'bg', 'BG', r.style.bg) + colorField(i, 'text', 'Text', r.style.text) + colorField(i, 'border', 'Border', r.style.border)
       + `</div></div>`;
   }
+  function presetsSectionHTML() {
+    const list = listLayoutPresets();
+    let rows = list.map((p) =>
+      `<div class="loc-preset"><button class="loc-preset-apply" data-role="preset-apply" data-name="${escAttr(p.name)}" title="Apply this saved layout">${escAttr(p.name)}</button>`
+      + `<span class="loc-preset-tag">${p.full ? 'full' : 'pattern'}</span>`
+      + `<button class="loc-preset-del" data-role="preset-del" data-name="${escAttr(p.name)}" title="Delete preset">✕</button></div>`).join('');
+    if (!rows) rows = '<div class="loc-set-hint">No saved presets yet.</div>';
+    return '<div class="loc-set-section"><div class="loc-set-title">Presets</div>'
+      + '<div class="loc-set-hint">Save the current arrangement so an accidental mode change can’t lose it (Undo / Ctrl+Z restores it too).</div>'
+      + '<div class="loc-preset-save"><input type="text" data-role="preset-name" placeholder="Preset name…"/>'
+      + '<label class="loc-preset-full"><input type="checkbox" data-role="preset-full" checked/> positions</label>'
+      + '<button data-role="preset-save">Save</button></div>'
+      + `<div class="loc-preset-list">${rows}</div></div>`;
+  }
   function renderSettings() {
     if (opts.settingsSlot) return;   // body is filled by the external (Vue #settings) slot
-    let h = '<div class="loc-set-section"><div class="loc-set-title">Layout</div>'
+    let h = presetsSectionHTML()
+      + '<div class="loc-set-section"><div class="loc-set-title">Layout</div>'
       + setRange('spacingX', 'Spacing X', state.spacingX, 0, 200)
       + setRange('spacingY', 'Spacing Y', state.spacingY, 0, 260)
       + setRange('gridSize', 'Grid size', state.gridSize, 6, 80)
@@ -985,6 +1000,29 @@ export function createOrgChart(host, userOpts = {}) {
   // typing into a field coalesces into a single step via a coalesce key.
   let history = [], histIndex = -1, applyingHistory = false, lastHistKey = null;
   function cloneData(x) { return x == null ? x : JSON.parse(JSON.stringify(x)); }
+  // the view config (mode/orientation/spacing/grid/images/theme) — captured by
+  // snapshots so an accidental subtree/orientation click is fully undoable, and
+  // reused by the layout presets below.
+  function viewConfig() {
+    return {
+      subtreeMode: state.subtreeMode, orientation: state.orientation,
+      spacingX: state.spacingX, spacingY: state.spacingY, gridSize: state.gridSize,
+      showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid,
+      showImages: state.showImages,
+      themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
+    };
+  }
+  function applyViewConfig(v) {
+    if (!v) return;
+    if (v.subtreeMode) state.subtreeMode = v.subtreeMode;
+    if (v.orientation) state.orientation = normalizeOrientation(v.orientation);
+    ['spacingX', 'spacingY', 'gridSize'].forEach((k) => { if (typeof v[k] === 'number') state[k] = v[k]; });
+    if ('showGrid' in v) state.showGrid = !!v.showGrid;
+    if ('snapGrid' in v) state.snapGrid = !!v.snapGrid;
+    if ('alignGrid' in v) state.alignGrid = !!v.alignGrid;
+    if ('showImages' in v) state.showImages = !!v.showImages;
+    if (Array.isArray(v.themeRules)) themeRules = v.themeRules.map(normalizeRule);
+  }
   function snapshot() {
     return {
       nodes: NODES.map((n) => cloneData(n)),
@@ -992,6 +1030,7 @@ export function createOrgChart(host, userOpts = {}) {
       edgeWaypoints: cloneData(edgeWaypoints),
       edgeAnchors: cloneData(edgeAnchors),
       nodeOverrides: cloneData(nodeOverrides),
+      view: viewConfig(),
       selectedNodeId: state.selectedNodeId,
     };
   }
@@ -1002,14 +1041,16 @@ export function createOrgChart(host, userOpts = {}) {
     edgeWaypoints = cloneData(s.edgeWaypoints) || Object.create(null);
     edgeAnchors = cloneData(s.edgeAnchors) || Object.create(null);
     nodeOverrides = cloneData(s.nodeOverrides) || Object.create(null);
+    applyViewConfig(s.view);   // restores mode/orientation/spacing too — so an accidental relayout undoes cleanly
     for (const id in elById) { elById[id].remove(); delete elById[id]; }
     for (const id in pathById) { pathById[id].remove(); delete pathById[id]; }
     for (const id in hitById) { hitById[id].remove(); delete hitById[id]; }
     state.selectedEdgeId = null; edgeHandlesG.innerHTML = '';
     state.selectedNodeId = (s.selectedNodeId && nodeById[s.selectedNodeId]) ? s.selectedNodeId : null;
-    refresh();
+    applyGridOverlay(); refresh();
     if (state.selectedNodeId) selectNode(state.selectedNodeId);
     if (panel.classList.contains('loc-open')) { if (state.selectedNodeId) renderInspector(); else closeInspector(); }
+    if (settingsPanel.classList.contains('loc-open')) renderSettings();
     applyingHistory = false;
   }
   function pushHistory(key) {
@@ -1063,6 +1104,74 @@ export function createOrgChart(host, userOpts = {}) {
     if (s.nodeOverrides) { nodeOverrides = s.nodeOverrides; applyOverrides(); }
     if (Array.isArray(s.themeRules)) themeRules = s.themeRules.map(normalizeRule);
     if (Array.isArray(s.collapsed)) { const set = new Set(s.collapsed); for (const n of NODES) n.collapsed = set.has(n.id); }
+  }
+
+  // ================= layout presets =================
+  // Named saved layouts in localStorage (key `${storageKey}.presets`), independent
+  // of the `persist` flag. A preset is the view config and (optionally) the full
+  // manual layout. The raw objects are exposed (getLayout / applyLayout /
+  // getLayoutPresets) so you can round-trip them through your own backend API.
+  function presetsKey() { return opts.storageKey + '.presets'; }
+  function readPresets() { try { return JSON.parse(localStorage.getItem(presetsKey()) || '{}') || {}; } catch (e) { return {}; } }
+  function writePresets(map) { try { localStorage.setItem(presetsKey(), JSON.stringify(map)); } catch (e) { /* quota / unavailable */ } }
+  /* capture the current state as a portable layout object (full = include manual positions/edits) */
+  function captureLayout(full) {
+    const obj = { full: full !== false, view: viewConfig() };
+    if (obj.full) obj.layout = {
+      manualOffsets: cloneData(manualOffsets), edgeWaypoints: cloneData(edgeWaypoints),
+      edgeAnchors: cloneData(edgeAnchors), nodeOverrides: cloneData(nodeOverrides),
+      collapsed: NODES.filter((n) => n.collapsed).map((n) => n.id),
+    };
+    return obj;
+  }
+  function getLayout(o) { return captureLayout(!(o && o.full === false)); }
+  /* apply a layout object (from a preset or your backend) onto the current data */
+  function applyLayout(obj) {
+    if (!obj) return;
+    applyViewConfig(obj.view);
+    if (obj.full && obj.layout) {
+      manualOffsets = cloneData(obj.layout.manualOffsets) || Object.create(null);
+      edgeWaypoints = cloneData(obj.layout.edgeWaypoints) || Object.create(null);
+      edgeAnchors = cloneData(obj.layout.edgeAnchors) || Object.create(null);
+      nodeOverrides = cloneData(obj.layout.nodeOverrides) || Object.create(null);
+      applyOverrides();
+      const cset = new Set(obj.layout.collapsed || []);
+      for (const n of NODES) n.collapsed = cset.has(n.id);
+    } else {
+      manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null);  // pattern-only → fresh auto layout
+    }
+    state.selectedNodeId = null; state.selectedEdgeId = null; edgeHandlesG.innerHTML = '';
+    for (const id in elById) { elById[id].remove(); delete elById[id]; }
+    for (const id in pathById) { pathById[id].remove(); delete pathById[id]; }
+    for (const id in hitById) { hitById[id].remove(); delete hitById[id]; }
+    applyGridOverlay(); syncToolbar(); refresh();
+    if (settingsPanel.classList.contains('loc-open')) renderSettings();
+    applyLayoutChangeView(); pushHistory();
+    emit('settings-change', getSettings());
+  }
+  function listLayoutPresets() {
+    const m = readPresets();
+    return Object.keys(m).map((name) => ({ name, full: !!m[name].full, savedAt: m[name].savedAt || null }));
+  }
+  function getLayoutPresets() { return readPresets(); }
+  function saveLayoutPreset(name, o) {
+    name = String(name == null ? '' : name).trim(); if (!name) return null;
+    const obj = captureLayout(!(o && o.full === false));
+    obj.name = name; obj.savedAt = Date.now();
+    const m = readPresets(); m[name] = obj; writePresets(m);
+    if (settingsPanel.classList.contains('loc-open')) renderSettings();
+    emit('presets-change', { presets: listLayoutPresets() });
+    return obj;
+  }
+  function loadLayoutPreset(name) {
+    const obj = readPresets()[String(name)]; if (!obj) return false;
+    applyLayout(obj); emit('preset-load', { name: String(name), preset: obj }); return true;
+  }
+  function deleteLayoutPreset(name) {
+    const m = readPresets(); if (!(String(name) in m)) return false;
+    delete m[String(name)]; writePresets(m);
+    if (settingsPanel.classList.contains('loc-open')) renderSettings();
+    emit('presets-change', { presets: listLayoutPresets() }); return true;
   }
 
   // ================= export =================
@@ -1147,12 +1256,12 @@ export function createOrgChart(host, userOpts = {}) {
   function loadJSON(data) { const { nodes, meta } = normalizeImported(data); setNodes(nodes, meta); return nodes.length; }
   function setOrientation(o) {
     const orientation = normalizeOrientation(o);
-    state.orientation = orientation; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); applyLayoutChangeView(); emit('orientation-change', { orientation });
+    state.orientation = orientation; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); applyLayoutChangeView(); emit('orientation-change', { orientation }); pushHistory();
   }
-  function setSubtreeMode(m) { state.subtreeMode = m; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); applyLayoutChangeView(); emit('subtree-mode-change', { subtreeMode: m }); }
+  function setSubtreeMode(m) { state.subtreeMode = m; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); syncToolbar(); refresh(); applyLayoutChangeView(); emit('subtree-mode-change', { subtreeMode: m }); pushHistory(); }
   function setSpacing(x, y) {
     if (x != null) state.spacingX = x; if (y != null) state.spacingY = y;
-    refresh(); emit('settings-change', getSettings());
+    refresh(); emit('settings-change', getSettings()); pushHistory('spacing');
   }
   function setOption(key, val) {
     if (key in state) {
@@ -1176,7 +1285,7 @@ export function createOrgChart(host, userOpts = {}) {
     emit('settings-change', getSettings());
     return state.showImages;
   }
-  function relayout() { manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); refresh(); applyLayoutChangeView(); }
+  function relayout() { manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); deselectEdge(); refresh(); applyLayoutChangeView(); pushHistory(); }
   function resetView() {
     clearSearch();
     closeInspector();
@@ -1281,6 +1390,16 @@ export function createOrgChart(host, userOpts = {}) {
   addL(settingsPanel, 'click', (e) => {
     if (e.target.closest('[data-role="settings-close"]')) { toggleSettings(false); return; }
     if (e.target.closest('[data-role="reset-settings"]')) { resetSettings(); return; }
+    if (e.target.closest('[data-role="preset-save"]')) {
+      const nm = (settingsBody.querySelector('[data-role="preset-name"]') || {}).value || '';
+      const full = !!(settingsBody.querySelector('[data-role="preset-full"]') || {}).checked;
+      if (nm.trim()) { saveLayoutPreset(nm, { full }); }
+      return;
+    }
+    const pa = e.target.closest('[data-role="preset-apply"]');
+    if (pa) { loadLayoutPreset(pa.dataset.name); return; }
+    const pd = e.target.closest('[data-role="preset-del"]');
+    if (pd) { deleteLayoutPreset(pd.dataset.name); return; }
     if (e.target.closest('[data-role="add-rule"]')) {
       themeRules.push(normalizeRule({ field: 'type', value: '', style: {} }));
       renderSettings(); applyThemeAll(); persist(); emit('settings-change', getSettings()); return;
@@ -1465,6 +1584,9 @@ export function createOrgChart(host, userOpts = {}) {
     beginAttach, cancelAttach, isAttaching: () => !!attaching,
     openInspector, closeInspector, nodeScreenRect,
     getSettings, setSettings, toggleSettings, resetSettings,
+    // layout presets + raw layout round-trip (for your own backend)
+    saveLayoutPreset, loadLayoutPreset, deleteLayoutPreset, listLayoutPresets, getLayoutPresets,
+    getLayout, applyLayout,
     // slot bridging (used by the Vue wrapper's teleports)
     getNodeHost: (id) => elById[id] || null,
     getNodeSlotEl: (id) => (elById[id] ? elById[id].querySelector('.loc-node-slot') : null),

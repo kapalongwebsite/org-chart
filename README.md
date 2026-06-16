@@ -227,7 +227,7 @@ feature flags updates the chart automatically (no manual re-init). When changing
 `layout-change`, `orientation-change`, `subtree-mode-change`, `edit-mode-change`,
 `node-change`, `settings-change`, `inspector-open`/`-close`, `settings-open`/`-close`,
 `fullscreen-change`, `history-change` (`{ canUndo, canRedo }`), `attach-start`/`attach-cancel`,
-`user-select` (`{ id, user, node }` — a typeahead pick).
+`user-select` (`{ id, user, node }` — a typeahead pick), `presets-change`, `preset-load`.
 
 Each payload includes the relevant `{ id, node, ... }`.
 
@@ -324,6 +324,46 @@ createOrgChart(el, {
 In Vue: `<OrgChart :user-search="searchUsers" @user-select="onPick" />`. The default mapper reads
 `name`/`personName`, `title`, and `photo_url`/`avatar`/`image` — return your own patch from
 `userToFields` for anything else.
+
+### Layout presets
+
+Save the current arrangement and re-apply it later — so an accidental subtree/orientation change
+(which reflows the chart) can't lose your work. A **Presets** section is built into the Settings
+drawer (name + **Save**, a *positions* toggle for full vs pattern-only, and an Apply/delete list).
+
+| Method | Description |
+|--------|-------------|
+| `saveLayoutPreset(name, { full })` | Save current layout to `localStorage` (`full` default `true` = include manual positions) |
+| `loadLayoutPreset(name)` | Apply a saved preset |
+| `deleteLayoutPreset(name)` | Remove a preset |
+| `listLayoutPresets()` | `[{ name, full, savedAt }]` |
+| `getLayoutPresets()` | The raw preset map (to sync to your backend) |
+| `getLayout({ full })` | A portable layout object — **POST it to your backend** |
+| `applyLayout(obj)` | Apply a layout object fetched back from your backend |
+
+Presets live under `localStorage` key `${storageKey}.presets`, independent of `persist`. Events:
+`presets-change` (`{ presets }`) and `preset-load` (`{ name, preset }`).
+
+> A **full** preset captures the manual positions, connector edits, node edits and collapsed state;
+> a **pattern** preset is just the view config (mode, orientation, spacing, grid, theme). An
+> accidental mode change is *also* recoverable with **Undo / Ctrl+Z** (the undo snapshot now
+> includes the view config).
+
+> **Custom preset UI.** The built-in panel is fully replaceable. In Vue, the **`#settings`** slot
+> gives you the whole settings body — render your own save/apply controls with the methods above and
+> the `presets-change` event (e.g. wired to your backend). The API is headless, so you can also put a
+> preset picker in the **`#toolbar`** slot or any separate component.
+> ```vue
+> <OrgChart ref="chart" :nodes="nodes" @presets-change="syncToBackend">
+>   <template #settings>
+>     <input v-model="name" placeholder="Preset name" />
+>     <button @click="chart.saveLayoutPreset(name)">Save</button>
+>     <button v-for="p in chart?.listLayoutPresets()" :key="p.name" @click="chart.loadLayoutPreset(p.name)">
+>       {{ p.name }}
+>     </button>
+>   </template>
+> </OrgChart>
+> ```
 
 ### Grid
 

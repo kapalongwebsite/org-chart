@@ -20,6 +20,7 @@ const EVENTS = [
   'edit-mode-change', 'node-change', 'settings-change',
   'inspector-open', 'inspector-close', 'settings-open', 'settings-close', 'fullscreen-change',
   'history-change', 'attach-start', 'attach-cancel', 'user-select',
+  'presets-change', 'preset-load',
 ];
 
 function toStyle(s) {
@@ -198,6 +199,15 @@ export const OrgChart = defineComponent({
       setSettings: (s) => chart && chart.setSettings(s),
       toggleSettings: (f) => chart && chart.toggleSettings(f),
       resetSettings: () => chart && chart.resetSettings(),
+
+      // ---- layout presets (built-in UI in the settings drawer, or build your own with these) ----
+      saveLayoutPreset: (name, opts2) => chart && chart.saveLayoutPreset(name, opts2),
+      loadLayoutPreset: (name) => chart && chart.loadLayoutPreset(name),
+      deleteLayoutPreset: (name) => chart && chart.deleteLayoutPreset(name),
+      listLayoutPresets: () => (chart ? chart.listLayoutPresets() : []),
+      getLayoutPresets: () => (chart ? chart.getLayoutPresets() : {}),
+      getLayout: (opts2) => chart && chart.getLayout(opts2),     // portable object → POST to your backend
+      applyLayout: (obj) => chart && chart.applyLayout(obj),     // ...and apply one fetched from it
 
       // ---- data ----
       setNodes: (nodes, meta, options) => chart && chart.setNodes(nodes, meta, options),

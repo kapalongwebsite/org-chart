@@ -329,3 +329,17 @@
 }
 .loc-usersearch-item:hover { background: #f1f5f9; }
 .loc-usersearch-item small { color: var(--loc-text-gray); font-size: 11px; }
+
+/* ---------- Layout presets (Settings drawer) ---------- */
+.loc-preset-save { display: flex; gap: 6px; align-items: center; }
+.loc-preset-save input[type="text"] { flex: 1 1 auto; min-width: 0; padding: 5px 8px; border: 1px solid var(--loc-border); border-radius: 6px; font: inherit; }
+.loc-preset-save button { padding: 5px 12px; border: 1px solid var(--loc-teal-1); border-radius: 6px; background: var(--loc-teal-2); color: #fff; cursor: pointer; font: inherit; }
+.loc-preset-save button:hover { background: var(--loc-teal-1); }
+.loc-preset-full { display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--loc-text-gray); white-space: nowrap; cursor: pointer; }
+.loc-preset-list { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+.loc-preset { display: flex; align-items: center; gap: 6px; }
+.loc-preset-apply { flex: 1 1 auto; text-align: left; padding: 5px 8px; border: 1px solid var(--loc-border); border-radius: 6px; background: #fff; cursor: pointer; font: inherit; color: var(--loc-text-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loc-preset-apply:hover { background: #f1f5f9; border-color: var(--loc-teal-2); }
+.loc-preset-tag { flex: 0 0 auto; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--loc-muted); }
+.loc-preset-del { flex: 0 0 auto; width: 22px; height: 22px; border: 1px solid var(--loc-border); border-radius: 6px; background: #fff; cursor: pointer; color: var(--loc-text-gray); }
+.loc-preset-del:hover { background: #fdeceb; color: #b42318; }

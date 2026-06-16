@@ -3,6 +3,27 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.9.0 — 2026-06-15
+
+### Added
+- **Layout presets.** Save the current arrangement as a named preset and re-apply it later — so an
+  accidental mode change can't lose your work. Built-in UI in the **Settings drawer** (name +
+  **Save**, with a *positions* toggle for full vs pattern-only, and an Apply/delete list), plus a
+  full API: `saveLayoutPreset(name, { full })`, `loadLayoutPreset(name)`, `deleteLayoutPreset(name)`,
+  `listLayoutPresets()`, `getLayoutPresets()`. Presets live in `localStorage` (key
+  `${storageKey}.presets`), independent of the `persist` flag. Events: `presets-change`, `preset-load`.
+- **Backend round-trip.** `getLayout({ full })` returns a portable layout object to POST to your own
+  API; `applyLayout(obj)` applies one you fetched back. (A *full* preset includes manual positions,
+  connector edits, node edits and collapsed state; a *pattern* preset is just the view config.)
+- **Custom preset UI.** The preset UI is fully replaceable — use the Vue **`#settings`** slot (or the
+  headless API + `presets-change`) to render your own save/apply controls anywhere, e.g. wired to your
+  backend.
+
+### Changed
+- **Subtree-mode / orientation / re-layout changes are now undoable.** The undo snapshot now also
+  captures the view config (mode, orientation, spacing, grid, images, theme), so an accidental click
+  that reflows the chart is restored in full by **Undo** / **Ctrl+Z** — not just the node positions.
+
 ## v1.8.0 — 2026-06-15
 
 ### Added
