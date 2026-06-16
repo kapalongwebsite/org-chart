@@ -209,6 +209,9 @@ you render a chart.
 | `fullscreenControl` | `Boolean` | `true` | show the floating fullscreen button on the canvas |
 | `fitOnLayoutChange` | `Boolean \| String` | `true` | re-frame after a mode/orientation/re-layout change: `true`/`'fit'`, `'recenter'` (keep zoom), `false`/`'none'` |
 | `showImages` | `Boolean` | `true` | show person photos; off (or a missing/broken photo) → a user-silhouette icon |
+| `photoHeight` | `Number` | `104` | person-photo height in px — uniform across cards; larger = bigger profile image |
+| `legend` | `Boolean` | `false` | show the floating legend (type / status / active theme rules) |
+| `legendTarget` | `String \| Element` | `null` | mount the legend into an element outside the canvas |
 | `userSearch` | `Function` | `null` | `(query, node) => Promise<user[]> \| user[]` — turns the inspector's **Person name** field into a typeahead backed by your API |
 | `userToFields` | `Function` | `null` | `(user, node) => patch` — map a chosen user to node fields (default: name/title/photo_url) |
 | `snapAlign` | `Boolean` | `true` | while dragging, snap to the parent's connector axis + sibling centers (with guide lines) |
@@ -227,7 +230,8 @@ feature flags updates the chart automatically (no manual re-init). When changing
 `layout-change`, `orientation-change`, `subtree-mode-change`, `edit-mode-change`,
 `node-change`, `settings-change`, `inspector-open`/`-close`, `settings-open`/`-close`,
 `fullscreen-change`, `history-change` (`{ canUndo, canRedo }`), `attach-start`/`attach-cancel`,
-`user-select` (`{ id, user, node }` — a typeahead pick), `presets-change`, `preset-load`.
+`user-select` (`{ id, user, node }` — a typeahead pick), `presets-change`, `preset-load`,
+`selection-change` (`{ ids, primary }` — multi-select), `legend-change`.
 
 Each payload includes the relevant `{ id, node, ... }`.
 
@@ -302,6 +306,33 @@ All methods are available on:
 
 > Also a **Images** toolbar button and a Settings checkbox. When a photo URL is missing or fails
 > to load, the user-silhouette icon is drawn automatically regardless of this setting.
+> Profile photos are a fixed, uniform size on every card — set it with `photoHeight` /
+> `setPhotoHeight(px)` (default 104).
+
+### Multi-select & group move
+
+**Ctrl/⌘+click** a node to add/remove it from the selection; **Ctrl/⌘+drag** on empty canvas draws
+a **marquee** box (hold **Shift** to extend). Dragging any selected node **moves the whole group**.
+
+| Method | Description |
+|--------|-------------|
+| `getSelection()` | Array of selected node ids |
+| `setSelection(ids)` | Replace the selection (string or string[]) |
+| `clearSelection()` | Clear it |
+
+> Listen to `selection-change` (`{ ids, primary }`). The *primary* node (the last one added) drives
+> the inspector and the connector highlight.
+
+### Legend
+
+| Method | Description |
+|--------|-------------|
+| `setShowLegend(on?)` / `toggleLegend(force?)` | Show/hide the floating legend (no arg = toggle) |
+| `isShowingLegend()` | Current state |
+
+> The legend auto-lists the node **types**, **statuses** and **active theme rules** in the data.
+> Toggle it with the **Legend** toolbar button or `legend: true`. Mount it outside the canvas with
+> `legendTarget`, or replace its body with the Vue **`#legend`** slot (gets `{ nodes, settings, close }`).
 
 ### Person-name typeahead (your backend API)
 

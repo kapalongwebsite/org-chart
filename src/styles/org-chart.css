@@ -125,7 +125,7 @@
   display: flex; flex-direction: column; padding: 0; text-align: center;
 }
 .loc-node.loc-position .loc-photo {
-  flex: 0 0 auto; width: 100%; height: 62px; background: #e8edf4;
+  flex: 0 0 auto; width: 100%; height: var(--loc-photo-h, 104px); background: #e8edf4;
   border-bottom: 1px solid var(--loc-border);
   display: flex; align-items: center; justify-content: center;
   color: var(--loc-muted); font-size: 30px; overflow: hidden;
@@ -343,3 +343,33 @@
 .loc-preset-tag { flex: 0 0 auto; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--loc-muted); }
 .loc-preset-del { flex: 0 0 auto; width: 22px; height: 22px; border: 1px solid var(--loc-border); border-radius: 6px; background: #fff; cursor: pointer; color: var(--loc-text-gray); }
 .loc-preset-del:hover { background: #fdeceb; color: #b42318; }
+
+/* ---------- Multi-select (Ctrl/⌘+click, marquee) ---------- */
+.loc-node.loc-primary { outline-width: 3px; }
+.loc-overlay .loc-marquee { fill: rgba(37,99,235,.08); stroke: var(--loc-accent); stroke-width: 1; stroke-dasharray: 4 3; }
+.loc-canvas.loc-marqueeing { cursor: crosshair; }
+
+/* ---------- Legend (floating, toggle with the Legend button) ---------- */
+.loc-legend {
+  position: absolute; left: 12px; bottom: 12px; z-index: 6; display: none;
+  min-width: 132px; max-width: 230px; max-height: 60%; overflow: auto;
+  background: #fff; border: 1px solid var(--loc-border); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(16,24,40,.14); font-size: 12px;
+}
+.loc-legend.loc-on { display: block; }
+.loc-legend.loc-legend-external { position: static; max-height: none; box-shadow: none; }
+.loc-legend.loc-legend-external.loc-on, .loc-legend.loc-legend-external { display: block; }
+.loc-legend-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 6px 10px; border-bottom: 1px solid #eef1f5; background: #fafbfc; border-radius: 8px 8px 0 0; }
+.loc-legend-title { font-weight: 700; color: var(--loc-text-dark); }
+.loc-legend-close { width: 20px; height: 20px; border: 1px solid var(--loc-border); border-radius: 5px; background: #fff; cursor: pointer; color: var(--loc-text-gray); line-height: 1; }
+.loc-legend-close:hover { background: #f1f5f9; }
+.loc-legend-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+.loc-leg-section { display: flex; flex-direction: column; gap: 4px; }
+.loc-leg-title { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--loc-muted); }
+.loc-leg-row { display: flex; align-items: center; gap: 7px; }
+.loc-leg-label { color: var(--loc-text-gray); }
+.loc-leg-swatch { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--loc-border); background: #fff; }
+.loc-leg-swatch.loc-leg-dept { background: linear-gradient(135deg, var(--loc-teal-1), var(--loc-teal-2)); border-color: var(--loc-teal-1); }
+.loc-leg-swatch.loc-leg-pos { background: #fff; border-color: var(--loc-border); }
+.loc-leg-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+.loc-leg-empty { color: var(--loc-muted); }

@@ -1,0 +1,36 @@
+----
+2026-06-11  e9a705a64e53e9b7a8ff9c975795e9e10e1d2990  fix: align waypoint handles with rendered orthogonal connector paths
+
+----
+2026-06-11  c1d24edd924a8639e8a3001ecdfa7e23d11679b7  feat: expose full public API for external toolbar integration
+Expand the Vue component expose() and vanilla API surface so consuming
+apps can drive every chart feature from their own toolbar via ref calls.
+
+Vue expose:
+- Added ~18 missing method delegations: setOption, setSpacing, setNodes,
+  getState, getNodes, getPositioned, toggleCollapse, on/off, buildSVG,
+  showGrid, snapToGrid, alignToGrid, reset, resetView, toggleGrid, etc.
+
+Vanilla engine:
+- Added named grid functions: setShowGrid, setSnapToGrid, setAlignToGrid,
+  toggleGrid (with showGrid/snapToGrid/alignToGrid aliases).
+- Added resetView() and reset() convenience methods.
+- setOption() now persists state and emits settings-change for grid keys.
+- setSpacing() now emits settings-change.
+- setOrientation() accepts short aliases ('Top', 'Left', etc.).
+
+Types (index.d.ts):
+- Added OrientationInput type with short aliases.
+- Added OrgChartVueInstance interface for typing chartRef in consuming apps.
+
+Docs (README.md):
+- Section 10 rewritten with categorized method tables.
+- Added Vue toolbar example and TypeScript typing tip.
+
+No breaking changes. Core engine untouched. All existing methods preserved.
+
+----
+2026-06-11  3ff3d3539892597a7f2eee3aafee5375422ee101  feat: v1.0.0 — edit mode, inspector, settings, theming, Vue slots, connector anchors
+
+----
+2026-06-11  89139c91b5c8023b2829ea4ce7eeb0bf4e3c5e14  feat: initial commit - local-org-chart library with Vue 3 and vanilla JS support

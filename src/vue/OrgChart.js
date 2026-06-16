@@ -5,6 +5,7 @@
 //   #toolbar   -> your own controls (built-in toolbar auto-suppressed)
 //   #inspector -> custom body for the right slide-in panel
 //   #settings  -> custom body for the left settings panel
+//   #legend    -> custom body for the floating legend
 //   #empty     -> shown when there are no nodes
 // Written with defineComponent + h() so no SFC compiler is needed; Vue stays an
 // external peer dependency.
@@ -20,7 +21,7 @@ const EVENTS = [
   'edit-mode-change', 'node-change', 'settings-change',
   'inspector-open', 'inspector-close', 'settings-open', 'settings-close', 'fullscreen-change',
   'history-change', 'attach-start', 'attach-cancel', 'user-select',
-  'presets-change', 'preset-load',
+  'presets-change', 'preset-load', 'selection-change', 'legend-change',
 ];
 
 function toStyle(s) {
@@ -48,6 +49,9 @@ export const OrgChart = defineComponent({
     fullscreenControl: { type: Boolean, default: true },         // floating fullscreen button on the canvas
     fitOnLayoutChange: { type: [Boolean, String], default: true }, // re-frame after relayout: true|'fit' · 'recenter' · false|'none'
     showImages: { type: Boolean, default: true },                  // show person photos; off → user-silhouette icon
+    photoHeight: { type: Number, default: 104 },                   // person-photo height in px (uniform, larger = bigger image)
+    legend: { type: Boolean, default: false },                     // show the floating legend
+    legendTarget: { type: [String, Object], default: null },       // mount the legend into an external element
     userSearch: { type: Function, default: null },                 // (query, node) => Promise<user[]> | user[] — person-name typeahead from your API
     userToFields: { type: Function, default: null },               // (user, node) => field patch for a chosen user
     snapAlign: { type: Boolean, default: true },                   // snap-to-align (parent axis + siblings) while dragging
@@ -67,6 +71,7 @@ export const OrgChart = defineComponent({
     const hosts = shallowRef([]);          // [{ id, node, target, themeStyle }] for #node teleports
     const inspectorNode = ref(null);       // { id, node } while the panel is open (for #inspector)
     const settingsOpen = ref(false);       // whether the settings drawer is open (for #settings)
+    const legendShown = ref(!!props.legend); // whether the legend is shown (for #legend)
     const isEmpty = computed(() => !(props.nodes && props.nodes.length));
 
     function refreshState() { if (chart) liveState.value = chart.getState(); }
@@ -96,6 +101,10 @@ export const OrgChart = defineComponent({
         fullscreenControl: props.fullscreenControl,
         fitOnLayoutChange: props.fitOnLayoutChange,
         showImages: props.showImages,
+        photoHeight: props.photoHeight,
+        legend: props.legend,
+        legendTarget: props.legendTarget || null,
+        legendSlot: !!slots.legend,
         userSearch: props.userSearch || null,
         userToFields: props.userToFields || null,
         snapAlign: props.snapAlign,
@@ -116,6 +125,7 @@ export const OrgChart = defineComponent({
       chart.on('inspector-close', () => { inspectorNode.value = null; });
       chart.on('settings-open', () => { settingsOpen.value = true; });
       chart.on('settings-close', () => { settingsOpen.value = false; });
+      chart.on('legend-change', (e) => { legendShown.value = !!e.legend; });
       refreshState();
       syncHosts();          // capture the hosts created during the engine's initial boot
       ready.value = true;
@@ -133,6 +143,8 @@ export const OrgChart = defineComponent({
     watch(() => props.enableZoom, (v) => chart && chart.setOption('enableZoom', v));
     watch(() => props.fitOnLayoutChange, (v) => chart && chart.setOption('fitOnLayoutChange', v));
     watch(() => props.showImages, (v) => chart && chart.setShowImages(v));
+    watch(() => props.photoHeight, (v) => chart && chart.setPhotoHeight(v));
+    watch(() => props.legend, (v) => chart && chart.setShowLegend(v));
     watch(() => props.userSearch, (v) => chart && chart.setOption('userSearch', v || null));
     watch(() => props.userToFields, (v) => chart && chart.setOption('userToFields', v || null));
     watch(() => props.snapAlign, (v) => chart && chart.setOption('snapAlign', v));
@@ -176,9 +188,16 @@ export const OrgChart = defineComponent({
       canUndo: () => !!(chart && chart.canUndo()),
       canRedo: () => !!(chart && chart.canRedo()),
 
-      // ---- images ----
+      // ---- images / legend / multi-select ----
       setShowImages: (on) => chart && chart.setShowImages(on),
       isShowingImages: () => !!(chart && chart.isShowingImages()),
+      setPhotoHeight: (px) => chart && chart.setPhotoHeight(px),
+      setShowLegend: (on) => chart && chart.setShowLegend(on),
+      toggleLegend: (force) => chart && chart.toggleLegend(force),
+      isShowingLegend: () => !!(chart && chart.isShowingLegend()),
+      getSelection: () => (chart ? chart.getSelection() : []),
+      setSelection: (ids) => chart && chart.setSelection(ids),
+      clearSelection: () => chart && chart.clearSelection(),
 
       // ---- edit mode / inspector / settings ----
       setEditMode: (v) => chart && chart.setEditMode(v),
@@ -283,6 +302,19 @@ export const OrgChart = defineComponent({
               update: (s) => chart.setSettings(s),
               reset: () => chart.resetSettings(),
               close: () => chart.toggleSettings(false),
+            })));
+        }
+      }
+
+      // #legend slot — teleport a custom body into the legend box (when shown)
+      if (slots.legend && ready.value && legendShown.value && chart) {
+        const body = chart.getLegendBody();
+        if (body) {
+          children.push(h(Teleport, { to: body, key: 'legend' },
+            slots.legend({
+              nodes: chart.getNodes(),
+              settings: chart.getSettings(),
+              close: () => chart.setShowLegend(false),
             })));
         }
       }

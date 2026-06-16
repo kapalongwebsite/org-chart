@@ -42,6 +42,10 @@ const DEFAULT_OPTS = {
   settingsSlot: false,   // leave the settings body empty for an external (Vue) slot
   nodeSlots: false,   // render empty positioned hosts (Vue teleports card content in)
   fullscreenControl: true, // show the floating fullscreen button on the canvas
+  legend: false,           // show a floating legend (type / status / active theme rules); toggle via toolbar
+  legendTarget: null,      // mount the legend into an external element instead of the canvas corner
+  legendSlot: false,       // leave the legend body empty for an external (Vue #legend) slot
+  photoHeight: 104,        // person-photo height in px (uniform across cards; bigger = larger profile image)
   showImages: true,        // show person photos; when off (or no photo) a user-silhouette icon is drawn
   // optional async person lookup for the inspector's "Person name" field. A function
   //   (query, node) => Promise<Array<user>> | Array<user>
@@ -70,6 +74,7 @@ export function createOrgChart(host, userOpts = {}) {
     snapGrid: opts.snapGrid, alignGrid: opts.alignGrid,
     editMode: !!opts.editMode,
     showImages: opts.showImages !== false,
+    showLegend: !!opts.legend,
   };
   let NODES = (opts.nodes || []).map(makeNode);
   let nodeById = indexNodes(NODES);
@@ -77,6 +82,7 @@ export function createOrgChart(host, userOpts = {}) {
   let edgeWaypoints = Object.create(null);
   let edgeAnchors = Object.create(null);     // childId -> { p:{nx,ny}, c:{nx,ny} } manual line endpoints
   let nodeOverrides = Object.create(null);   // id -> {field: value} manual node edits (persisted overlay)
+  let selectedIds = new Set();               // multi-select set; state.selectedNodeId is the "primary" member
   let themeRules = ((opts.settings && opts.settings.themeRules) || opts.themeRules || []).map(normalizeRule);
   // snapshot of the as-configured settings — the target that resetSettings() restores to
   const INITIAL_SETTINGS = {
@@ -163,6 +169,20 @@ export function createOrgChart(host, userOpts = {}) {
   if (settingsHost !== canvas) settingsPanel.classList.add('loc-panel-external');
   const settingsBody = settingsPanel.querySelector('[data-role="settings-body"]');
 
+  // floating legend (type / status / active theme rules). Lives in the canvas
+  // corner by default; `legendTarget` mounts it into any external element.
+  const legendEl = el('div', 'loc-legend');
+  legendEl.innerHTML = '<div class="loc-legend-head"><span class="loc-legend-title">Legend</span>'
+    + '<button class="loc-legend-close" title="Hide legend" data-role="legend-close">✕</button></div>'
+    + '<div class="loc-legend-body" data-role="legend-body"></div>';
+  const legendHost = resolveTarget(opts.legendTarget) || canvas;
+  legendHost.appendChild(legendEl);
+  if (legendHost !== canvas) legendEl.classList.add('loc-legend-external');
+  const legendBody = legendEl.querySelector('[data-role="legend-body"]');
+
+  // uniform person-photo height (bigger profile images, all the same size)
+  root.style.setProperty('--loc-photo-h', (opts.photoHeight || 104) + 'px');
+
   host.appendChild(root);
 
   function el(tag, cls) { const d = document.createElement(tag); if (cls) d.className = cls; return d; }
@@ -192,6 +212,7 @@ export function createOrgChart(host, userOpts = {}) {
     drawNodes();
     applyTransform();
     applySearchDim();
+    if (state.showLegend) renderLegend();   // keep the auto legend in sync with the data
     persist();
     emit('layout-change', { positioned, mode: state.subtreeMode, orientation: state.orientation });
   }
@@ -232,7 +253,8 @@ export function createOrgChart(host, userOpts = {}) {
         if (!elNode.dataset.fitted) { fitNodeText(elNode); elNode.dataset.fitted = '1'; }
         applyTheme(elNode, n);
       }
-      elNode.classList.toggle('loc-selected', state.selectedNodeId === n.id);
+      elNode.classList.toggle('loc-selected', selectedIds.has(n.id));
+      elNode.classList.toggle('loc-primary', state.selectedNodeId === n.id && selectedIds.size > 1);
       updateToggle(elNode, n);
     }
     for (const id in elById) if (!seen[id]) { elById[id].remove(); delete elById[id]; }
@@ -424,43 +446,51 @@ export function createOrgChart(host, userOpts = {}) {
     focusRoot();
     if (attaching) { if (tryAttachTo(id)) return; }   // attach mode: this click picks the parent
     deselectEdge();
-    selectNode(id);
-    // rect lets a headless/external inspector position itself next to the node.
+    // Ctrl/⌘+click toggles this node in the selection (multi-select) and does NOT
+    // start a drag or open the inspector.
+    if (e.ctrlKey || e.metaKey) { toggleInSelection(id); return; }
+    // plain click: if the node is already part of a multi-selection, KEEP the set
+    // (so we can group-drag); otherwise reset to a single selection.
+    if (!selectedIds.has(id)) selectNode(id); else { state.selectedNodeId = id; applySelectionClasses(); applyIncident(); }
     emit('node-select', { id, node: nodeById[id], rect: nodeScreenRect(id) });
     if (opts.inspector) openInspector(id);
     if (opts.readonly || !opts.enableDragging || !state.editMode) return;
-    const off = manualOffsets[id] || { dx: 0, dy: 0 };
-    drag = { id, startX: e.clientX, startY: e.clientY, baseDx: off.dx, baseDy: off.dy, moved: false };
-    elById[id].classList.add('loc-dragging');
-    emit('node-drag-start', { id, node: nodeById[id] });
+    // group drag when 2+ nodes are selected and this is one of them; else single.
+    const groupIds = (selectedIds.has(id) && selectedIds.size > 1) ? [...selectedIds] : [id];
+    const bases = Object.create(null);
+    for (const gid of groupIds) { const o = manualOffsets[gid] || { dx: 0, dy: 0 }; bases[gid] = { dx: o.dx, dy: o.dy }; if (elById[gid]) elById[gid].classList.add('loc-dragging'); }
+    drag = { id, groupIds, bases, startX: e.clientX, startY: e.clientY, moved: false };
+    emit('node-drag-start', { id, node: nodeById[id], group: groupIds });
     addWin('pointermove', onNodePointerMove); addWin('pointerup', onNodePointerUp);
   }
   function onNodePointerMove(e) {
     if (!drag) return;
-    let dx = drag.baseDx + (e.clientX - drag.startX) / state.zoom;
-    let dy = drag.baseDy + (e.clientY - drag.startY) / state.zoom;
+    // pointer delta in content space (applied uniformly to the whole group)
+    let ddx = (e.clientX - drag.startX) / state.zoom;
+    let ddy = (e.clientY - drag.startY) / state.zoom;
     if (Math.abs(e.clientX - drag.startX) + Math.abs(e.clientY - drag.startY) > 3) drag.moved = true;
-    if (state.snapGrid) {
-      const g = state.gridSize, base = posById[drag.id];
-      if (base) { dx = Math.round((base.cx + dx) / g) * g - base.cx; dy = Math.round((base.cy + dy) / g) * g - base.cy; }
+    const base = posById[drag.id], pb = drag.bases[drag.id];
+    if (base) {
+      const ox = base.cx + pb.dx, oy = base.cy + pb.dy;   // primary's current (pre-move) center
+      if (state.snapGrid) { const g = state.gridSize; ddx = Math.round((ox + ddx) / g) * g - ox; ddy = Math.round((oy + ddy) / g) * g - oy; }
+      if (drag.groupIds.length === 1) {                    // align-snap only for a single node
+        const snap = alignSnap(drag.id, ox + ddx, oy + ddy);
+        ddx = snap.cx - ox; ddy = snap.cy - oy;
+        drawAlignGuides(snap.gx, snap.gy);
+      }
     }
-    const sbase = posById[drag.id];
-    if (sbase) {
-      const snap = alignSnap(drag.id, sbase.cx + dx, sbase.cy + dy);
-      dx = snap.cx - sbase.cx; dy = snap.cy - sbase.cy;
-      drawAlignGuides(snap.gx, snap.gy);
-    }
-    manualOffsets[drag.id] = { dx, dy };
+    for (const gid of drag.groupIds) { const b = drag.bases[gid]; manualOffsets[gid] = { dx: b.dx + ddx, dy: b.dy + ddy }; }
     if (!dragRaf) dragRaf = requestAnimationFrame(() => {
-      dragRaf = 0; redrawNode(drag.id); redrawIncident(drag.id);
-      emit('node-drag', { id: drag.id, node: nodeById[drag.id], offset: manualOffsets[drag.id] });
+      dragRaf = 0;
+      for (const gid of drag.groupIds) { redrawNode(gid); redrawIncident(gid); }
+      emit('node-drag', { id: drag.id, node: nodeById[drag.id], offset: manualOffsets[drag.id], group: drag.groupIds });
     });
   }
   function onNodePointerUp() {
     let moved = false;
     if (drag) {
-      const e = elById[drag.id]; if (e) e.classList.remove('loc-dragging');
-      emit('node-drag-end', { id: drag.id, node: nodeById[drag.id], offset: manualOffsets[drag.id] });
+      for (const gid of drag.groupIds) { if (elById[gid]) elById[gid].classList.remove('loc-dragging'); }
+      emit('node-drag-end', { id: drag.id, node: nodeById[drag.id], offset: manualOffsets[drag.id], group: drag.groupIds });
       sizeSvg();   // a dragged node may extend the content bounds → grow grid/canvas now, not only on refresh
       moved = !!drag.moved;
     }
@@ -468,7 +498,7 @@ export function createOrgChart(host, userOpts = {}) {
     clearAlignGuides();
     rmWin('pointermove', onNodePointerMove); rmWin('pointerup', onNodePointerUp);
     persist();
-    if (moved) pushHistory();   // one undo step per drag
+    if (moved) pushHistory();   // one undo step per drag (whole group)
   }
 
   // ---- alignment snapping: snap a dragged node/waypoint to the parent's connector
@@ -522,11 +552,64 @@ export function createOrgChart(host, userOpts = {}) {
     for (const q of positioned) if (q.node.parentId === id) updateEdgeGeom(q.node.id);
     if (state.selectedEdgeId) renderEdgeHandles();
   }
-  function selectNode(id) {
-    if (state.selectedNodeId && elById[state.selectedNodeId]) elById[state.selectedNodeId].classList.remove('loc-selected');
-    state.selectedNodeId = id;
-    if (elById[id]) elById[id].classList.add('loc-selected');
-    applyIncident();
+  // ---- selection model: a SET of selected ids + a "primary" (state.selectedNodeId)
+  //      that drives the inspector + incident highlight. selectNode() = single-select. ----
+  function applySelectionClasses() {
+    for (const id in elById) {
+      elById[id].classList.toggle('loc-selected', selectedIds.has(id));
+      elById[id].classList.toggle('loc-primary', state.selectedNodeId === id && selectedIds.size > 1);
+    }
+  }
+  function emitSelection() { emit('selection-change', { ids: [...selectedIds], primary: state.selectedNodeId }); }
+  function selectNode(id) {                       // single-select (replaces the whole set)
+    selectedIds = new Set(id ? [id] : []);
+    state.selectedNodeId = id || null;
+    applySelectionClasses(); applyIncident();
+  }
+  /* Ctrl/⌘+click: toggle a node in the selection (Windows-11 style multi-select) */
+  function toggleInSelection(id) {
+    if (selectedIds.has(id)) {
+      selectedIds.delete(id);
+      if (state.selectedNodeId === id) state.selectedNodeId = selectedIds.size ? [...selectedIds][selectedIds.size - 1] : null;
+    } else {
+      selectedIds.add(id); state.selectedNodeId = id;   // newly added becomes primary
+    }
+    applySelectionClasses(); applyIncident(); emitSelection();
+  }
+  function setSelectionSet(ids, primary) {
+    selectedIds = new Set(ids);
+    state.selectedNodeId = primary != null ? primary : (ids.length ? ids[ids.length - 1] : null);
+    applySelectionClasses(); applyIncident(); emitSelection();
+  }
+  function clearNodeSelection() {
+    selectedIds = new Set(); state.selectedNodeId = null;
+    applySelectionClasses(); applyIncident();
+  }
+  /* Ctrl/⌘+drag on empty canvas: draw a marquee box and select the nodes inside it
+     (hold Shift to add to the current selection). Selects by node center. */
+  function startMarquee(e) {
+    const p0 = clientToContent(e.clientX, e.clientY);
+    const baseSet = e.shiftKey ? new Set(selectedIds) : new Set();
+    const rect = createNS('rect'); rect.setAttribute('class', 'loc-marquee');
+    overlay.appendChild(rect);
+    canvas.classList.add('loc-marqueeing');
+    let did = false;
+    const apply = (ev) => {
+      const p = clientToContent(ev.clientX, ev.clientY);
+      const x = Math.min(p0.x, p.x), y = Math.min(p0.y, p.y), w = Math.abs(p.x - p0.x), h = Math.abs(p.y - p0.y);
+      rect.setAttribute('x', x); rect.setAttribute('y', y); rect.setAttribute('width', w); rect.setAttribute('height', h);
+      const hit = new Set(baseSet);
+      for (const pp of positioned) { const c = effCenter(pp, manualOffsets); if (c.x >= x && c.x <= x + w && c.y >= y && c.y <= y + h) hit.add(pp.node.id); }
+      selectedIds = hit; state.selectedNodeId = selectedIds.size ? [...selectedIds][selectedIds.size - 1] : null;
+      applySelectionClasses(); applyIncident(); did = true;
+    };
+    const up = () => {
+      rect.remove(); canvas.classList.remove('loc-marqueeing');
+      rmWin('pointermove', apply); rmWin('pointerup', up);
+      if (!did) { clearNodeSelection(); closeInspector(); }          // ctrl-click empty with no drag → clear
+      else { emitSelection(); if (selectedIds.size === 1 && opts.inspector) openInspector([...selectedIds][0]); }
+    };
+    addWin('pointermove', apply); addWin('pointerup', up);
   }
   /* is this edge connected to the currently selected node (as parent OR child end)? */
   function isIncidentEdge(n) {
@@ -573,8 +656,8 @@ export function createOrgChart(host, userOpts = {}) {
   }
   function selectEdge(id) {
     if (state.selectedEdgeId && pathById[state.selectedEdgeId]) pathById[state.selectedEdgeId].classList.remove('loc-sel');
-    if (state.selectedNodeId && elById[state.selectedNodeId]) elById[state.selectedNodeId].classList.remove('loc-selected');
-    state.selectedNodeId = null; state.selectedEdgeId = id;
+    selectedIds = new Set(); state.selectedNodeId = null; applySelectionClasses();
+    state.selectedEdgeId = id;
     if (pathById[id]) pathById[id].classList.add('loc-sel');
     applyIncident();
     renderEdgeHandles();
@@ -867,8 +950,8 @@ export function createOrgChart(host, userOpts = {}) {
     if (!state.editMode || !id) return;
     const ids = [id].concat(descendantsOf(id)), set = new Set(ids);
     NODES = NODES.filter((n) => !set.has(n.id)); nodeById = indexNodes(NODES);
-    ids.forEach((x) => { nodeOverrides[x] = { __deleted: true }; if (elById[x]) { elById[x].remove(); delete elById[x]; } });
-    if (set.has(state.selectedNodeId)) { state.selectedNodeId = null; closeInspector(); }
+    ids.forEach((x) => { nodeOverrides[x] = { __deleted: true }; if (elById[x]) { elById[x].remove(); delete elById[x]; } selectedIds.delete(x); });
+    if (set.has(state.selectedNodeId)) { state.selectedNodeId = selectedIds.size ? [...selectedIds][selectedIds.size - 1] : null; if (!state.selectedNodeId) closeInspector(); }
     refresh(); emit('node-change', { id, removed: true, ids }); persist(); pushHistory();
   }
   /* re-apply the persisted edit overlay onto the current NODES (after props/restore) */
@@ -894,7 +977,40 @@ export function createOrgChart(host, userOpts = {}) {
     setVar(elNode, '--loc-node-border', st && st.border);
   }
   function setVar(elNode, name, val) { if (val) elNode.style.setProperty(name, val); else elNode.style.removeProperty(name); }
-  function applyThemeAll() { for (const id in elById) if (nodeById[id]) applyTheme(elById[id], nodeById[id]); }
+  function applyThemeAll() { for (const id in elById) if (nodeById[id]) applyTheme(elById[id], nodeById[id]); if (state.showLegend) renderLegend(); }
+
+  // ================= legend =================
+  const STATUS_LABELS = { FILLED: 'Filled', VACANT: 'Vacant', UNFUNDED: 'Unfunded' };
+  function applyLegend() { legendEl.classList.toggle('loc-on', state.showLegend); if (state.showLegend) renderLegend(); }
+  function setShowLegend(on) {
+    state.showLegend = on == null ? !state.showLegend : !!on;
+    applyLegend(); syncToolbar(); persist();
+    emit('legend-change', { legend: state.showLegend });
+    return state.showLegend;
+  }
+  function toggleLegend(force) { return setShowLegend(force == null ? !state.showLegend : force); }
+  /* legend content is auto-derived from the data (types + statuses present) and the
+     enabled theme rules — so it always matches what's on screen. */
+  function renderLegend() {
+    if (opts.legendSlot) return;   // body supplied by the external (#legend) slot
+    const types = Object.create(null), statuses = Object.create(null);
+    for (const n of NODES) { if (n.type) types[n.type] = true; if (n.status) statuses[n.status] = true; }
+    let h = '';
+    const typeRows = [];
+    if (types.department) typeRows.push(legSwatch('loc-leg-dept', 'Department'));
+    if (types.position) typeRows.push(legSwatch('loc-leg-pos', 'Position'));
+    if (typeRows.length) h += legSection('Type', typeRows.join(''));
+    const stRows = ['FILLED', 'VACANT', 'UNFUNDED'].filter((s) => statuses[s])
+      .map((s) => `<div class="loc-leg-row"><span class="loc-leg-badge loc-${s}">${STATUS_LABELS[s] || s}</span></div>`);
+    if (stRows.length) h += legSection('Status', stRows.join(''));
+    const ruleRows = themeRules.filter((r) => r.enabled && (r.style.bg || r.style.border)).map((r) =>
+      `<div class="loc-leg-row"><span class="loc-leg-swatch" style="background:${escAttr(r.style.bg || '#fff')};border-color:${escAttr(r.style.border || r.style.bg || '#d0d5dd')}"></span>`
+      + `<span class="loc-leg-label">${escAttr(r.field)} = ${escAttr(r.value || '—')}</span></div>`).join('');
+    if (ruleRows) h += legSection('Rules', ruleRows);
+    legendBody.innerHTML = h || '<div class="loc-leg-empty">No legend items yet.</div>';
+  }
+  function legSection(title, rows) { return `<div class="loc-leg-section"><div class="loc-leg-title">${title}</div>${rows}</div>`; }
+  function legSwatch(cls, label) { return `<div class="loc-leg-row"><span class="loc-leg-swatch ${cls}"></span><span class="loc-leg-label">${label}</span></div>`; }
   function getSettings() {
     return {
       spacingX: state.spacingX, spacingY: state.spacingY, gridSize: state.gridSize,
@@ -1082,7 +1198,7 @@ export function createOrgChart(host, userOpts = {}) {
         spacingX: state.spacingX, spacingY: state.spacingY,
         zoom: state.zoom, panX: state.panX, panY: state.panY,
         showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid, gridSize: state.gridSize,
-        editMode: state.editMode, showImages: state.showImages,
+        editMode: state.editMode, showImages: state.showImages, showLegend: state.showLegend,
         manualOffsets, edgeWaypoints, edgeAnchors, nodeOverrides, themeRules,
         collapsed: NODES.filter((n) => n.collapsed).map((n) => n.id),
       }));
@@ -1098,6 +1214,7 @@ export function createOrgChart(host, userOpts = {}) {
     state.showGrid = !!s.showGrid; state.snapGrid = !!s.snapGrid; state.alignGrid = !!s.alignGrid;
     state.editMode = !!s.editMode;
     if ('showImages' in s) state.showImages = !!s.showImages;
+    if ('showLegend' in s) state.showLegend = !!s.showLegend;
     if (s.manualOffsets) manualOffsets = s.manualOffsets;
     if (s.edgeWaypoints) edgeWaypoints = s.edgeWaypoints;
     if (s.edgeAnchors) edgeAnchors = s.edgeAnchors;
@@ -1363,6 +1480,9 @@ export function createOrgChart(host, userOpts = {}) {
   function onHandleMove(e) { if (!edgeDrag) return; const wps = edgeWaypoints[edgeDrag.id]; if (!wps) return; wps[edgeDrag.idx] = waypointAlignSnap(edgeDrag.id, snapPoint(clientToContent(e.clientX, e.clientY))); updateEdgeGeom(edgeDrag.id); renderEdgeHandles(); }
   function onHandleUp() { edgeDrag = null; clearAlignGuides(); rmWin('pointermove', onHandleMove); rmWin('pointerup', onHandleUp); persist(); pushHistory(); }
 
+  // legend close button
+  addL(legendEl, 'click', (e) => { if (e.target.closest('[data-role="legend-close"]')) setShowLegend(false); });
+
   // inspector panel
   addL(panel, 'click', (e) => {
     if (e.target.closest('[data-role="panel-close"]')) { closeInspector(); return; }
@@ -1431,17 +1551,19 @@ export function createOrgChart(host, userOpts = {}) {
   addL(canvas, 'pointerdown', (e) => {
     if (e.target.closest('.loc-node') || e.target.closest('.loc-edgehits path')
         || e.target.closest('.loc-edgehandles *') || e.target.closest('.loc-panel')
-        || e.target.closest('.loc-settings') || e.target.closest('.loc-fsbtn')) {
+        || e.target.closest('.loc-settings') || e.target.closest('.loc-fsbtn')
+        || e.target.closest('.loc-legend')) {
       return; // node / edge / handle / panel / control interaction — don't pan or deselect
     }
     focusRoot();
     const clearSelection = () => {
-      if (state.selectedNodeId) { if (elById[state.selectedNodeId]) elById[state.selectedNodeId].classList.remove('loc-selected'); state.selectedNodeId = null; }
+      clearNodeSelection();
       if (state.selectedEdgeId) deselectEdge();
       if (attaching) cancelAttach();
-      applyIncident();
       closeInspector();
     };
+    // Ctrl/⌘ + drag on empty canvas → marquee box select (Windows-11 style)
+    if (e.ctrlKey || e.metaKey) { startMarquee(e); return; }
     if (!opts.enablePan) { clearSelection(); return; }
     const sx = e.clientX, sy = e.clientY, px = state.panX, py = state.panY;
     let moved = false;
@@ -1496,7 +1618,7 @@ export function createOrgChart(host, userOpts = {}) {
     if (show('actions')) html += group('', '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout">Re-layout</button><button data-act="reset">Reset</button><button data-act="fullscreen" title="Toggle fullscreen">Fullscreen</button>');
     if (show('search')) html += group('Search', '<input type="search" data-role="search" class="loc-search-input" placeholder="Search…" />');
     if (show('grid')) html += group('Grid', '<button data-flag="showGrid">Show</button><button data-flag="snapGrid">Snap</button><button data-flag="alignGrid">Align</button>');
-    if (show('mode')) html += group('Mode', '<button data-act="edit" title="Toggle edit mode">Edit</button><button data-act="images" title="Toggle photos / user icons">Images</button><button data-act="settings" title="Settings &amp; theming">Settings</button>');
+    if (show('mode')) html += group('Mode', '<button data-act="edit" title="Toggle edit mode">Edit</button><button data-act="images" title="Toggle photos / user icons">Images</button><button data-act="legend" title="Toggle legend">Legend</button><button data-act="settings" title="Settings &amp; theming">Settings</button>');
     if (show('export')) html += group('Export', '<button data-act="png">PNG</button><button data-act="svg">SVG</button><button data-act="pdf">PDF</button><button data-act="json">JSON</button>');
     bar.innerHTML = html;
     bar.addEventListener('click', (e) => {
@@ -1515,6 +1637,7 @@ export function createOrgChart(host, userOpts = {}) {
         case 'fullscreen': toggleFullscreen(); break;
         case 'edit': setEditMode(!state.editMode); break;
         case 'images': setShowImages(); break;
+        case 'legend': toggleLegend(); break;
         case 'settings': toggleSettings(); break;
         case 'png': exportPNG(3); break;
         case 'svg': exportSVG(); break;
@@ -1536,6 +1659,7 @@ export function createOrgChart(host, userOpts = {}) {
     toolbarEl.querySelectorAll('button[data-flag]').forEach((b) => b.classList.toggle('loc-active', !!state[b.dataset.flag]));
     toolbarEl.querySelectorAll('button[data-act="edit"]').forEach((b) => b.classList.toggle('loc-active', state.editMode));
     toolbarEl.querySelectorAll('button[data-act="images"]').forEach((b) => b.classList.toggle('loc-active', state.showImages));
+    toolbarEl.querySelectorAll('button[data-act="legend"]').forEach((b) => b.classList.toggle('loc-active', state.showLegend));
     toolbarEl.querySelectorAll('button[data-act="fullscreen"]').forEach((b) => b.classList.toggle('loc-active', isFullscreen()));
     toolbarEl.querySelectorAll('button[data-act="undo"]').forEach((b) => { b.disabled = !canUndo(); });
     toolbarEl.querySelectorAll('button[data-act="redo"]').forEach((b) => { b.disabled = !canRedo(); });
@@ -1550,6 +1674,7 @@ export function createOrgChart(host, userOpts = {}) {
   restore();
   syncToolbar();
   applyGridOverlay();
+  applyLegend();
   applyEditModeUI();
   refresh();
   resetHistory();   // baseline snapshot so the first edit is undoable
@@ -1578,6 +1703,12 @@ export function createOrgChart(host, userOpts = {}) {
     search, clearSearch, exportJSON, exportSVG, exportPNG, exportPDF, buildSVG,
     setEditMode, isEditMode: () => state.editMode,
     setShowImages, isShowingImages: () => state.showImages,
+    setShowLegend, toggleLegend, isShowingLegend: () => state.showLegend, getLegendBody: () => legendBody,
+    setPhotoHeight: (px) => { opts.photoHeight = px; root.style.setProperty('--loc-photo-h', (px || 104) + 'px'); },
+    // multi-select
+    getSelection: () => [...selectedIds],
+    setSelection: (ids) => setSelectionSet(Array.isArray(ids) ? ids : (ids ? [ids] : [])),
+    clearSelection: () => { clearNodeSelection(); emitSelection(); },
     enterFullscreen, exitFullscreen, toggleFullscreen, isFullscreen,
     undo, redo, canUndo, canRedo,
     updateNode, addChild, deleteNode, reparentNode, detachNode, attachNode,

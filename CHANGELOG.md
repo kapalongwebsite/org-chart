@@ -3,6 +3,25 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.10.0 — 2026-06-15
+
+### Added
+- **Multi-select + group move.** **Ctrl/⌘+click** toggles nodes in/out of a selection (Windows-11
+  style); **Ctrl/⌘+drag** on empty canvas draws a **marquee** box that selects the nodes inside
+  (hold **Shift** to add to the current selection). Dragging any selected node **moves the whole
+  group together**. API: `getSelection()`, `setSelection(ids)`, `clearSelection()`, and a
+  `selection-change` event (`{ ids, primary }`). The "primary" node still drives the inspector.
+- **Legend (toggle on/off).** A floating legend that auto-lists the **node types**, **statuses**,
+  and **active theme rules** present in the data. Toggle with the **Legend** toolbar button or
+  `legend: true` / `setShowLegend()` / `toggleLegend()`. Mount it elsewhere with `legendTarget`, or
+  replace its body via the Vue **`#legend`** slot. Emits `legend-change`; persisted.
+- **Bigger, uniform profile photos.** The person-photo area is now larger by default and a fixed
+  size on every card (so all photos render identically via cover-crop). Tune with `photoHeight`
+  (px, default **104**) / `setPhotoHeight()`.
+
+### Changed
+- The default position-card height grew (150 → 172px) to fit the larger photo.
+
 ## v1.9.0 — 2026-06-15
 
 ### Added
