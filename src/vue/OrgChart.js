@@ -22,6 +22,7 @@ const EVENTS = [
   'inspector-open', 'inspector-close', 'settings-open', 'settings-close', 'fullscreen-change',
   'history-change', 'attach-start', 'attach-cancel', 'user-select',
   'presets-change', 'preset-load', 'selection-change', 'legend-change',
+  'edges-select', 'edges-reset',
 ];
 
 function toStyle(s) {
@@ -50,6 +51,8 @@ export const OrgChart = defineComponent({
     fitOnLayoutChange: { type: [Boolean, String], default: true }, // re-frame after relayout: true|'fit' · 'recenter' · false|'none'
     showImages: { type: Boolean, default: true },                  // show person photos; off → user-silhouette icon
     photoHeight: { type: Number, default: 104 },                   // person-photo height in px (uniform, larger = bigger image)
+    cardWidth: { type: Number, default: 180 },                     // person-card width in px (global; height = photoHeight + text block)
+    photoContain: { type: Boolean, default: true },                // fit the WHOLE photo inside the card (no crop); false = crop/cover
     legend: { type: Boolean, default: false },                     // show the floating legend
     legendTarget: { type: [String, Object], default: null },       // mount the legend into an external element
     autoEdgeSide: { type: Boolean, default: false },               // (opt-in) endpoints follow waypoints onto any box side
@@ -103,6 +106,8 @@ export const OrgChart = defineComponent({
         fitOnLayoutChange: props.fitOnLayoutChange,
         showImages: props.showImages,
         photoHeight: props.photoHeight,
+        cardWidth: props.cardWidth,
+        photoContain: props.photoContain,
         legend: props.legend,
         legendTarget: props.legendTarget || null,
         legendSlot: !!slots.legend,
@@ -146,6 +151,8 @@ export const OrgChart = defineComponent({
     watch(() => props.fitOnLayoutChange, (v) => chart && chart.setOption('fitOnLayoutChange', v));
     watch(() => props.showImages, (v) => chart && chart.setShowImages(v));
     watch(() => props.photoHeight, (v) => chart && chart.setPhotoHeight(v));
+    watch(() => props.cardWidth, (v) => chart && chart.setCardWidth(v));
+    watch(() => props.photoContain, (v) => chart && chart.setPhotoContain(v));
     watch(() => props.legend, (v) => chart && chart.setShowLegend(v));
     watch(() => props.autoEdgeSide, (v) => chart && chart.setAutoEdgeSide(v));
     watch(() => props.userSearch, (v) => chart && chart.setOption('userSearch', v || null));
@@ -195,6 +202,9 @@ export const OrgChart = defineComponent({
       setShowImages: (on) => chart && chart.setShowImages(on),
       isShowingImages: () => !!(chart && chart.isShowingImages()),
       setPhotoHeight: (px) => chart && chart.setPhotoHeight(px),
+      setCardWidth: (px) => chart && chart.setCardWidth(px),
+      setCardSize: (o) => chart && chart.setCardSize(o),
+      setPhotoContain: (on) => chart && chart.setPhotoContain(on),
       setShowLegend: (on) => chart && chart.setShowLegend(on),
       toggleLegend: (force) => chart && chart.toggleLegend(force),
       isShowingLegend: () => !!(chart && chart.isShowingLegend()),
@@ -203,6 +213,10 @@ export const OrgChart = defineComponent({
       getSelection: () => (chart ? chart.getSelection() : []),
       setSelection: (ids) => chart && chart.setSelection(ids),
       clearSelection: () => chart && chart.clearSelection(),
+      getEdgeSelection: () => (chart ? chart.getEdgeSelection() : []),
+      setEdgeSelection: (ids) => chart && chart.setEdgeSelection(ids),
+      clearEdgeSelection: () => chart && chart.clearEdgeSelection(),
+      resetSelectedEdges: () => chart && chart.resetSelectedEdges(),
 
       // ---- edit mode / inspector / settings ----
       setEditMode: (v) => chart && chart.setEditMode(v),

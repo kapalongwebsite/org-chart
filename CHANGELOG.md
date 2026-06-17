@@ -3,6 +3,37 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.12.0 — 2026-06-16
+
+### Added
+- **Global card sizing.** New **Settings → "Card size"** sliders for **card width** and **photo
+  height**, plus a **"Show whole photo (no crop)"** toggle. Options: `cardWidth`, `photoHeight`,
+  `photoContain` (default `true`). API: `setCardWidth()`, `setPhotoHeight()`,
+  `setCardSize({ width, photoHeight, contain })`, `setPhotoContain()`. The photo "tops" the card at
+  its full height and the card height tracks it (`height = photoHeight + text block`), so every card
+  stays uniform. With `photoContain` on, the **whole** profile image is shown (letterboxed, no crop).
+- **Long names/titles stay inside the card.** Person name (2 lines) and title (3 lines) now clamp
+  with an ellipsis and auto-shrink to fit, and show the full text on hover — a very long string no
+  longer stretches the box. Department labels clamp too.
+- **Connector-line multi-select (marquee).** **Alt + drag** on empty canvas rubber-bands
+  **connector lines** (Shift adds to the selection); the picked lines highlight. Press **Delete** to
+  straighten them (drop their waypoints/anchors) or **Esc** to deselect. API: `getEdgeSelection()`,
+  `setEdgeSelection()`, `clearEdgeSelection()`, `resetSelectedEdges()`; events `edges-select` /
+  `edges-reset`. (Node marquee stays on **Ctrl/⌘ + drag**.)
+
+### Changed
+- **Expand/collapse handle redesigned.** The toggle is now a **`+` / `−`** button **centered on the
+  bottom edge** of the box, with a **hover tooltip** ("Expand" / "Collapse"), and it appears on
+  **any node that has children** (person cards too, not just departments). `+` = has hidden
+  children, `−` = expanded.
+- **Collapsing/expanding no longer re-flows the chart.** Toggling a single node keeps every other
+  box exactly where it is (no stagger) — it only hides/shows that node's subtree. A manual
+  **Re-layout** still reflows everything.
+
+### Fixed
+- **"Attach…" now appears right after Detach.** Detaching a node from the open inspector left the
+  footer showing the old **Detach** button; it now refreshes to **Attach…** immediately (and back).
+
 ## v1.11.0 — 2026-06-15
 
 ### Added

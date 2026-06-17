@@ -7,8 +7,12 @@ import {
   routeConnector, edgeEndpoints, edgeControlPoints, orthoThrough, effCenter,
   searchNodes as coreSearch, calculateBounds, fitBounds,
   childCount, computeDepths, normalizeImported, exportLayout, buildChartSVG,
-  resolveNodeStyle, normalizeRule,
+  resolveNodeStyle, normalizeRule, POS_SIZE,
 } from '../core/index.js';
+
+// person-card height = photo height + this fixed text block, so the image always
+// "tops" the card at its full size and the name/title area stays consistent.
+const CARD_TEXT_BLOCK = 68;
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const FIT_MIN = 0.5;
@@ -47,6 +51,8 @@ const DEFAULT_OPTS = {
   legendTarget: null,      // mount the legend into an external element instead of the canvas corner
   legendSlot: false,       // leave the legend body empty for an external (Vue #legend) slot
   photoHeight: 104,        // person-photo height in px (uniform across cards; bigger = larger profile image)
+  cardWidth: POS_SIZE.width, // person-card width in px (global; card height = photoHeight + text block)
+  photoContain: true,      // fit the WHOLE profile image inside the photo area (no crop); false = cover/crop
   showImages: true,        // show person photos; when off (or no photo) a user-silhouette icon is drawn
   // optional async person lookup for the inspector's "Person name" field. A function
   //   (query, node) => Promise<Array<user>> | Array<user>
@@ -77,6 +83,9 @@ export function createOrgChart(host, userOpts = {}) {
     showImages: opts.showImages !== false,
     showLegend: !!opts.legend,
     autoEdgeSide: !!opts.autoEdgeSide,
+    photoHeight: +opts.photoHeight || 104,
+    cardWidth: +opts.cardWidth || POS_SIZE.width,
+    photoContain: opts.photoContain !== false,
   };
   let NODES = (opts.nodes || []).map(makeNode);
   let nodeById = indexNodes(NODES);
@@ -182,8 +191,9 @@ export function createOrgChart(host, userOpts = {}) {
   if (legendHost !== canvas) legendEl.classList.add('loc-legend-external');
   const legendBody = legendEl.querySelector('[data-role="legend-body"]');
 
-  // uniform person-photo height (bigger profile images, all the same size)
-  root.style.setProperty('--loc-photo-h', (opts.photoHeight || 104) + 'px');
+  // uniform person-photo height + card width + image-fit (bigger profile images, all the same size)
+  applyCardSizeVars();
+  applyCardSizeToNodes();
 
   host.appendChild(root);
 
@@ -263,6 +273,28 @@ export function createOrgChart(host, userOpts = {}) {
     for (const id in elById) if (!seen[id]) { elById[id].remove(); delete elById[id]; }
     emit('nodes-rendered', { ids: positioned.map((p) => p.node.id) });
   }
+  // ---- global card sizing (photo height + card width + image fit) ----
+  function applyCardSizeVars() {
+    root.style.setProperty('--loc-photo-h', (state.photoHeight || 104) + 'px');
+    root.style.setProperty('--loc-photo-fit', state.photoContain ? 'contain' : 'cover');
+  }
+  /* push the global size onto every person card (departments keep their own size) */
+  function applyCardSizeToNodes() {
+    const w = Math.max(100, state.cardWidth || POS_SIZE.width);
+    const h = Math.max(60, (state.photoHeight || 104) + CARD_TEXT_BLOCK);
+    for (const n of NODES) if (n.type !== 'department') { n.width = w; n.height = h; }
+  }
+  /* change global card size / photo height / image fit, refit text + relayout */
+  function setCardSize(o) {
+    o = o || {};
+    if (typeof o.width === 'number') state.cardWidth = Math.max(100, o.width);
+    if (typeof o.photoHeight === 'number') state.photoHeight = Math.max(40, o.photoHeight);
+    if ('contain' in o) state.photoContain = !!o.contain;
+    applyCardSizeVars(); applyCardSizeToNodes();
+    for (const id in elById) delete elById[id].dataset.fitted;   // re-fit text at the new size
+    refresh(); persist(); emit('settings-change', getSettings());
+  }
+
   // neutral user-silhouette placeholder drawn when images are off / missing / broken
   const USER_ICON = '<svg class="loc-usericon" viewBox="0 0 24 24" aria-hidden="true">'
     + '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>';
@@ -273,7 +305,7 @@ export function createOrgChart(host, userOpts = {}) {
       const h = el('div', 'loc-node loc-node-host loc-' + n.type + (n.status ? ' loc-status-' + n.status : ''));
       h.dataset.id = n.id;
       h.innerHTML = '<div class="loc-node-slot"></div>';
-      if (n.type === 'department') { const t = el('div', 'loc-toggle'); t.dataset.role = 'toggle'; h.appendChild(t); }
+      h.appendChild(makeToggleEl());
       return h;
     }
     const d = el('div', 'loc-node loc-' + n.type + (n.status ? ' loc-status-' + n.status : ''));
@@ -281,7 +313,7 @@ export function createOrgChart(host, userOpts = {}) {
     if (n.type === 'department') {
       d.innerHTML = '<span class="loc-lbl"></span>';
       d.querySelector('.loc-lbl').textContent = n.label;
-      const t = el('div', 'loc-toggle'); t.dataset.role = 'toggle'; d.appendChild(t);
+      d.querySelector('.loc-lbl').title = n.label || '';
     } else {
       d.innerHTML = '<div class="loc-photo"></div><div class="loc-ptext">'
         + '<div class="loc-pname"></div><div class="loc-ptitle"></div><div class="loc-badge"></div></div>';
@@ -293,13 +325,17 @@ export function createOrgChart(host, userOpts = {}) {
         const img = new Image(); img.alt = n.personName || ''; img.referrerPolicy = 'no-referrer';
         img.onerror = () => { showUserIcon(photo); }; img.src = url; photo.appendChild(img);
       } else { showUserIcon(photo); }
-      d.querySelector('.loc-pname').textContent = n.personName || '—';
-      d.querySelector('.loc-ptitle').textContent = n.label;
+      const pn = d.querySelector('.loc-pname'), pt = d.querySelector('.loc-ptitle');
+      pn.textContent = n.personName || '—'; pn.title = n.personName || '';     // full text on hover when clamped
+      pt.textContent = n.label; pt.title = n.label || '';
       const b = d.querySelector('.loc-badge');
       if (n.status) { b.textContent = n.status; b.className = 'loc-badge loc-' + n.status; } else b.remove();
     }
+    d.appendChild(makeToggleEl());   // expand/collapse handle (shown only when the node has children)
     return d;
   }
+  /* the +/- collapse handle that sits centered on the bottom edge of a node */
+  function makeToggleEl() { const t = el('div', 'loc-toggle'); t.dataset.role = 'toggle'; return t; }
   function isOverflowing(e) { return e.scrollWidth > e.clientWidth + 0.5 || e.scrollHeight > e.clientHeight + 0.5; }
   function fitNodeText(e) {
     e.style.setProperty('--loc-fit', '1');
@@ -312,7 +348,9 @@ export function createOrgChart(host, userOpts = {}) {
     const t = elNode.querySelector('[data-role="toggle"]'); if (!t) return;
     const has = childCount(NODES, n.id) > 0;
     t.style.display = has ? 'flex' : 'none';
-    t.textContent = n.collapsed ? '⊞' : '⊟';
+    t.textContent = n.collapsed ? '+' : '−';   // + when collapsed (has hidden children), − when expanded
+    const tip = n.collapsed ? 'Expand' : 'Collapse';
+    t.title = tip; t.setAttribute('aria-label', tip);
   }
 
   // ================= connectors =================
@@ -337,6 +375,7 @@ export function createOrgChart(host, userOpts = {}) {
     }
     for (const id in pathById) if (!seen[id]) { pathById[id].remove(); delete pathById[id]; }
     for (const id in hitById) if (!seen[id]) { hitById[id].remove(); delete hitById[id]; }
+    applyEdgeSelectionClasses();
     if (state.selectedEdgeId && !seen[state.selectedEdgeId]) deselectEdge(); else renderEdgeHandles();
   }
   function updateEdgeGeom(id) {
@@ -418,9 +457,15 @@ export function createOrgChart(host, userOpts = {}) {
     for (const n of NODES) n.collapsed = (depth[n.id] >= 1 && childCount(NODES, n.id) > 0);
     refresh(); pushHistory();
   }
+  /* Collapse/expand a single node WITHOUT re-flowing the rest of the chart — the
+     other boxes stay exactly where they are (no stagger). Collapsing hides the whole
+     subtree (children, grandchildren, …); expanding brings it back in place. A
+     manual Re-layout reflows normally. */
   function toggleCollapse(id) {
     const n = nodeById[id]; if (!n) return;
-    n.collapsed = !n.collapsed; refresh(); pushHistory();
+    structuralEditKeepPositions(() => { n.collapsed = !n.collapsed; });
+    applyIncident();
+    pushHistory();
   }
 
   // ================= search =================
@@ -619,6 +664,77 @@ export function createOrgChart(host, userOpts = {}) {
   function isIncidentEdge(n) {
     return selectedIds.has(n.id) || selectedIds.has(n.parentId);
   }
+
+  // ---- connector (line) multi-selection: Alt+drag marquee picks lines ----
+  let selectedEdges = new Set();
+  function applyEdgeSelectionClasses() {
+    for (const id in pathById) pathById[id].classList.toggle('loc-edge-selected', selectedEdges.has(id));
+  }
+  function clearEdgeSelection() {
+    if (!selectedEdges.size) return;
+    selectedEdges = new Set(); applyEdgeSelectionClasses(); emit('edges-select', { ids: [] });
+  }
+  function setEdgeSelection(ids) {
+    selectedEdges = new Set((ids || []).filter((id) => pathById[id]));
+    applyEdgeSelectionClasses(); emit('edges-select', { ids: [...selectedEdges] });
+  }
+  /* straighten the selected lines: drop their manual waypoints + endpoint anchors */
+  function resetSelectedEdges() {
+    if (!selectedEdges.size) return;
+    let changed = false;
+    for (const id of selectedEdges) {
+      if (edgeWaypoints[id]) { delete edgeWaypoints[id]; changed = true; }
+      if (edgeAnchors[id]) { delete edgeAnchors[id]; changed = true; }
+    }
+    if (!changed) return;
+    if (state.selectedEdgeId && selectedEdges.has(state.selectedEdgeId)) deselectEdge();
+    drawConnectors(); applyEdgeSelectionClasses(); persist(); pushHistory();
+    emit('edges-reset', { ids: [...selectedEdges] });
+  }
+  function segSeg(ax, ay, bx, by, cx, cy, dx, dy) {
+    const d = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+    if (Math.abs(d) < 1e-9) return false;
+    const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / d;
+    const u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / d;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+  }
+  function segIntersectsRect(a, b, x, y, w, h) {
+    const x2 = x + w, y2 = y + h;
+    const inside = (p) => p.x >= x && p.x <= x2 && p.y >= y && p.y <= y2;
+    if (inside(a) || inside(b)) return true;
+    return segSeg(a.x, a.y, b.x, b.y, x, y, x2, y) || segSeg(a.x, a.y, b.x, b.y, x2, y, x2, y2)
+        || segSeg(a.x, a.y, b.x, b.y, x2, y2, x, y2) || segSeg(a.x, a.y, b.x, b.y, x, y2, x, y);
+  }
+  function edgeIntersectsRect(id, x, y, w, h) {
+    const controls = controlsFor(id); if (!controls) return false;
+    for (const s of renderedHandleSegments(controls)) if (segIntersectsRect(s.a, s.b, x, y, w, h)) return true;
+    return false;
+  }
+  /* Alt+drag on empty canvas: rubber-band select connector LINES (Shift adds). The
+     selected lines highlight; press Delete to straighten them, Esc to deselect. */
+  function startLineMarquee(e) {
+    const p0 = clientToContent(e.clientX, e.clientY);
+    const base = e.shiftKey ? new Set(selectedEdges) : new Set();
+    const rect = createNS('rect'); rect.setAttribute('class', 'loc-marquee loc-marquee-edge');
+    overlay.appendChild(rect);
+    canvas.classList.add('loc-marqueeing');
+    let did = false;
+    const apply = (ev) => {
+      const p = clientToContent(ev.clientX, ev.clientY);
+      const x = Math.min(p0.x, p.x), y = Math.min(p0.y, p.y), w = Math.abs(p.x - p0.x), h = Math.abs(p.y - p0.y);
+      rect.setAttribute('x', x); rect.setAttribute('y', y); rect.setAttribute('width', w); rect.setAttribute('height', h);
+      const hit = new Set(base);
+      for (const id in pathById) if (edgeIntersectsRect(id, x, y, w, h)) hit.add(id);
+      selectedEdges = hit; applyEdgeSelectionClasses(); did = true;
+    };
+    const up = () => {
+      rect.remove(); canvas.classList.remove('loc-marqueeing');
+      rmWin('pointermove', apply); rmWin('pointerup', up);
+      if (!did) clearEdgeSelection();
+      else emit('edges-select', { ids: [...selectedEdges] });
+    };
+    addWin('pointermove', apply); addWin('pointerup', up);
+  }
   /* highlight every connector touching the selected node so you can see where it
      connects (both its parent edge and its child edges) */
   function applyIncident() {
@@ -774,6 +890,8 @@ export function createOrgChart(host, userOpts = {}) {
       if (posById[id]) Object.assign(posById[id].node, { parentId: pid });
     });
     applyIncident();
+    // keep the open inspector in sync so its footer flips Detach <-> Attach…
+    if (panel.classList.contains('loc-open') && state.selectedNodeId === id) renderInspector();
     emit('node-change', { id, node: { ...n }, patch: { parentId: pid }, reparented: true });
     pushHistory();
   }
@@ -1020,6 +1138,7 @@ export function createOrgChart(host, userOpts = {}) {
       orientation: state.orientation, subtreeMode: state.subtreeMode,
       showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid,
       showImages: state.showImages, autoEdgeSide: state.autoEdgeSide,
+      cardWidth: state.cardWidth, photoHeight: state.photoHeight, photoContain: state.photoContain,
       themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
     };
   }
@@ -1038,6 +1157,11 @@ export function createOrgChart(host, userOpts = {}) {
       for (const id in elById) { elById[id].remove(); delete elById[id]; }   // rebuild cards on image toggle
     }
     if ('autoEdgeSide' in s) state.autoEdgeSide = !!s.autoEdgeSide;
+    let sized = false;
+    if (typeof s.cardWidth === 'number') { state.cardWidth = Math.max(100, s.cardWidth); sized = true; }
+    if (typeof s.photoHeight === 'number') { state.photoHeight = Math.max(40, s.photoHeight); sized = true; }
+    if ('photoContain' in s) { state.photoContain = !!s.photoContain; sized = true; }
+    if (sized) { applyCardSizeVars(); applyCardSizeToNodes(); for (const id in elById) delete elById[id].dataset.fitted; }
     if (Array.isArray(s.themeRules)) themeRules = s.themeRules.map(normalizeRule);
     applyGridOverlay(); syncToolbar(); refresh();
     if (settingsPanel.classList.contains('loc-open')) renderSettings();
@@ -1105,6 +1229,12 @@ export function createOrgChart(host, userOpts = {}) {
       + `<label class="loc-color"><input type="checkbox" data-set-toggle="showImages"${state.showImages ? ' checked' : ''}/><span>Show photos (off → user icon)</span></label>`
       + `<label class="loc-color"><input type="checkbox" data-set-toggle="autoEdgeSide"${state.autoEdgeSide ? ' checked' : ''}/><span>Smart edges (lines follow waypoints to any side)</span></label>`
       + '</div>';
+    h += '<div class="loc-set-section"><div class="loc-set-title">Card size</div>'
+      + '<div class="loc-set-hint">Applies to every person card. The photo tops the card at its full size; the name/title sit below.</div>'
+      + setRange('cardWidth', 'Card width', state.cardWidth, 120, 320)
+      + setRange('photoHeight', 'Photo height', state.photoHeight, 60, 240)
+      + `<label class="loc-color"><input type="checkbox" data-set-toggle="photoContain"${state.photoContain ? ' checked' : ''}/><span>Show whole photo (no crop)</span></label>`
+      + '</div>';
     h += '<div class="loc-set-section"><div class="loc-set-title">Theme rules</div>'
       + '<div class="loc-set-hint">Recolor nodes that match a field = value. Later rules win.</div>';
     themeRules.forEach((r, i) => { h += ruleRow(r, i); });
@@ -1130,6 +1260,7 @@ export function createOrgChart(host, userOpts = {}) {
       spacingX: state.spacingX, spacingY: state.spacingY, gridSize: state.gridSize,
       showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid,
       showImages: state.showImages, autoEdgeSide: state.autoEdgeSide,
+      cardWidth: state.cardWidth, photoHeight: state.photoHeight, photoContain: state.photoContain,
       themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
     };
   }
@@ -1143,6 +1274,10 @@ export function createOrgChart(host, userOpts = {}) {
     if ('alignGrid' in v) state.alignGrid = !!v.alignGrid;
     if ('showImages' in v) state.showImages = !!v.showImages;
     if ('autoEdgeSide' in v) state.autoEdgeSide = !!v.autoEdgeSide;
+    if (typeof v.cardWidth === 'number') state.cardWidth = Math.max(100, v.cardWidth);
+    if (typeof v.photoHeight === 'number') state.photoHeight = Math.max(40, v.photoHeight);
+    if ('photoContain' in v) state.photoContain = !!v.photoContain;
+    applyCardSizeVars(); applyCardSizeToNodes();
     if (Array.isArray(v.themeRules)) themeRules = v.themeRules.map(normalizeRule);
   }
   function snapshot() {
@@ -1206,6 +1341,7 @@ export function createOrgChart(host, userOpts = {}) {
         showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid, gridSize: state.gridSize,
         editMode: state.editMode, showImages: state.showImages, showLegend: state.showLegend,
         autoEdgeSide: state.autoEdgeSide,
+        cardWidth: state.cardWidth, photoHeight: state.photoHeight, photoContain: state.photoContain,
         manualOffsets, edgeWaypoints, edgeAnchors, nodeOverrides, themeRules,
         collapsed: NODES.filter((n) => n.collapsed).map((n) => n.id),
       }));
@@ -1223,6 +1359,10 @@ export function createOrgChart(host, userOpts = {}) {
     if ('showImages' in s) state.showImages = !!s.showImages;
     if ('showLegend' in s) state.showLegend = !!s.showLegend;
     if ('autoEdgeSide' in s) state.autoEdgeSide = !!s.autoEdgeSide;
+    if (typeof s.cardWidth === 'number') state.cardWidth = Math.max(100, s.cardWidth);
+    if (typeof s.photoHeight === 'number') state.photoHeight = Math.max(40, s.photoHeight);
+    if ('photoContain' in s) state.photoContain = !!s.photoContain;
+    applyCardSizeVars(); applyCardSizeToNodes();
     if (s.manualOffsets) manualOffsets = s.manualOffsets;
     if (s.edgeWaypoints) edgeWaypoints = s.edgeWaypoints;
     if (s.edgeAnchors) edgeAnchors = s.edgeAnchors;
@@ -1546,12 +1686,15 @@ export function createOrgChart(host, userOpts = {}) {
   addL(settingsBody, 'input', (e) => {
     const t = e.target;
     if (t.dataset.set != null) {
-      const v = parseFloat(t.value); state[t.dataset.set] = v;
-      const lab = settingsBody.querySelector(`[data-rangelabel="${t.dataset.set}"]`); if (lab) lab.textContent = v;
-      refresh(); emit('settings-change', getSettings()); persist(); return;
+      const key = t.dataset.set, v = parseFloat(t.value);
+      const lab = settingsBody.querySelector(`[data-rangelabel="${key}"]`); if (lab) lab.textContent = v;
+      if (key === 'cardWidth') { setCardSize({ width: v }); return; }
+      if (key === 'photoHeight') { setCardSize({ photoHeight: v }); return; }
+      state[key] = v; refresh(); emit('settings-change', getSettings()); persist(); return;
     }
     if (t.dataset.setToggle === 'showImages') { setShowImages(t.checked); return; }
     if (t.dataset.setToggle === 'autoEdgeSide') { setAutoEdgeSide(t.checked); return; }
+    if (t.dataset.setToggle === 'photoContain') { setCardSize({ contain: t.checked }); return; }
     if (t.dataset.rule != null) {
       const i = +t.dataset.rule, rk = t.dataset.rk, r = themeRules[i]; if (!r) return;
       if (rk === 'enabled') r.enabled = t.checked;
@@ -1576,10 +1719,13 @@ export function createOrgChart(host, userOpts = {}) {
     const clearSelection = () => {
       clearNodeSelection();
       if (state.selectedEdgeId) deselectEdge();
+      clearEdgeSelection();
       if (attaching) cancelAttach();
       closeInspector();
     };
-    // Ctrl/⌘ + drag on empty canvas → marquee box select (Windows-11 style)
+    // Alt + drag on empty canvas → marquee box select connector LINES
+    if (e.altKey) { startLineMarquee(e); return; }
+    // Ctrl/⌘ + drag on empty canvas → marquee box select nodes (Windows-11 style)
     if (e.ctrlKey || e.metaKey) { startMarquee(e); return; }
     if (!opts.enablePan) { clearSelection(); return; }
     const sx = e.clientX, sy = e.clientY, px = state.panX, py = state.panY;
@@ -1615,10 +1761,15 @@ export function createOrgChart(host, userOpts = {}) {
   // canvas/node interaction). Skipped while typing in a field so native text undo works.
   function focusRoot() { try { root.focus({ preventScroll: true }); } catch (e) { /* ignore */ } }
   addL(root, 'keydown', (e) => {
-    if (!(e.ctrlKey || e.metaKey)) return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     const k = (e.key || '').toLowerCase();
+    // line-marquee actions (no modifier): Delete straightens selected lines, Esc clears
+    if (!(e.ctrlKey || e.metaKey)) {
+      if (selectedEdges.size && (k === 'delete' || k === 'backspace')) { e.preventDefault(); resetSelectedEdges(); return; }
+      if (k === 'escape' && selectedEdges.size) { e.preventDefault(); clearEdgeSelection(); return; }
+      return;
+    }
     if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
     else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
   });
@@ -1722,11 +1873,17 @@ export function createOrgChart(host, userOpts = {}) {
     setShowImages, isShowingImages: () => state.showImages,
     setShowLegend, toggleLegend, isShowingLegend: () => state.showLegend, getLegendBody: () => legendBody,
     setAutoEdgeSide, isAutoEdgeSide: () => state.autoEdgeSide,
-    setPhotoHeight: (px) => { opts.photoHeight = px; root.style.setProperty('--loc-photo-h', (px || 104) + 'px'); },
-    // multi-select
+    // global card sizing
+    setPhotoHeight: (px) => setCardSize({ photoHeight: px }),
+    setCardWidth: (px) => setCardSize({ width: px }),
+    setCardSize, setPhotoContain: (on) => setCardSize({ contain: on !== false }),
+    // multi-select (nodes)
     getSelection: () => [...selectedIds],
     setSelection: (ids) => setSelectionSet(Array.isArray(ids) ? ids : (ids ? [ids] : [])),
     clearSelection: () => { clearNodeSelection(); emitSelection(); },
+    // multi-select (connector lines)
+    getEdgeSelection: () => [...selectedEdges],
+    setEdgeSelection, clearEdgeSelection, resetSelectedEdges,
     enterFullscreen, exitFullscreen, toggleFullscreen, isFullscreen,
     undo, redo, canUndo, canRedo,
     updateNode, addChild, deleteNode, reparentNode, detachNode, attachNode,

@@ -210,6 +210,8 @@ you render a chart.
 | `fitOnLayoutChange` | `Boolean \| String` | `true` | re-frame after a mode/orientation/re-layout change: `true`/`'fit'`, `'recenter'` (keep zoom), `false`/`'none'` |
 | `showImages` | `Boolean` | `true` | show person photos; off (or a missing/broken photo) → a user-silhouette icon |
 | `photoHeight` | `Number` | `104` | person-photo height in px — uniform across cards; larger = bigger profile image |
+| `cardWidth` | `Number` | `180` | person-card width in px (global; card height = `photoHeight` + a fixed text block) |
+| `photoContain` | `Boolean` | `true` | fit the **whole** profile image inside the photo area (no crop); `false` = cover/crop |
 | `autoEdgeSide` | `Boolean` | `false` | opt-in "smart edges": connector endpoints follow waypoints onto any box side (left/right/top/bottom) |
 | `legend` | `Boolean` | `false` | show the floating legend (type / status / active theme rules) |
 | `legendTarget` | `String \| Element` | `null` | mount the legend into an element outside the canvas |
@@ -232,7 +234,8 @@ feature flags updates the chart automatically (no manual re-init). When changing
 `node-change`, `settings-change`, `inspector-open`/`-close`, `settings-open`/`-close`,
 `fullscreen-change`, `history-change` (`{ canUndo, canRedo }`), `attach-start`/`attach-cancel`,
 `user-select` (`{ id, user, node }` — a typeahead pick), `presets-change`, `preset-load`,
-`selection-change` (`{ ids, primary }` — multi-select), `legend-change`.
+`selection-change` (`{ ids, primary }` — node multi-select), `legend-change`,
+`edges-select` (`{ ids }` — connector-line marquee), `edges-reset` (`{ ids }` — lines straightened).
 
 Each payload includes the relevant `{ id, node, ... }`.
 
@@ -307,8 +310,31 @@ All methods are available on:
 
 > Also a **Images** toolbar button and a Settings checkbox. When a photo URL is missing or fails
 > to load, the user-silhouette icon is drawn automatically regardless of this setting.
-> Profile photos are a fixed, uniform size on every card — set it with `photoHeight` /
-> `setPhotoHeight(px)` (default 104).
+
+### Card size & long text
+
+Cards are a fixed, uniform size; tune them globally (Settings → **Card size**, the options, or the
+API). The photo "tops" the card at its full height and the card height tracks it
+(`height = photoHeight + text block`), so all cards stay the same size.
+
+| Method | Description |
+|--------|-------------|
+| `setCardWidth(px)` | Person-card width (default 180) |
+| `setPhotoHeight(px)` | Photo height (default 104) — bigger = larger profile image |
+| `setPhotoContain(on?)` | Show the **whole** photo (no crop, default) vs. crop/cover |
+| `setCardSize({ width, photoHeight, contain })` | Set any/all in one call |
+
+> Long names and titles **don't stretch the card** — the name clamps to 2 lines, the title to 3,
+> both auto-shrink to fit and show the full text on hover. Set **`photoContain: false`** if you'd
+> rather crop photos to fill the area edge-to-edge.
+
+### Expand / collapse
+
+Each box that has children shows a **`+` / `−`** handle centered on its **bottom edge** (hover for an
+"Expand"/"Collapse" hint). `−` = expanded, `+` = collapsed (subtree hidden). Collapsing hides the
+**whole** subtree below that node. Toggling a node **does not re-flow the rest of the chart** — the
+other boxes stay exactly where they are, so an accidental collapse won't scramble your layout. Use
+**Re-layout** (or `relayout()`) to reflow everything on purpose.
 
 ### Multi-select & group move
 
@@ -323,6 +349,21 @@ a **marquee** box (hold **Shift** to extend). Dragging any selected node **moves
 
 > Listen to `selection-change` (`{ ids, primary }`). The *primary* node (the last one added) drives
 > the inspector and the connector highlight.
+
+### Connector-line multi-select (marquee)
+
+**Alt + drag** on empty canvas rubber-bands **connector lines** (hold **Shift** to extend); the
+picked lines highlight. Press **Delete** to **straighten** them (drop their waypoints/anchors) or
+**Esc** to deselect. (Node marquee stays on **Ctrl/⌘ + drag** — Alt selects lines, Ctrl selects nodes.)
+
+| Method | Description |
+|--------|-------------|
+| `getEdgeSelection()` | Array of selected connector ids (the child-node id of each edge) |
+| `setEdgeSelection(ids)` | Replace the line selection |
+| `clearEdgeSelection()` | Clear it |
+| `resetSelectedEdges()` | Straighten the selected lines (remove waypoints + endpoint anchors) |
+
+> Listen to `edges-select` (`{ ids }`) and `edges-reset` (`{ ids }`).
 
 ### Legend
 
