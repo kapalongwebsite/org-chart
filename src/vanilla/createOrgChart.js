@@ -12,7 +12,7 @@ import {
 
 // person-card height = photo height + this fixed text block, so the image always
 // "tops" the card at its full size and the name/title area stays consistent.
-const CARD_TEXT_BLOCK = 84;
+const CARD_TEXT_BLOCK = 116;
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 // Floor for the per-card text auto-fit. 0.5 let labels shrink to half size —

@@ -3,6 +3,14 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.16.0 — 2026-06-18
+
+### Changed
+- **Long node text shows more before clipping.** Person cards gained a taller text block
+  (`CARD_TEXT_BLOCK` 84 → 116) and higher line clamps (name 2 → 3 lines, title 3 → 4) so a
+  long name/position wraps and stays visible instead of being truncated. Department/level
+  labels now clamp at 6 lines (was 3). Card width stays uniform so the tree layout stays tidy.
+
 ## v1.15.0 — 2026-06-18
 
 ### Changed

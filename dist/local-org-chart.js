@@ -1,6 +1,6 @@
 import { POS_SIZE as qt, makeNode as Fe, indexNodes as We, normalizeRule as Ce, exportLayout as ps, calculateBounds as Ut, fitBounds as gs, computeDepths as hs, childCount as fo, searchNodes as ms, resolveNodeStyle as po, buildChartSVG as bs, effCenter as Q, normalizeImported as ys, layoutOrgChart as ws, normalizeConfig as Ss, routeConnector as vs, edgeControlPoints as Ls, isHorizontal as xs, orthoThrough as Is } from "./core.js";
 import { CANVAS_PAD as zs, DEFAULTS as Rs, DEFAULT_SETTINGS as Hs, DEPT_SIZE as js, ORIENTATIONS as $s, SNAKE_STUB as ks, SUBTREE_MODES as Ps, VIRTUAL_ROOT_ID as Xs, applyOrientation as Ys, buildTree as Ds, convertMoTree as Us, convertNestedTree as qs, edgeEndpoints as _s, getVisibleTree as Fs, isMoArray as Ws, lh as Bs, lw as Ks, normalizeSettings as Vs, personNameFromPos as Js, visibleDepths as Zs, waypointPath as Qs } from "./core.js";
-const Ms = 84, Ne = "http://www.w3.org/2000/svg", Es = 0.72, As = { Top: "TopToBottom", Bottom: "BottomToTop", Left: "LeftToRight", Right: "RightToLeft" };
+const Ms = 116, Ne = "http://www.w3.org/2000/svg", Es = 0.72, As = { Top: "TopToBottom", Bottom: "BottomToTop", Left: "LeftToRight", Right: "RightToLeft" };
 function Te(Se) {
   return As[Se] || Se;
 }

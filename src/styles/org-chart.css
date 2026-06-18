@@ -126,7 +126,7 @@
   font-size: calc(13.5px * var(--loc-fit, 1)); letter-spacing: .4px; line-height: 1.2;
 }
 .loc-node.loc-department .loc-lbl {
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical;
   overflow: hidden; max-width: 100%; word-break: break-word;
 }
 .loc-node.loc-position {
@@ -150,12 +150,12 @@
 .loc-node.loc-position .loc-pname {
   font-weight: 700; font-size: calc(13.5px * var(--loc-fit, 1)); text-transform: uppercase;
   color: var(--loc-text-dark); line-height: 1.15; max-width: 100%; word-break: break-word;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .loc-node.loc-position .loc-ptitle {
   font-size: calc(12px * var(--loc-fit, 1)); color: var(--loc-text-gray); line-height: 1.15;
   max-width: 100%; word-break: break-word;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
 }
 .loc-node.loc-position .loc-badge {
   margin-top: 4px; font-size: 10px; font-weight: 700; letter-spacing: .4px;
