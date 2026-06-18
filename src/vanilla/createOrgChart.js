@@ -49,7 +49,7 @@ const DEFAULT_OPTS = {
   settingsSlot: false,   // leave the settings body empty for an external (Vue) slot
   nodeSlots: false,   // render empty positioned hosts (Vue teleports card content in)
   fullscreenControl: true, // show the floating fullscreen button on the canvas
-  autoEdgeSide: false,     // (opt-in) connector endpoints follow waypoints onto any box side (L/R/top/bottom)
+  autoEdgeSide: true,      // smart edges (default on): connector endpoints follow waypoints onto any box side (L/R/top/bottom)
   legend: false,           // show a floating legend (type / status / active theme rules); toggle via toolbar
   legendTarget: null,      // mount the legend into an external element instead of the canvas corner
   legendSlot: false,       // leave the legend body empty for an external (Vue #legend) slot
@@ -291,12 +291,20 @@ export function createOrgChart(host, userOpts = {}) {
   /* change global card size / photo height / image fit, refit text + relayout */
   function setCardSize(o) {
     o = o || {};
+    const sizeChanged = typeof o.width === 'number' || typeof o.photoHeight === 'number';
     if (typeof o.width === 'number') state.cardWidth = Math.max(100, o.width);
     if (typeof o.photoHeight === 'number') state.photoHeight = Math.max(40, o.photoHeight);
     if ('contain' in o) state.photoContain = !!o.contain;
-    applyCardSizeVars(); applyCardSizeToNodes();
-    for (const id in elById) delete elById[id].dataset.fitted;   // re-fit text at the new size
-    refresh(); persist(); emit('settings-change', getSettings());
+    applyCardSizeVars();   // photo-fit (contain/cover) + photo-height are pure CSS vars
+    // Only a card-DIMENSION change needs a relayout + text re-fit. Toggling
+    // "show whole photo" (photoContain) is image object-fit only — re-fitting
+    // there reset every node's font to base size until the next refresh.
+    if (sizeChanged) {
+      applyCardSizeToNodes();
+      for (const id in elById) delete elById[id].dataset.fitted;   // re-fit text at the new size
+      refresh();
+    }
+    persist(); emit('settings-change', getSettings());
   }
 
   // neutral user-silhouette placeholder drawn when images are off / missing / broken

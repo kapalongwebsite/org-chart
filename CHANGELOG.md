@@ -3,6 +3,19 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.15.0 — 2026-06-18
+
+### Changed
+- **Smart edges on by default.** `autoEdgeSide` now defaults to `true` (was opt-in), so
+  connector endpoints follow waypoints onto whichever box side is closest. Pass
+  `autoEdgeSide: false` to restore the old fixed-side routing.
+
+### Fixed
+- **"Show whole photo" no longer disturbs the fonts.** Toggling `photoContain` ran a full
+  relayout + text re-fit, which reset every node's font to base size (looked larger/bold) until
+  the next refresh. Photo fit is pure CSS (`object-fit`), so the toggle now only updates the
+  image-fit variable — no relayout, no font flicker. A real card-size change still re-fits.
+
 ## v1.14.0 — 2026-06-17
 
 ### Changed

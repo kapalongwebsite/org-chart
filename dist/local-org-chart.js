@@ -1,6 +1,6 @@
-import { POS_SIZE as qt, makeNode as Fe, indexNodes as We, normalizeRule as Ne, exportLayout as ps, calculateBounds as Ut, fitBounds as gs, computeDepths as hs, childCount as fo, searchNodes as ms, resolveNodeStyle as po, buildChartSVG as bs, effCenter as Q, normalizeImported as ys, layoutOrgChart as ws, normalizeConfig as Ss, routeConnector as vs, edgeControlPoints as Ls, isHorizontal as xs, orthoThrough as Is } from "./core.js";
+import { POS_SIZE as qt, makeNode as Fe, indexNodes as We, normalizeRule as Ce, exportLayout as ps, calculateBounds as Ut, fitBounds as gs, computeDepths as hs, childCount as fo, searchNodes as ms, resolveNodeStyle as po, buildChartSVG as bs, effCenter as Q, normalizeImported as ys, layoutOrgChart as ws, normalizeConfig as Ss, routeConnector as vs, edgeControlPoints as Ls, isHorizontal as xs, orthoThrough as Is } from "./core.js";
 import { CANVAS_PAD as zs, DEFAULTS as Rs, DEFAULT_SETTINGS as Hs, DEPT_SIZE as js, ORIENTATIONS as $s, SNAKE_STUB as ks, SUBTREE_MODES as Ps, VIRTUAL_ROOT_ID as Xs, applyOrientation as Ys, buildTree as Ds, convertMoTree as Us, convertNestedTree as qs, edgeEndpoints as _s, getVisibleTree as Fs, isMoArray as Ws, lh as Bs, lw as Ks, normalizeSettings as Vs, personNameFromPos as Js, visibleDepths as Zs, waypointPath as Qs } from "./core.js";
-const Ms = 84, Ce = "http://www.w3.org/2000/svg", Es = 0.72, As = { Top: "TopToBottom", Bottom: "BottomToTop", Left: "LeftToRight", Right: "RightToLeft" };
+const Ms = 84, Ne = "http://www.w3.org/2000/svg", Es = 0.72, As = { Top: "TopToBottom", Bottom: "BottomToTop", Left: "LeftToRight", Right: "RightToLeft" };
 function Te(Se) {
   return As[Se] || Se;
 }
@@ -36,8 +36,8 @@ const Os = {
   // render empty positioned hosts (Vue teleports card content in)
   fullscreenControl: !0,
   // show the floating fullscreen button on the canvas
-  autoEdgeSide: !1,
-  // (opt-in) connector endpoints follow waypoints onto any box side (L/R/top/bottom)
+  autoEdgeSide: !0,
+  // smart edges (default on): connector endpoints follow waypoints onto any box side (L/R/top/bottom)
   legend: !1,
   // show a floating legend (type / status / active theme rules); toggle via toolbar
   legendTarget: null,
@@ -66,7 +66,7 @@ const Os = {
   persist: !1,
   storageKey: "local-org-chart.state"
 };
-function Cs(Se, go = {}) {
+function Ns(Se, go = {}) {
   if (!Se || !Se.appendChild) throw new Error("createOrgChart: first argument must be a DOM element.");
   const c = Object.assign({}, Os, go), ho = +c.maxZoom > 1 ? +c.maxZoom : 4, s = {
     orientation: Te(c.orientation),
@@ -90,7 +90,7 @@ function Cs(Se, go = {}) {
     cardWidth: +c.cardWidth || qt.width,
     photoContain: c.photoContain !== !1
   };
-  let y = (c.nodes || []).map(Fe), w = We(y), h = /* @__PURE__ */ Object.create(null), x = /* @__PURE__ */ Object.create(null), O = /* @__PURE__ */ Object.create(null), C = /* @__PURE__ */ Object.create(null), b = /* @__PURE__ */ new Set(), X = (c.settings && c.settings.themeRules || c.themeRules || []).map(Ne);
+  let y = (c.nodes || []).map(Fe), w = We(y), h = /* @__PURE__ */ Object.create(null), x = /* @__PURE__ */ Object.create(null), O = /* @__PURE__ */ Object.create(null), N = /* @__PURE__ */ Object.create(null), b = /* @__PURE__ */ new Set(), X = (c.settings && c.settings.themeRules || c.themeRules || []).map(Ce);
   const pe = {
     spacingX: c.spacingX,
     spacingY: c.spacingY,
@@ -100,7 +100,7 @@ function Cs(Se, go = {}) {
     alignGrid: !!c.alignGrid,
     themeRules: X.map((e) => ({ enabled: e.enabled, field: e.field, value: e.value, style: Object.assign({}, e.style) }))
   };
-  let mo = 0, N = [], E = /* @__PURE__ */ Object.create(null);
+  let mo = 0, C = [], E = /* @__PURE__ */ Object.create(null);
   const f = /* @__PURE__ */ Object.create(null), m = /* @__PURE__ */ Object.create(null), R = /* @__PURE__ */ Object.create(null);
   let P = null, v = null, Ge = 0, oe = /* @__PURE__ */ new Set();
   const Be = [], ve = /* @__PURE__ */ Object.create(null);
@@ -125,15 +125,15 @@ function Cs(Se, go = {}) {
   T.className = "loc-root", T.tabIndex = -1;
   const D = c.toolbar ? us() : null;
   D && T.appendChild(D);
-  const I = F("div", "loc-canvas"), Le = F("div", "loc-content"), re = F("div", "loc-grid"), xe = document.createElementNS(Ce, "svg");
+  const I = F("div", "loc-canvas"), Le = F("div", "loc-content"), re = F("div", "loc-grid"), xe = document.createElementNS(Ne, "svg");
   xe.setAttribute("class", "loc-connectors");
-  const ze = document.createElementNS(Ce, "g");
+  const ze = document.createElementNS(Ne, "g");
   ze.setAttribute("class", "loc-edgehits"), xe.appendChild(ze);
-  const Ke = F("div", "loc-nodes"), te = document.createElementNS(Ce, "svg");
+  const Ke = F("div", "loc-nodes"), te = document.createElementNS(Ne, "svg");
   te.setAttribute("class", "loc-overlay");
-  const U = document.createElementNS(Ce, "g");
+  const U = document.createElementNS(Ne, "g");
   U.setAttribute("class", "loc-edgehandles");
-  const Re = document.createElementNS(Ce, "g");
+  const Re = document.createElementNS(Ne, "g");
   Re.setAttribute("class", "loc-aligns"), te.appendChild(Re), te.appendChild(U);
   const mt = F("div", "loc-zoomreadout");
   mt.textContent = "100%", Le.appendChild(re), Le.appendChild(xe), Le.appendChild(Ke), Le.appendChild(te), I.appendChild(Le), I.appendChild(mt);
@@ -177,35 +177,35 @@ function Cs(Se, go = {}) {
   }
   function Vt() {
     const e = ws(y, Ve());
-    N = e.positioned, E = e.posById;
+    C = e.positioned, E = e.posById;
   }
   function G() {
-    Vt(), wt(), yt(), Je(), Me(), Qe(), s.showLegend && Gt(), A(), p("layout-change", { positioned: N, mode: s.subtreeMode, orientation: s.orientation });
+    Vt(), wt(), yt(), Je(), Me(), Qe(), s.showLegend && Gt(), A(), p("layout-change", { positioned: C, mode: s.subtreeMode, orientation: s.orientation });
   }
   function Jt(e) {
     const t = /* @__PURE__ */ Object.create(null);
-    for (const n of N) t[n.node.id] = Q(n, h);
+    for (const n of C) t[n.node.id] = Q(n, h);
     e(), Vt();
-    for (const n of N) {
+    for (const n of C) {
       const o = t[n.node.id];
       if (!o) continue;
       const i = o.x - n.cx, a = o.y - n.cy;
       Math.abs(i) > 0.5 || Math.abs(a) > 0.5 ? h[n.node.id] = { dx: i, dy: a } : delete h[n.node.id];
     }
-    wt(), yt(), Je(), Me(), Qe(), A(), p("layout-change", { positioned: N, mode: s.subtreeMode, orientation: s.orientation });
+    wt(), yt(), Je(), Me(), Qe(), A(), p("layout-change", { positioned: C, mode: s.subtreeMode, orientation: s.orientation });
   }
   function Je() {
     const e = /* @__PURE__ */ Object.create(null);
-    for (const t of N) {
+    for (const t of C) {
       const n = t.node;
       e[n.id] = !0;
       let o = f[n.id];
       o || (o = vo(n), f[n.id] = o, Ke.appendChild(o)), o.style.width = n.width + "px", o.style.height = n.height + "px";
       const i = Q(t, h);
-      o.style.transform = `translate(${i.x - n.width / 2}px, ${i.y - n.height / 2}px)`, c.nodeSlots || (o.dataset.fitted || (Lo(o), o.dataset.fitted = "1"), Nn(o, n)), o.classList.toggle("loc-selected", b.has(n.id)), o.classList.toggle("loc-primary", s.selectedNodeId === n.id && b.size > 1), xo(o, n);
+      o.style.transform = `translate(${i.x - n.width / 2}px, ${i.y - n.height / 2}px)`, c.nodeSlots || (o.dataset.fitted || (Lo(o), o.dataset.fitted = "1"), Cn(o, n)), o.classList.toggle("loc-selected", b.has(n.id)), o.classList.toggle("loc-primary", s.selectedNodeId === n.id && b.size > 1), xo(o, n);
     }
     for (const t in f) e[t] || (f[t].remove(), delete f[t]);
-    p("nodes-rendered", { ids: N.map((t) => t.node.id) });
+    p("nodes-rendered", { ids: C.map((t) => t.node.id) });
   }
   function je() {
     T.style.setProperty("--loc-photo-h", (s.photoHeight || 104) + "px"), T.style.setProperty("--loc-photo-fit", s.photoContain ? "contain" : "cover");
@@ -215,9 +215,14 @@ function Cs(Se, go = {}) {
     for (const n of y) n.type !== "department" && (n.width = e, n.height = t);
   }
   function ge(e) {
-    e = e || {}, typeof e.width == "number" && (s.cardWidth = Math.max(100, e.width)), typeof e.photoHeight == "number" && (s.photoHeight = Math.max(40, e.photoHeight)), "contain" in e && (s.photoContain = !!e.contain), je(), $e();
-    for (const t in f) delete f[t].dataset.fitted;
-    G(), A(), p("settings-change", B());
+    e = e || {};
+    const t = typeof e.width == "number" || typeof e.photoHeight == "number";
+    if (typeof e.width == "number" && (s.cardWidth = Math.max(100, e.width)), typeof e.photoHeight == "number" && (s.photoHeight = Math.max(40, e.photoHeight)), "contain" in e && (s.photoContain = !!e.contain), je(), t) {
+      $e();
+      for (const n in f) delete f[n].dataset.fitted;
+      G();
+    }
+    A(), p("settings-change", B());
   }
   const So = '<svg class="loc-usericon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>';
   function Zt(e) {
@@ -273,14 +278,14 @@ function Cs(Se, go = {}) {
     n.title = i, n.setAttribute("aria-label", i);
   }
   function he(e) {
-    return document.createElementNS(Ce, e);
+    return document.createElementNS(Ne, e);
   }
   function tn(e) {
     return vs(E[e.node.parentId], e, Ve(), h, x, O);
   }
   function yt() {
     const e = /* @__PURE__ */ Object.create(null);
-    for (const t of N) {
+    for (const t of C) {
       const n = t.node;
       if (!n.parentId || !E[n.parentId]) continue;
       e[n.id] = !0;
@@ -305,7 +310,7 @@ function Cs(Se, go = {}) {
   }
   function wt() {
     let e = 0, t = 0, n = 0, o = 0;
-    for (const a of N) {
+    for (const a of C) {
       const l = Q(a, h), r = a.node.width / 2, u = a.node.height / 2;
       e = Math.min(e, l.x - r - 80), t = Math.min(t, l.y - u - 80), n = Math.max(n, l.x + r + 80), o = Math.max(o, l.y + u + 80);
     }
@@ -317,8 +322,8 @@ function Cs(Se, go = {}) {
     re.classList.toggle("loc-on", s.showGrid), I.classList.toggle("loc-gridon", s.showGrid);
   }
   function be() {
-    if (!N.length) return;
-    const e = Ut(N, h, 0), t = gs(e, I.clientWidth, I.clientHeight);
+    if (!C.length) return;
+    const e = Ut(C, h, 0), t = gs(e, I.clientWidth, I.clientHeight);
     s.zoom = t.zoom, s.panX = t.panX, s.panY = t.panY, Me();
   }
   function St(e) {
@@ -359,7 +364,7 @@ function Cs(Se, go = {}) {
   }
   function an(e) {
     if (oe = ms(y, e), Qe(), oe.size) {
-      const t = N.find((n) => oe.has(n.node.id));
+      const t = C.find((n) => oe.has(n.node.id));
       t && St(t.node.id);
     }
     return oe.size;
@@ -369,7 +374,7 @@ function Cs(Se, go = {}) {
   }
   function Qe() {
     const e = oe.size > 0;
-    for (const t of N) {
+    for (const t of C) {
       const n = f[t.node.id];
       if (!n) continue;
       const o = oe.has(t.node.id);
@@ -381,7 +386,7 @@ function Cs(Se, go = {}) {
     if (e.target.closest('[data-role="toggle"]') || (e.stopPropagation(), co(), fe && ko(t)))
       return;
     if (ae(), e.ctrlKey || e.metaKey) {
-      Co(t);
+      No(t);
       return;
     }
     if (b.has(t) ? (s.selectedNodeId = t, ye(), ie()) : vt(t), p("node-select", { id: t, node: w[t], rect: hn(t) }), c.inspector && Pe(t), c.readonly || !c.enableDragging || !s.editMode) return;
@@ -415,7 +420,7 @@ function Cs(Se, go = {}) {
     Ge || (Ge = requestAnimationFrame(() => {
       Ge = 0;
       for (const a of v.groupIds)
-        Oo(a), No(a);
+        Oo(a), Co(a);
       p("node-drag", { id: v.id, node: w[v.id], offset: h[v.id], group: v.groupIds });
     }));
   }
@@ -435,7 +440,7 @@ function Cs(Se, go = {}) {
     if (!o) return { cx: t, cy: n, gx: null, gy: null };
     const i = dn / s.zoom, a = [], l = [], r = o.parentId && E[o.parentId];
     r && a.push(Q(r, h).x);
-    for (const S of N) {
+    for (const S of C) {
       if (S.node.id === e || !o.parentId || S.node.parentId !== o.parentId) continue;
       const M = Q(S, h);
       a.push(M.x), l.push(M.y);
@@ -490,11 +495,11 @@ function Cs(Se, go = {}) {
     const o = Q(t, h);
     n.style.transform = `translate(${o.x - t.node.width / 2}px, ${o.y - t.node.height / 2}px)`;
   }
-  function No(e) {
+  function Co(e) {
     const t = E[e];
     if (t) {
       E[t.node.parentId] && me(e);
-      for (const n of N) n.node.parentId === e && me(n.node.id);
+      for (const n of C) n.node.parentId === e && me(n.node.id);
       s.selectedEdgeId && ue();
     }
   }
@@ -508,7 +513,7 @@ function Cs(Se, go = {}) {
   function vt(e) {
     b = new Set(e ? [e] : []), s.selectedNodeId = e || null, ye(), ie();
   }
-  function Co(e) {
+  function No(e) {
     b.has(e) ? (b.delete(e), s.selectedNodeId === e && (s.selectedNodeId = b.size ? [...b][b.size - 1] : null)) : (b.add(e), s.selectedNodeId = e), ye(), ie(), et();
   }
   function To(e, t) {
@@ -525,7 +530,7 @@ function Cs(Se, go = {}) {
       const u = de(r.clientX, r.clientY), d = Math.min(t.x, u.x), g = Math.min(t.y, u.y), L = Math.abs(u.x - t.x), S = Math.abs(u.y - t.y);
       o.setAttribute("x", d), o.setAttribute("y", g), o.setAttribute("width", L), o.setAttribute("height", S);
       const M = new Set(n);
-      for (const z of N) {
+      for (const z of C) {
         const j = Q(z, h);
         j.x >= d && j.x <= d + L && j.y >= g && j.y <= g + S && M.add(z.node.id);
       }
@@ -679,8 +684,8 @@ function Cs(Se, go = {}) {
   }
   function $o(e, t) {
     const n = new Set([t].concat(at(t)));
-    for (let o = N.length - 1; o >= 0; o--) {
-      const i = N[o];
+    for (let o = C.length - 1; o >= 0; o--) {
+      const i = C[o];
       if (n.has(i.node.id)) continue;
       const a = Q(i, h);
       if (e.x >= a.x - i.node.width / 2 && e.x <= a.x + i.node.width / 2 && e.y >= a.y - i.node.height / 2 && e.y <= a.y + i.node.height / 2) return i.node.id;
@@ -721,7 +726,7 @@ function Cs(Se, go = {}) {
     if (!n || t === e || t && at(e).indexOf(t) >= 0) return;
     const o = t || "";
     (n.parentId || "") !== o && (s.selectedEdgeId = null, U.innerHTML = "", Jt(() => {
-      n.parentId = o, C[e] = Object.assign(C[e] || {}, { parentId: o }), delete x[e], delete O[e], E[e] && Object.assign(E[e].node, { parentId: o });
+      n.parentId = o, N[e] = Object.assign(N[e] || {}, { parentId: o }), delete x[e], delete O[e], E[e] && Object.assign(E[e].node, { parentId: o });
     }), ie(), q.classList.contains("loc-open") && s.selectedNodeId === e && Oe(), p("node-change", { id: e, node: { ...n }, patch: { parentId: o }, reparented: !0 }), H());
   }
   function At(e) {
@@ -849,7 +854,7 @@ function Cs(Se, go = {}) {
   function we(e, t) {
     const n = w[e];
     if (!n) return;
-    Object.assign(n, t), E[e] && E[e].node !== n && Object.assign(E[e].node, t), C[e] = Object.assign(C[e] || {}, t);
+    Object.assign(n, t), E[e] && E[e].node !== n && Object.assign(E[e].node, t), N[e] = Object.assign(N[e] || {}, t);
     const o = ["type", "width", "height", "layoutMode"].some((i) => i in t);
     f[e] && (f[e].remove(), delete f[e]), o ? G() : Je(), p("node-change", { id: e, node: { ...n }, patch: t }), A(), H("field:" + e + ":" + Object.keys(t).join(","));
   }
@@ -864,20 +869,20 @@ function Cs(Se, go = {}) {
   function An(e) {
     if (!s.editMode) return;
     const t = _o(), n = Fe({ id: t, parentId: e || "", type: "position", label: "NEW POSITION", personName: "", status: "" });
-    y.push(n), w[t] = n, C[t] = Object.assign({ __new: !0 }, n), G(), vt(t), Pe(t), p("node-change", { id: t, node: { ...n }, added: !0 }), A(), H();
+    y.push(n), w[t] = n, N[t] = Object.assign({ __new: !0 }, n), G(), vt(t), Pe(t), p("node-change", { id: t, node: { ...n }, added: !0 }), A(), H();
   }
   function On(e) {
     if (!s.editMode || !e) return;
     const t = [e].concat(at(e)), n = new Set(t);
     y = y.filter((o) => !n.has(o.id)), w = We(y), t.forEach((o) => {
-      C[o] = { __deleted: !0 }, f[o] && (f[o].remove(), delete f[o]), b.delete(o);
+      N[o] = { __deleted: !0 }, f[o] && (f[o].remove(), delete f[o]), b.delete(o);
     }), n.has(s.selectedNodeId) && (s.selectedNodeId = b.size ? [...b][b.size - 1] : null, s.selectedNodeId || ne()), G(), p("node-change", { id: e, removed: !0, ids: t }), A(), H();
   }
-  function Nt() {
-    const e = new Set(Object.keys(C).filter((t) => C[t] && C[t].__deleted));
+  function Ct() {
+    const e = new Set(Object.keys(N).filter((t) => N[t] && N[t].__deleted));
     e.size && (y = y.filter((t) => !e.has(t.id))), w = We(y);
-    for (const t in C) {
-      const n = C[t];
+    for (const t in N) {
+      const n = N[t];
       if (!(!n || n.__deleted))
         if (n.__new) {
           if (!w[t]) {
@@ -897,23 +902,23 @@ function Cs(Se, go = {}) {
     ["id", "Node id"],
     ["label", "Label"]
   ];
-  function Nn(e, t) {
+  function Cn(e, t) {
     const n = po(t, X);
-    Ct(e, "--loc-node-bg", n && n.bg), Ct(e, "--loc-node-text", n && n.text), Ct(e, "--loc-node-border", n && n.border);
+    Nt(e, "--loc-node-bg", n && n.bg), Nt(e, "--loc-node-text", n && n.text), Nt(e, "--loc-node-border", n && n.border);
   }
-  function Ct(e, t, n) {
+  function Nt(e, t, n) {
     n ? e.style.setProperty(t, n) : e.style.removeProperty(t);
   }
   function lt() {
-    for (const e in f) w[e] && Nn(f[e], w[e]);
+    for (const e in f) w[e] && Cn(f[e], w[e]);
     s.showLegend && Gt();
   }
   const Wo = { FILLED: "Filled", VACANT: "Vacant", UNFUNDED: "Unfunded" };
-  function Cn() {
+  function Nn() {
     Ie.classList.toggle("loc-on", s.showLegend), s.showLegend && Gt();
   }
   function Tt(e) {
-    return s.showLegend = e == null ? !s.showLegend : !!e, Cn(), V(), A(), p("legend-change", { legend: s.showLegend }), s.showLegend;
+    return s.showLegend = e == null ? !s.showLegend : !!e, Nn(), V(), A(), p("legend-change", { legend: s.showLegend }), s.showLegend;
   }
   function Tn(e) {
     return Tt(e ?? !s.showLegend);
@@ -967,7 +972,7 @@ function Cs(Se, go = {}) {
       je(), $e();
       for (const o in f) delete f[o].dataset.fitted;
     }
-    Array.isArray(e.themeRules) && (X = e.themeRules.map(Ne)), Ee(), V(), G(), _.classList.contains("loc-open") && le(), t && t.silent || p("settings-change", B()), A();
+    Array.isArray(e.themeRules) && (X = e.themeRules.map(Ce)), Ee(), V(), G(), _.classList.contains("loc-open") && le(), t && t.silent || p("settings-change", B()), A();
   }
   function Rt(e) {
     const t = _.classList.contains("loc-open"), n = e == null ? !t : !!e;
@@ -1038,7 +1043,7 @@ function Cs(Se, go = {}) {
   function jn(e) {
     e && (e.subtreeMode && (s.subtreeMode = e.subtreeMode), e.orientation && (s.orientation = Te(e.orientation)), ["spacingX", "spacingY", "gridSize"].forEach((t) => {
       typeof e[t] == "number" && (s[t] = e[t]);
-    }), "showGrid" in e && (s.showGrid = !!e.showGrid), "snapGrid" in e && (s.snapGrid = !!e.snapGrid), "alignGrid" in e && (s.alignGrid = !!e.alignGrid), "showImages" in e && (s.showImages = !!e.showImages), "autoEdgeSide" in e && (s.autoEdgeSide = !!e.autoEdgeSide), typeof e.cardWidth == "number" && (s.cardWidth = Math.max(100, e.cardWidth)), typeof e.photoHeight == "number" && (s.photoHeight = Math.max(40, e.photoHeight)), "photoContain" in e && (s.photoContain = !!e.photoContain), je(), $e(), Array.isArray(e.themeRules) && (X = e.themeRules.map(Ne)));
+    }), "showGrid" in e && (s.showGrid = !!e.showGrid), "snapGrid" in e && (s.snapGrid = !!e.snapGrid), "alignGrid" in e && (s.alignGrid = !!e.alignGrid), "showImages" in e && (s.showImages = !!e.showImages), "autoEdgeSide" in e && (s.autoEdgeSide = !!e.autoEdgeSide), typeof e.cardWidth == "number" && (s.cardWidth = Math.max(100, e.cardWidth)), typeof e.photoHeight == "number" && (s.photoHeight = Math.max(40, e.photoHeight)), "photoContain" in e && (s.photoContain = !!e.photoContain), je(), $e(), Array.isArray(e.themeRules) && (X = e.themeRules.map(Ce)));
   }
   function $n() {
     return {
@@ -1046,13 +1051,13 @@ function Cs(Se, go = {}) {
       manualOffsets: k(h),
       edgeWaypoints: k(x),
       edgeAnchors: k(O),
-      nodeOverrides: k(C),
+      nodeOverrides: k(N),
       view: Hn(),
       selectedNodeId: s.selectedNodeId
     };
   }
   function kn(e) {
-    jt = !0, y = (e.nodes || []).map(Fe), w = We(y), h = k(e.manualOffsets) || /* @__PURE__ */ Object.create(null), x = k(e.edgeWaypoints) || /* @__PURE__ */ Object.create(null), O = k(e.edgeAnchors) || /* @__PURE__ */ Object.create(null), C = k(e.nodeOverrides) || /* @__PURE__ */ Object.create(null), jn(e.view);
+    jt = !0, y = (e.nodes || []).map(Fe), w = We(y), h = k(e.manualOffsets) || /* @__PURE__ */ Object.create(null), x = k(e.edgeWaypoints) || /* @__PURE__ */ Object.create(null), O = k(e.edgeAnchors) || /* @__PURE__ */ Object.create(null), N = k(e.nodeOverrides) || /* @__PURE__ */ Object.create(null), jn(e.view);
     for (const t in f)
       f[t].remove(), delete f[t];
     for (const t in m)
@@ -1109,7 +1114,7 @@ function Cs(Se, go = {}) {
           manualOffsets: h,
           edgeWaypoints: x,
           edgeAnchors: O,
-          nodeOverrides: C,
+          nodeOverrides: N,
           themeRules: X,
           collapsed: y.filter((e) => e.collapsed).map((e) => e.id)
         }));
@@ -1126,7 +1131,7 @@ function Cs(Se, go = {}) {
     }
     if (e && (e.orientation && (s.orientation = Te(e.orientation)), e.subtreeMode && (s.subtreeMode = e.subtreeMode), ["spacingX", "spacingY", "zoom", "panX", "panY", "gridSize"].forEach((t) => {
       typeof e[t] == "number" && (s[t] = e[t]);
-    }), s.showGrid = !!e.showGrid, s.snapGrid = !!e.snapGrid, s.alignGrid = !!e.alignGrid, s.editMode = !!e.editMode, "showImages" in e && (s.showImages = !!e.showImages), "showLegend" in e && (s.showLegend = !!e.showLegend), "autoEdgeSide" in e && (s.autoEdgeSide = !!e.autoEdgeSide), typeof e.cardWidth == "number" && (s.cardWidth = Math.max(100, e.cardWidth)), typeof e.photoHeight == "number" && (s.photoHeight = Math.max(40, e.photoHeight)), "photoContain" in e && (s.photoContain = !!e.photoContain), je(), $e(), e.manualOffsets && (h = e.manualOffsets), e.edgeWaypoints && (x = e.edgeWaypoints), e.edgeAnchors && (O = e.edgeAnchors), e.nodeOverrides && (C = e.nodeOverrides, Nt()), Array.isArray(e.themeRules) && (X = e.themeRules.map(Ne)), Array.isArray(e.collapsed))) {
+    }), s.showGrid = !!e.showGrid, s.snapGrid = !!e.snapGrid, s.alignGrid = !!e.alignGrid, s.editMode = !!e.editMode, "showImages" in e && (s.showImages = !!e.showImages), "showLegend" in e && (s.showLegend = !!e.showLegend), "autoEdgeSide" in e && (s.autoEdgeSide = !!e.autoEdgeSide), typeof e.cardWidth == "number" && (s.cardWidth = Math.max(100, e.cardWidth)), typeof e.photoHeight == "number" && (s.photoHeight = Math.max(40, e.photoHeight)), "photoContain" in e && (s.photoContain = !!e.photoContain), je(), $e(), e.manualOffsets && (h = e.manualOffsets), e.edgeWaypoints && (x = e.edgeWaypoints), e.edgeAnchors && (O = e.edgeAnchors), e.nodeOverrides && (N = e.nodeOverrides, Ct()), Array.isArray(e.themeRules) && (X = e.themeRules.map(Ce)), Array.isArray(e.collapsed))) {
       const t = new Set(e.collapsed);
       for (const n of y) n.collapsed = t.has(n.id);
     }
@@ -1153,7 +1158,7 @@ function Cs(Se, go = {}) {
       manualOffsets: k(h),
       edgeWaypoints: k(x),
       edgeAnchors: k(O),
-      nodeOverrides: k(C),
+      nodeOverrides: k(N),
       collapsed: y.filter((n) => n.collapsed).map((n) => n.id)
     }), t;
   }
@@ -1163,7 +1168,7 @@ function Cs(Se, go = {}) {
   function Dn(e) {
     if (e) {
       if (jn(e.view), e.full && e.layout) {
-        h = k(e.layout.manualOffsets) || /* @__PURE__ */ Object.create(null), x = k(e.layout.edgeWaypoints) || /* @__PURE__ */ Object.create(null), O = k(e.layout.edgeAnchors) || /* @__PURE__ */ Object.create(null), C = k(e.layout.nodeOverrides) || /* @__PURE__ */ Object.create(null), Nt();
+        h = k(e.layout.manualOffsets) || /* @__PURE__ */ Object.create(null), x = k(e.layout.edgeWaypoints) || /* @__PURE__ */ Object.create(null), O = k(e.layout.edgeAnchors) || /* @__PURE__ */ Object.create(null), N = k(e.layout.nodeOverrides) || /* @__PURE__ */ Object.create(null), Ct();
         const t = new Set(e.layout.collapsed || []);
         for (const n of y) n.collapsed = t.has(n.id);
       } else
@@ -1202,7 +1207,7 @@ function Cs(Se, go = {}) {
   }
   function Fn(e) {
     const t = ps(s, y, h, x);
-    return t.editMode = s.editMode, t.edgeAnchors = O, t.nodeOverrides = C, t.settings = B(), e !== !1 && pt(new Blob([JSON.stringify(t, null, 2)], { type: "application/json" }), "org-chart-layout.json"), t;
+    return t.editMode = s.editMode, t.edgeAnchors = O, t.nodeOverrides = N, t.settings = B(), e !== !1 && pt(new Blob([JSON.stringify(t, null, 2)], { type: "application/json" }), "org-chart-layout.json"), t;
   }
   const Wn = document.createElement("canvas").getContext("2d");
   function ns(e, t) {
@@ -1217,7 +1222,7 @@ function Cs(Se, go = {}) {
   function qe(e, t) {
     const n = [];
     for (const o in m) n.push(m[o].getAttribute("d"));
-    return bs(N, n, {
+    return bs(C, n, {
       manualOffsets: h,
       raster: !!e,
       measureText: ns,
@@ -1266,7 +1271,7 @@ function Cs(Se, go = {}) {
   }
   function Kn(e) {
     return e = e || 3, ft().then((t) => new Promise((n) => {
-      const o = Ut(N, h, 40), i = 16e3, a = 2e8;
+      const o = Ut(C, h, 40), i = 16e3, a = 2e8;
       let l = Math.min(e, i / o.w, i / o.h);
       o.w * l * o.h * l > a && (l = Math.sqrt(a / (o.w * o.h))), l = Math.max(0.05, l);
       const r = URL.createObjectURL(new Blob([qe(!0, t)], { type: "image/svg+xml;charset=utf-8" })), u = new Image();
@@ -1291,7 +1296,7 @@ function Cs(Se, go = {}) {
     e = e || {};
     const t = +e.scale > 0 ? +e.scale : 2, n = typeof e.quality == "number" ? Math.min(1, Math.max(0.3, e.quality)) : 0.82, o = +e.maxSide > 0 ? +e.maxSide : 4e3, i = e.as === "dataURL" || e.as === "dataurl", a = e.filename || "org-chart.webp";
     return ft().then((l) => new Promise((r) => {
-      const u = Ut(N, h, 40), d = 2e8;
+      const u = Ut(C, h, 40), d = 2e8;
       let g = Math.min(t, o / u.w, o / u.h);
       u.w * g * u.h * g > d && (g = Math.sqrt(d / (u.w * u.h))), g = Math.max(0.05, g);
       const L = URL.createObjectURL(new Blob([qe(!0, l)], { type: "image/svg+xml;charset=utf-8" })), S = new Image();
@@ -1333,14 +1338,14 @@ function Cs(Se, go = {}) {
   }
   function Jn(e, t, n) {
     const o = !(n && n.resetEdits);
-    y = (e || []).map(Fe), w = We(y), o || (h = /* @__PURE__ */ Object.create(null), x = /* @__PURE__ */ Object.create(null), O = /* @__PURE__ */ Object.create(null), C = /* @__PURE__ */ Object.create(null)), s.selectedNodeId = null, s.selectedEdgeId = null, oe = /* @__PURE__ */ new Set(), ne();
+    y = (e || []).map(Fe), w = We(y), o || (h = /* @__PURE__ */ Object.create(null), x = /* @__PURE__ */ Object.create(null), O = /* @__PURE__ */ Object.create(null), N = /* @__PURE__ */ Object.create(null)), s.selectedNodeId = null, s.selectedEdgeId = null, oe = /* @__PURE__ */ new Set(), ne();
     for (const i in f)
       f[i].remove(), delete f[i];
     for (const i in m)
       m[i].remove(), delete m[i];
     for (const i in R)
       R[i].remove(), delete R[i];
-    t && (t.subtreeMode && (s.subtreeMode = t.subtreeMode), t.orientation && (s.orientation = Te(t.orientation)), t.manualOffsets && (h = t.manualOffsets), t.edgeWaypoints && (x = t.edgeWaypoints), t.edgeAnchors && (O = t.edgeAnchors), t.nodeOverrides && (C = t.nodeOverrides), typeof t.editMode == "boolean" && (s.editMode = t.editMode), t.settings && Array.isArray(t.settings.themeRules) && (X = t.settings.themeRules.map(Ne))), o && Nt(), Ot(), V(), G(), c.fitOnInit && be();
+    t && (t.subtreeMode && (s.subtreeMode = t.subtreeMode), t.orientation && (s.orientation = Te(t.orientation)), t.manualOffsets && (h = t.manualOffsets), t.edgeWaypoints && (x = t.edgeWaypoints), t.edgeAnchors && (O = t.edgeAnchors), t.nodeOverrides && (N = t.nodeOverrides), typeof t.editMode == "boolean" && (s.editMode = t.editMode), t.settings && Array.isArray(t.settings.themeRules) && (X = t.settings.themeRules.map(Ce))), o && Ct(), Ot(), V(), G(), c.fitOnInit && be();
   }
   function as(e) {
     const { nodes: t, meta: n } = ys(e);
@@ -1556,7 +1561,7 @@ function Cs(Se, go = {}) {
       return;
     }
     if (e.target.closest('[data-role="add-rule"]')) {
-      X.push(Ne({ field: "type", value: "", style: {} })), le(), lt(), A(), p("settings-change", B());
+      X.push(Ce({ field: "type", value: "", style: {} })), le(), lt(), A(), p("settings-change", B());
       return;
     }
     const o = e.target.closest('[data-rk="remove"]');
@@ -1743,7 +1748,7 @@ function Cs(Se, go = {}) {
       e.disabled = !ct();
     }));
   }
-  $(document, "fullscreenchange", ao), $(document, "webkitfullscreenchange", ao), Qo(), V(), Ee(), Cn(), Ot(), G(), Zo(), c.fitOnInit && be();
+  $(document, "fullscreenchange", ao), $(document, "webkitfullscreenchange", ao), Qo(), V(), Ee(), Nn(), Ot(), G(), Zo(), c.fitOnInit && be();
   let uo = !1;
   function fs() {
     if (!uo) {
@@ -1846,7 +1851,7 @@ function Cs(Se, go = {}) {
     nodeThemeStyle: (e) => w[e] ? po(w[e], X) : null,
     getState: () => ({ ...s }),
     getNodes: () => y.map((e) => ({ ...e })),
-    getPositioned: () => N,
+    getPositioned: () => C,
     on: bo,
     off: yo,
     destroy: fs
@@ -1871,7 +1876,7 @@ export {
   hs as computeDepths,
   Us as convertMoTree,
   qs as convertNestedTree,
-  Cs as createOrgChart,
+  Ns as createOrgChart,
   Ls as edgeControlPoints,
   _s as edgeEndpoints,
   Q as effCenter,
@@ -1887,7 +1892,7 @@ export {
   Fe as makeNode,
   Ss as normalizeConfig,
   ys as normalizeImported,
-  Ne as normalizeRule,
+  Ce as normalizeRule,
   Vs as normalizeSettings,
   Is as orthoThrough,
   Js as personNameFromPos,
