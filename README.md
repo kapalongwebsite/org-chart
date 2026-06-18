@@ -202,6 +202,7 @@ you render a chart.
 | `enableDragging` | `Boolean` | `true` | allow node drag |
 | `enablePan` | `Boolean` | `true` | allow canvas pan |
 | `enableZoom` | `Boolean` | `true` | allow wheel zoom |
+| `maxZoom` | `Number` | `4` | how far the wheel can zoom in |
 | `readonly` | `Boolean` | `false` | disable drag / waypoint edit / collapse |
 | `inspector` | `Boolean` | `true` | open the built-in drawer on node click; `false` = headless (emit `node-select` only) |
 | `inspectorTarget` | `String \| Element` | `null` | mount the inspector drawer into an element outside the canvas |
@@ -494,11 +495,45 @@ Presets live under `localStorage` key `${storageKey}.presets`, independent of `p
 
 | Method | Description |
 |--------|-------------|
-| `exportPNG(scale?)` | Download a high-DPI PNG (default scale = 3) |
-| `exportSVG()` | Download an SVG; returns SVG string |
-| `exportPDF()` | Open a print-ready SVG in a new tab |
+| `exportPNG(scale?)` | Download a high-DPI PNG (default scale = 3). **async** → `Promise<boolean>` |
+| `exportSVG()` | Download an SVG. **async** → `Promise<string>` |
+| `exportWebP(options?)` | **Render a WebP and return it** (Blob or data-URL) — for upload/API, no download. **async** |
+| `exportPDF()` | Open a print-ready SVG in a new tab. **async** → `Promise<boolean>` |
 | `exportJSON(download?)` | Export full layout state as JSON; returns the object |
-| `buildSVG(raster?)` | Build the raw SVG string without downloading |
+| `buildSVG(raster?)` | Build the raw SVG string synchronously (no photo embedding) |
+
+> **Photos are embedded** in exports as base64 data URLs, so they show up in the SVG/PNG/PDF even
+> when the file is opened offline. The three download methods are **async** because they load the
+> photos first — `await chart.exportPNG()`. For this to work the image host must allow cross-origin
+> reads (send `Access-Control-Allow-Origin`); a photo that blocks CORS falls back to the placeholder
+> dot. `buildSVG()` stays synchronous and just references the external photo URLs.
+
+#### `exportWebP()` — for the website (no buttons)
+
+`exportWebP()` is for generating a display image programmatically and sending it to your backend —
+it **resolves** the encoded image instead of triggering a download, so it can run anywhere in your
+app and be POSTed to an API for storage/download:
+
+```js
+// Blob (default) → upload to your API
+const blob = await chart.exportWebP();              // ~scale 2, quality .82: sharp but small
+if (blob) {
+  const form = new FormData();
+  form.append('chart', blob, 'org-chart.webp');
+  await fetch('/api/org-chart/snapshot', { method: 'POST', body: form });
+}
+
+// or a data-URL string (e.g. to store inline / preview)
+const dataUrl = await chart.exportWebP({ as: 'dataURL', quality: 0.9 });
+
+// tune size vs. quality, or also save a local file
+await chart.exportWebP({ scale: 2, quality: 0.8, maxSide: 3000, download: true });
+```
+
+Options: `scale` (px multiplier, default `2`), `quality` (`0..1`, default `0.82`), `maxSide` (clamp
+the longest side in px, default `4000`), `as` (`'blob'` | `'dataURL'`), `download` (`true` to also
+save a file) and `filename`. Resolves `null` if the browser can't encode WebP or a CORS taint blocks
+rasterization. Same CORS rule as above for the embedded photos.
 
 ### Customizing the drawers (inspector & settings)
 

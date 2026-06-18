@@ -44,14 +44,22 @@ function deptSVG(n, x, y, fit, measure) {
   for (const ln of lines) { t += txt(ccx, ty, fs, 600, '#ffffff', ln, '0.4'); ty += lh; }
   return t;
 }
-function posSVG(n, x, y, fit, raster, measure) {
-  const W = n.width, H = n.height, photoH = 62, ccx = x + W / 2, maxW = W - 16;
+function posSVG(n, x, y, fit, raster, measure, ex) {
+  ex = ex || {};
+  const W = n.width, H = n.height, ccx = x + W / 2, maxW = W - 16;
+  const photoH = Math.max(20, Math.min(ex.photoH || 62, H - 20));
   let s = `<rect x="${x}" y="${y}" width="${W}" height="${H}" rx="8" fill="#ffffff" stroke="#d0d5dd"/>`;
   s += `<path d="${roundTop(x, y, W, photoH, 8)}" fill="#e8edf4"/>`;
   s += `<line x1="${x}" y1="${y + photoH}" x2="${x + W}" y2="${y + photoH}" stroke="#d0d5dd"/>`;
   const url = n.data && n.data.photo_url;
-  if (url && !raster) {
-    s += `<image x="${x}" y="${y}" width="${W}" height="${photoH}" href="${esc(url)}" preserveAspectRatio="xMidYMid slice"/>`;
+  // prefer an embedded (base64) data URL so the photo travels inside the export and
+  // works in SVG *and* raster (PNG/PDF) without tainting the canvas. Fall back to the
+  // external URL for SVG only, then to a neutral placeholder.
+  const embedded = url && ex.images ? ex.images[url] : null;
+  const href = embedded || (url && !raster ? url : null);
+  if (href) {
+    const par = ex.contain ? 'xMidYMid meet' : 'xMidYMid slice';
+    s += `<image x="${x}" y="${y}" width="${W}" height="${photoH}" href="${esc(href)}" preserveAspectRatio="${par}"/>`;
   } else {
     s += `<text x="${ccx.toFixed(1)}" y="${(y + photoH / 2 + 10).toFixed(1)}" font-family='${FONT}' font-size="30" fill="#9ca3af" text-anchor="middle">●</text>`;
   }
@@ -82,6 +90,7 @@ export function buildChartSVG(positioned, paths, opts = {}) {
   const raster = !!opts.raster;
   const measure = opts.measureText || (() => 0);
   const fitOf = opts.fitOf || (() => 1);
+  const ex = { photoH: opts.photoHeight || 62, images: opts.images || null, contain: opts.photoContain !== false };
   const b = calculateBounds(positioned, manualOffsets, 40);
 
   let pathStr = '';
@@ -93,7 +102,7 @@ export function buildChartSVG(positioned, paths, opts = {}) {
     const x = c.x - n.width / 2 - b.x, y = c.y - n.height / 2 - b.y;
     cards += (n.type === 'department')
       ? deptSVG(n, x, y, fitOf(n), measure)
-      : posSVG(n, x, y, fitOf(n), raster, measure);
+      : posSVG(n, x, y, fitOf(n), raster, measure, ex);
   }
 
   const W = b.w.toFixed(0), H = b.h.toFixed(0);

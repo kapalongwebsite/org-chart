@@ -3,6 +3,39 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.13.0 — 2026-06-17
+
+### Added
+- **WebP export for the website.** New `exportWebP(options?)` renders the chart to a WebP tuned for
+  web display (default `scale: 2`, `quality: 0.82` — sharp but small). Unlike the file-download
+  exporters it **resolves the encoded image** so you can hand it straight to your API / upload
+  instead of forcing a download — no button needed: `const blob = await chart.exportWebP()`.
+  Options: `scale`, `quality` (0..1), `maxSide` (clamp longest side, default 4000),
+  `as: 'blob' | 'dataURL'`, `download` + `filename` (set `download: true` to also save a file).
+  Photos are embedded like the other exporters (CORS-blocked photo → placeholder). Exposed on the
+  Vue wrapper too.
+- **`maxZoom` option** (default **4**, was a hard-coded 3) — controls how far the mouse wheel zooms in.
+
+### Fixed
+- **Scrolling inside the edit drawer no longer zooms the canvas.** The wheel now scrolls the
+  right-side inspector (and the settings / legend panels) natively when the pointer is over them.
+- **Card text is crisp when zoomed in.** Removed `will-change: transform` from the zoom layer and
+  cards — it forced the browser to rasterize text once at 100% and bitmap-scale it, so labels blurred
+  as you zoomed in (while export stayed sharp). Text now re-rasterizes at the zoomed size.
+
+## v1.12.1 — 2026-06-17
+
+### Fixed
+- **Card photos now export.** Profile images were missing from exports — **PNG/PDF dropped them
+  entirely** (placeholder dot) and **SVG referenced the external URL**, which a downloaded file
+  usually can't fetch (no referrer / CORS / auth), leaving it blank. Exports now **embed each photo
+  as a base64 data URL**, so the image travels inside the file and renders in **SVG, PNG and PDF**
+  (and the PNG canvas is no longer tainted). The exported photo also matches the on-screen size and
+  honors **"Show whole photo"** (`photoContain`).
+  - `exportSVG()` / `exportPNG()` / `exportPDF()` are now **async** (return a Promise) because they
+    load the photos before serializing. A photo whose host blocks CORS falls back to the placeholder.
+  - `buildSVG()` stays synchronous and references external photo URLs as-is (no embedding).
+
 ## v1.12.0 — 2026-06-16
 
 ### Added

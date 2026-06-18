@@ -64,7 +64,11 @@
 }
 .loc-canvas.loc-panning { cursor: grabbing; }
 .loc-canvas.loc-gridon { background-image: none; }
-.loc-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+/* No `will-change: transform` here: promoting the zoom layer makes the browser
+   rasterize text ONCE at 1x and bitmap-scale it, so labels blur when zoomed in
+   (while SVG export stays crisp). Without it the browser re-rasterizes text at
+   the zoomed size → sharp at any zoom. */
+.loc-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 
 .loc-grid {
   position: absolute; left: 0; top: 0; z-index: 0; display: none; pointer-events: none;
@@ -108,7 +112,7 @@
 .loc-node {
   position: absolute; left: 0; top: 0; transform-origin: 0 0;
   user-select: none; cursor: grab; border-radius: 8px;
-  box-shadow: 0 1px 4px rgba(16,24,40,.12); overflow: hidden; will-change: transform;
+  box-shadow: 0 1px 4px rgba(16,24,40,.12); overflow: hidden;   /* no will-change: keep card text crisp when zoomed (see .loc-content) */
 }
 .loc-node.loc-dragging { cursor: grabbing; z-index: 50; box-shadow: 0 6px 18px rgba(16,24,40,.28); }
 .loc-node.loc-selected { outline: 2px solid var(--loc-accent); outline-offset: 1px; }

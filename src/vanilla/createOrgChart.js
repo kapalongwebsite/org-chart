@@ -70,6 +70,7 @@ const DEFAULT_OPTS = {
 export function createOrgChart(host, userOpts = {}) {
   if (!host || !host.appendChild) throw new Error('createOrgChart: first argument must be a DOM element.');
   const opts = Object.assign({}, DEFAULT_OPTS, userOpts);
+  const MAX_ZOOM = +opts.maxZoom > 1 ? +opts.maxZoom : 4;   // how far the wheel can zoom in
 
   // ---- per-instance state ----
   const state = {
@@ -1452,35 +1453,137 @@ export function createOrgChart(host, userOpts = {}) {
   const _measCtx = document.createElement('canvas').getContext('2d');
   function measureText(t, font) { _measCtx.font = font; return _measCtx.measureText(t).width; }
   function fitOf(n) { const e = elById[n.id]; if (!e) return 1; const f = parseFloat(e.style.getPropertyValue('--loc-fit')); return (isFinite(f) && f > 0) ? f : 1; }
-  function buildSVG(raster) {
+  function buildSVG(raster, images) {
     const paths = []; for (const id in pathById) paths.push(pathById[id].getAttribute('d'));
-    return buildChartSVG(positioned, paths, { manualOffsets, raster: !!raster, measureText, fitOf });
+    return buildChartSVG(positioned, paths, {
+      manualOffsets, raster: !!raster, measureText, fitOf,
+      photoHeight: state.photoHeight, photoContain: state.photoContain, images: images || null,
+    });
   }
-  function exportSVG() { downloadBlob(new Blob([buildSVG(false)], { type: 'image/svg+xml;charset=utf-8' }), 'org-chart.svg'); return buildSVG(false); }
+  /* load a photo cross-origin and convert it to a base64 data URL so it can be
+     embedded in the export (works in SVG + PNG/PDF, no canvas taint). Resolves to
+     null if the image is missing or the host blocks CORS — caller falls back to a
+     placeholder for that card. */
+  function photoToDataURL(url) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous'; img.referrerPolicy = 'no-referrer';
+      img.onload = () => {
+        try {
+          const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+          if (!w || !h) { resolve(null); return; }
+          const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+          cv.getContext('2d').drawImage(img, 0, 0);
+          resolve(cv.toDataURL('image/png'));
+        } catch (e) { resolve(null); }      // tainted (no CORS headers) → give up on this one
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  }
+  /* { photo_url -> dataURL } for every person card (skips ones that can't be embedded) */
+  function collectPhotoData() {
+    if (!state.showImages) return Promise.resolve({});
+    const urls = [], seen = new Set();
+    for (const n of NODES) {
+      const u = n.type !== 'department' && n.data && n.data.photo_url;
+      if (u && !seen.has(u)) { seen.add(u); urls.push(u); }
+    }
+    if (!urls.length) return Promise.resolve({});
+    return Promise.all(urls.map((u) => photoToDataURL(u).then((d) => [u, d])))
+      .then((pairs) => { const m = {}; for (const [u, d] of pairs) if (d) m[u] = d; return m; });
+  }
+  function exportSVG() {
+    return collectPhotoData().then((images) => {
+      const svg = buildSVG(false, images);
+      downloadBlob(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }), 'org-chart.svg');
+      return svg;
+    });
+  }
   function exportPNG(scale) {
     scale = scale || 3;
-    const b = calculateBounds(positioned, manualOffsets, 40);
-    const MAX_SIDE = 16000, MAX_AREA = 200e6;
-    let s = Math.min(scale, MAX_SIDE / b.w, MAX_SIDE / b.h);
-    if (b.w * s * b.h * s > MAX_AREA) s = Math.sqrt(MAX_AREA / (b.w * b.h));
-    s = Math.max(0.05, s);
-    const url = URL.createObjectURL(new Blob([buildSVG(true)], { type: 'image/svg+xml;charset=utf-8' }));
-    const img = new Image();
-    img.onload = () => {
-      const cv = document.createElement('canvas'); cv.width = Math.round(b.w * s); cv.height = Math.round(b.h * s);
-      const ctx = cv.getContext('2d'); ctx.setTransform(s, 0, 0, s, 0, 0); ctx.drawImage(img, 0, 0);
-      URL.revokeObjectURL(url);
-      try { cv.toBlob((bl) => { if (bl) downloadBlob(bl, 'org-chart.png'); }, 'image/png'); } catch (e) { /* taint */ }
-    };
-    img.onerror = () => URL.revokeObjectURL(url);
-    img.src = url;
+    return collectPhotoData().then((images) => new Promise((resolve) => {
+      const b = calculateBounds(positioned, manualOffsets, 40);
+      const MAX_SIDE = 16000, MAX_AREA = 200e6;
+      let s = Math.min(scale, MAX_SIDE / b.w, MAX_SIDE / b.h);
+      if (b.w * s * b.h * s > MAX_AREA) s = Math.sqrt(MAX_AREA / (b.w * b.h));
+      s = Math.max(0.05, s);
+      const url = URL.createObjectURL(new Blob([buildSVG(true, images)], { type: 'image/svg+xml;charset=utf-8' }));
+      const img = new Image();
+      img.onload = () => {
+        const cv = document.createElement('canvas'); cv.width = Math.round(b.w * s); cv.height = Math.round(b.h * s);
+        const ctx = cv.getContext('2d'); ctx.setTransform(s, 0, 0, s, 0, 0); ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        try { cv.toBlob((bl) => { if (bl) downloadBlob(bl, 'org-chart.png'); resolve(!!bl); }, 'image/png'); }
+        catch (e) { resolve(false); /* taint */ }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(false); };
+      img.src = url;
+    }));
+  }
+  /* Render the chart to a WebP — tuned for website display: balanced size vs.
+     quality (scale 2, quality .82). Unlike the file-download exporters this
+     RESOLVES the encoded image so it can be handed to your API / upload instead
+     of forcing a download — no button needed, just `await chart.exportWebP()`.
+       opt: {
+         scale:    pixel multiplier (default 2),
+         quality:  0..1 WebP quality (default .82),
+         maxSide:  clamp longest side in px (default 4000, keeps files small),
+         as:       'blob' (default) | 'dataURL',
+         download: true to also save a file (default false),
+         filename: download name (default 'org-chart.webp')
+       }
+     Resolves a Blob (or data-URL string), or null if encoding fails / the browser
+     can't produce WebP. Photos are embedded just like the other exporters, so a
+     CORS-blocked photo falls back to its placeholder. */
+  function exportWebP(opt) {
+    opt = opt || {};
+    const scale = +opt.scale > 0 ? +opt.scale : 2;
+    const quality = typeof opt.quality === 'number' ? Math.min(1, Math.max(0.3, opt.quality)) : 0.82;
+    const maxSide = +opt.maxSide > 0 ? +opt.maxSide : 4000;
+    const asDataURL = opt.as === 'dataURL' || opt.as === 'dataurl';
+    const fname = opt.filename || 'org-chart.webp';
+    return collectPhotoData().then((images) => new Promise((resolve) => {
+      const b = calculateBounds(positioned, manualOffsets, 40);
+      const MAX_AREA = 200e6;
+      let s = Math.min(scale, maxSide / b.w, maxSide / b.h);
+      if (b.w * s * b.h * s > MAX_AREA) s = Math.sqrt(MAX_AREA / (b.w * b.h));
+      s = Math.max(0.05, s);
+      const url = URL.createObjectURL(new Blob([buildSVG(true, images)], { type: 'image/svg+xml;charset=utf-8' }));
+      const img = new Image();
+      img.onload = () => {
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(b.w * s); cv.height = Math.round(b.h * s);
+        const ctx = cv.getContext('2d'); ctx.setTransform(s, 0, 0, s, 0, 0); ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        try {
+          if (asDataURL) {
+            const durl = cv.toDataURL('image/webp', quality);
+            if (opt.download) {
+              const a = document.createElement('a'); a.href = durl; a.download = fname;
+              document.body.appendChild(a); a.click(); a.remove();
+            }
+            resolve(durl); return;
+          }
+          cv.toBlob((bl) => {
+            if (bl && opt.download) downloadBlob(bl, fname);
+            resolve(bl || null);
+          }, 'image/webp', quality);
+        } catch (e) { resolve(null); /* taint / unsupported */ }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    }));
   }
   function exportPDF() {
-    const w = window.open('', '_blank'); if (!w) return;
-    w.document.open();
-    w.document.write('<!doctype html><html><head><title>Org Chart</title><style>@page{margin:8mm;}html,body{margin:0;padding:0;}svg{width:100%;height:auto;display:block;}</style></head><body>'
-      + buildSVG(false) + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.focus();window.print();},350);};</scr' + 'ipt></body></html>');
-    w.document.close();
+    return collectPhotoData().then((images) => {
+      const w = window.open('', '_blank'); if (!w) return false;
+      w.document.open();
+      w.document.write('<!doctype html><html><head><title>Org Chart</title><style>@page{margin:8mm;}html,body{margin:0;padding:0;}svg{width:100%;height:auto;display:block;}</style></head><body>'
+        + buildSVG(false, images) + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.focus();window.print();},350);};</scr' + 'ipt></body></html>');
+      w.document.close();
+      return true;
+    });
   }
   function downloadBlob(blob, name) {
     const url = URL.createObjectURL(blob); const a = document.createElement('a');
@@ -1744,11 +1847,14 @@ export function createOrgChart(host, userOpts = {}) {
   // zoom
   addL(canvas, 'wheel', (e) => {
     if (!opts.enableZoom) return;
+    // Let the drawers/legend scroll natively when the pointer is over them —
+    // otherwise the wheel would zoom the canvas instead of scrolling the panel.
+    if (e.target.closest && (e.target.closest('.loc-panel') || e.target.closest('.loc-settings') || e.target.closest('.loc-legend'))) return;
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    const nz = Math.min(3, Math.max(0.15, state.zoom * factor));
+    const nz = Math.min(MAX_ZOOM, Math.max(0.15, state.zoom * factor));
     state.panX = mx - (mx - state.panX) * (nz / state.zoom);
     state.panY = my - (my - state.panY) * (nz / state.zoom);
     state.zoom = nz; applyTransform();
@@ -1868,7 +1974,7 @@ export function createOrgChart(host, userOpts = {}) {
     setNodes, loadJSON, setOrientation, setSubtreeMode, setSpacing, setOption,
     setShowGrid, setSnapToGrid, setAlignToGrid, toggleGrid,
     fitToScreen, relayout, resetView, expandAll, collapseAll, toggleCollapse, centerOnNode,
-    search, clearSearch, exportJSON, exportSVG, exportPNG, exportPDF, buildSVG,
+    search, clearSearch, exportJSON, exportSVG, exportPNG, exportWebP, exportPDF, buildSVG,
     setEditMode, isEditMode: () => state.editMode,
     setShowImages, isShowingImages: () => state.showImages,
     setShowLegend, toggleLegend, isShowingLegend: () => state.showLegend, getLegendBody: () => legendBody,

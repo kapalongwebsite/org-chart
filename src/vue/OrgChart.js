@@ -258,6 +258,7 @@ export const OrgChart = defineComponent({
       exportJSON: (download) => chart && chart.exportJSON(download),
       exportSVG: () => chart && chart.exportSVG(),
       exportPNG: (scale) => chart && chart.exportPNG(scale),
+      exportWebP: (o) => chart && chart.exportWebP(o),
       exportPDF: () => chart && chart.exportPDF(),
       buildSVG: (raster) => chart && chart.buildSVG(raster),
 
