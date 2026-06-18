@@ -21,6 +21,8 @@ export const DEFAULTS = {
 };
 
 // default card sizes (consumers can override per node)
-export const DEPT_SIZE = { width: 230, height: 64 };
+export const DEPT_SIZE = { width: 240, height: 70 };
 // taller position card so the profile photo is large (photo ≈104px + text block)
-export const POS_SIZE = { width: 180, height: 172 };
+// wider + taller text block so names/titles render at a readable size without
+// the auto-fit shrinking them to a blur (see FIT_MIN / CARD_TEXT_BLOCK).
+export const POS_SIZE = { width: 196, height: 188 };

@@ -12,10 +12,13 @@ import {
 
 // person-card height = photo height + this fixed text block, so the image always
 // "tops" the card at its full size and the name/title area stays consistent.
-const CARD_TEXT_BLOCK = 68;
+const CARD_TEXT_BLOCK = 84;
 
 const SVGNS = 'http://www.w3.org/2000/svg';
-const FIT_MIN = 0.5;
+// Floor for the per-card text auto-fit. 0.5 let labels shrink to half size —
+// unreadable on screen and a blurry mess once zoomed in. 0.72 keeps text
+// legible; text that still doesn't fit clips (line-clamp) instead of shrinking.
+const FIT_MIN = 0.72;
 
 // Short orientation aliases → canonical names. Applied at EVERY entry point
 // (constructor, setOrientation, setSettings, setNodes/meta, restore) so the

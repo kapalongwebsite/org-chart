@@ -3,6 +3,23 @@
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 
+## v1.14.0 — 2026-06-17
+
+### Changed
+- **Larger, more legible card text.** The per-card auto-fit could shrink labels to half size
+  (`FIT_MIN` 0.5), which read as tiny on screen and turned to mush when zoomed in. Raised the floor
+  to **0.72** and bumped base font sizes (person name 12.5→13.5px, title 11→12px, department
+  13.5px, badge 10px). Cards are a little roomier to match — default position card **196×188**
+  (text block 68→84px) and department **240×70** — so the bigger text fits without re-shrinking.
+  Text that still overflows clips (line-clamp) instead of shrinking to unreadable. SVG/PNG/PDF
+  export font sizes were bumped to match the on-screen rendering.
+
+### Notes
+- On-screen zoom is a CSS transform; magnifying HTML cards far past 100% still softens text
+  (the browser scales the rasterized layer). The bigger default text means you rarely need to —
+  for a pixel-crisp full-resolution image use `exportPNG()` / `exportWebP()`, which render
+  natively at scale.
+
 ## v1.13.0 — 2026-06-17
 
 ### Added

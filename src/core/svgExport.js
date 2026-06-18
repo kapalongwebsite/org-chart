@@ -36,7 +36,7 @@ function roundTop(x, y, w, h, r) {
     + `V${y + h} H${x} V${y + r} Z`;
 }
 function deptSVG(n, x, y, fit, measure) {
-  const W = n.width, H = n.height, fs = 12.5 * fit, maxW = W - 36;
+  const W = n.width, H = n.height, fs = 13.5 * fit, maxW = W - 36;
   const lines = wrap((n.label || '').toUpperCase(), `600 ${fs}px ${FONT}`, maxW, measure);
   const lh = fs * 1.2, ccx = x + 10 + maxW / 2;
   let ty = y + H / 2 - (lines.length * lh) / 2 + fs * 0.78;
@@ -64,7 +64,7 @@ function posSVG(n, x, y, fit, raster, measure, ex) {
     s += `<text x="${ccx.toFixed(1)}" y="${(y + photoH / 2 + 10).toFixed(1)}" font-family='${FONT}' font-size="30" fill="#9ca3af" text-anchor="middle">●</text>`;
   }
   const areaY = y + photoH, areaH = H - photoH;
-  const nameFs = 12.5 * fit, titleFs = 11 * fit, nlh = nameFs * 1.15, tlh = titleFs * 1.15;
+  const nameFs = 13.5 * fit, titleFs = 12 * fit, nlh = nameFs * 1.15, tlh = titleFs * 1.15;
   const nameLines = wrap((n.personName || '—').toUpperCase(), `700 ${nameFs}px ${FONT}`, maxW, measure);
   const titleLines = wrap(n.label || '', `${titleFs}px ${FONT}`, maxW, measure);
   const badgeH = n.status ? 15 : 0, badgeGap = n.status ? 5 : 0;
@@ -74,7 +74,7 @@ function posSVG(n, x, y, fit, raster, measure, ex) {
   for (const ln of nameLines) { t += txt(ccx, ty, nameFs, 700, '#1a1a2e', ln); ty += nlh; }
   for (const ln of titleLines) { t += txt(ccx, ty, titleFs, 400, '#4a5568', ln); ty += tlh; }
   if (n.status) {
-    const bf = 9.5, col = BADGE[n.status] || { bg: '#eee', fg: '#333' };
+    const bf = 10, col = BADGE[n.status] || { bg: '#eee', fg: '#333' };
     const bw = measure(n.status, `700 ${bf}px ${FONT}`) + 16;
     const bx = ccx - bw / 2, by = ty - nameFs * 0.8 + badgeGap;
     t += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${badgeH}" rx="7.5" fill="${col.bg}"/>`;
