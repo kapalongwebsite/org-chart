@@ -334,7 +334,11 @@ export function createOrgChart(host, userOpts = {}) {
       // when images are toggled off, or there is no URL, fall back to a neutral
       // user-silhouette icon (the alt placeholder)
       if (state.showImages && url) {
-        const img = new Image(); img.alt = n.personName || ''; img.referrerPolicy = 'no-referrer';
+        // crossOrigin must match the export path (photoToDataURL also sets it):
+        // a non-CORS display load caches the image without CORS, and the export's
+        // canvas read then taints. Hosts serve photos with Access-Control-Allow-Origin,
+        // so requesting CORS here is safe and keeps the cached image canvas-readable.
+        const img = new Image(); img.crossOrigin = 'anonymous'; img.alt = n.personName || ''; img.referrerPolicy = 'no-referrer';
         img.onerror = () => { showUserIcon(photo); }; img.src = url; photo.appendChild(img);
       } else { showUserIcon(photo); }
       const pn = d.querySelector('.loc-pname'), pt = d.querySelector('.loc-ptitle');

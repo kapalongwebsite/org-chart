@@ -241,7 +241,7 @@ function Ns(Se, go = {}) {
       const n = t.querySelector(".loc-photo"), o = e.data && e.data.photo_url;
       if (s.showImages && o) {
         const r = new Image();
-        r.alt = e.personName || "", r.referrerPolicy = "no-referrer", r.onerror = () => {
+        r.crossOrigin = "anonymous", r.alt = e.personName || "", r.referrerPolicy = "no-referrer", r.onerror = () => {
           Zt(n);
         }, r.src = o, n.appendChild(r);
       } else
