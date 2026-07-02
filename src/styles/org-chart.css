@@ -54,6 +54,15 @@
 .loc-toolbar button.loc-active {
   background: var(--loc-teal-2); color: #fff; border-color: var(--loc-teal-1);
 }
+/* Small screens: the toolbar wraps (flex-wrap) and its many groups clump into a
+   cramped multi-row strip. Tighten spacing and drop the tiny uppercase group
+   labels so the buttons stay usable. */
+@media (max-width: 640px) {
+  .loc-toolbar { gap: 4px; padding: 6px 8px; }
+  .loc-toolbar .loc-label { display: none; }
+  .loc-toolbar .loc-group { padding-right: 4px; margin-right: 0; }
+  .loc-toolbar button { padding: 6px 8px; }
+}
 
 /* ---------- Canvas / content ---------- */
 .loc-canvas {
@@ -61,6 +70,10 @@
   background-color: var(--loc-bg);
   background-image: radial-gradient(circle, #d3d9e6 1px, transparent 1px);
   background-size: 22px 22px;
+  /* We pan/drag via pointer events; claim the touch gesture so mobile browsers
+     don't hijack it for native scroll (which cancels the pointer stream and
+     makes panning stutter / not move). */
+  touch-action: none;
 }
 .loc-canvas.loc-panning { cursor: grabbing; }
 .loc-canvas.loc-gridon { background-image: none; }
@@ -113,6 +126,7 @@
   position: absolute; left: 0; top: 0; transform-origin: 0 0;
   user-select: none; cursor: grab; border-radius: 8px;
   box-shadow: 0 1px 4px rgba(16,24,40,.12); overflow: hidden;   /* no will-change: keep card text crisp when zoomed (see .loc-content) */
+  touch-action: none;   /* nodes are dragged via pointer events — don't let touch scroll the page */
 }
 .loc-node.loc-dragging { cursor: grabbing; z-index: 50; box-shadow: 0 6px 18px rgba(16,24,40,.28); }
 .loc-node.loc-selected { outline: 2px solid var(--loc-accent); outline-offset: 1px; }

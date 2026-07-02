@@ -1824,6 +1824,10 @@ export function createOrgChart(host, userOpts = {}) {
     }
   });
 
+  // Two-finger pinch state (shared with the pan handler so pan yields mid-pinch).
+  const pinchPts = new Map();   // touch pointerId -> { x, y }
+  let pinchStart = null;        // { dist, zoom } captured when the 2nd finger lands
+
   // pan — the current node/edge selection is PRESERVED while panning; only a
   // click on empty space (a press that doesn't turn into a drag) clears it.
   addL(canvas, 'pointerdown', (e) => {
@@ -1850,6 +1854,7 @@ export function createOrgChart(host, userOpts = {}) {
     let moved = false;
     canvas.classList.add('loc-panning');
     const mv = (ev) => {
+      if (pinchPts.size >= 2) return;   // a two-finger pinch owns the gesture — don't also pan
       if (!moved && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 3) moved = true;
       state.panX = px + (ev.clientX - sx); state.panY = py + (ev.clientY - sy); applyTransform();
     };
@@ -1874,6 +1879,43 @@ export function createOrgChart(host, userOpts = {}) {
     state.panY = my - (my - state.panY) * (nz / state.zoom);
     state.zoom = nz; applyTransform();
   }, { passive: false });
+
+  // pinch-to-zoom (touch) — mirrors the wheel zoom, anchored at the pinch
+  // midpoint. Uses pointer events (pointerType 'touch') so it composes with the
+  // pointer-based pan/drag; the pan handler bails while two fingers are down.
+  const pinchMid = () => {
+    const [a, b] = [...pinchPts.values()];
+    const rect = canvas.getBoundingClientRect();
+    return { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top };
+  };
+  const pinchDist = () => {
+    const [a, b] = [...pinchPts.values()];
+    return Math.hypot(a.x - b.x, a.y - b.y) || 1;
+  };
+  addL(canvas, 'pointerdown', (e) => {
+    if (e.pointerType !== 'touch' || !opts.enableZoom) return;
+    if (e.target.closest && (e.target.closest('.loc-panel') || e.target.closest('.loc-settings') || e.target.closest('.loc-legend'))) return;
+    pinchPts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinchPts.size === 2) { pinchStart = { dist: pinchDist(), zoom: state.zoom }; canvas.classList.remove('loc-panning'); }
+  });
+  const pinchMove = (e) => {
+    if (!pinchPts.has(e.pointerId)) return;
+    pinchPts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinchPts.size < 2 || !pinchStart) return;
+    const mid = pinchMid();
+    const nz = Math.min(MAX_ZOOM, Math.max(0.15, pinchStart.zoom * (pinchDist() / pinchStart.dist)));
+    state.panX = mid.x - (mid.x - state.panX) * (nz / state.zoom);
+    state.panY = mid.y - (mid.y - state.panY) * (nz / state.zoom);
+    state.zoom = nz; applyTransform();
+  };
+  const pinchEnd = (e) => {
+    if (!pinchPts.has(e.pointerId)) return;
+    pinchPts.delete(e.pointerId);
+    if (pinchPts.size < 2) pinchStart = null;
+  };
+  addWin('pointermove', pinchMove);
+  addWin('pointerup', pinchEnd);
+  addWin('pointercancel', pinchEnd);
 
   function addWin(type, fn) { window.addEventListener(type, fn); listeners.push({ target: window, type, fn }); }
   function rmWin(type, fn) { window.removeEventListener(type, fn); }
