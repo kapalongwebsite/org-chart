@@ -1,6 +1,6 @@
 {
   "name": "local-org-chart",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "private": true,
   "description": "Dependency-free organizational chart engine with automatic subtree layout (Balanced / Alternate / Matrix), 4 orientations, pan/zoom/drag, search, expand-collapse, manual offsets, orthogonal connector waypoints, and SVG/PNG/PDF/JSON export. Ships a framework-independent core, a plain-JS renderer, and a Vue 3 wrapper.",
   "type": "module",
@@ -26,6 +26,11 @@
       "import": "./dist/vue.js",
       "require": "./dist/vue.cjs"
     },
+    "./print": {
+      "types": "./index.d.ts",
+      "import": "./dist/print.js",
+      "require": "./dist/print.cjs"
+    },
     "./style.css": "./dist/local-org-chart.css",
     "./package.json": "./package.json"
   },
@@ -42,6 +47,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "node --test test/*.test.js",
     "prepare": "vite build",
     "pack-local": "npm run build && npm pack"
   },
@@ -54,7 +60,11 @@
     }
   },
   "devDependencies": {
-    "vite": "^5.4.0",
+    "vite": "^8.2.1",
     "vue": "^3.4.0"
+  },
+  "dependencies": {
+    "jspdf": "^4.2.1",
+    "svg2pdf.js": "^2.7.0"
   }
 }

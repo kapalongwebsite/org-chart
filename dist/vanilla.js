@@ -1,46 +1,5 @@
-import { createOrgChart as r } from "./local-org-chart.js";
-import { CANVAS_PAD as n, DEFAULTS as i, DEFAULT_SETTINGS as a, DEPT_SIZE as l, ORIENTATIONS as s, POS_SIZE as T, SNAKE_STUB as d, SUBTREE_MODES as S, VIRTUAL_ROOT_ID as h, applyOrientation as p, buildChartSVG as u, buildTree as E, calculateBounds as m, childCount as N, computeDepths as c, convertMoTree as A, convertNestedTree as C, edgeControlPoints as O, edgeEndpoints as g, effCenter as D, exportLayout as I, fitBounds as _, getVisibleTree as f, indexNodes as y, isHorizontal as P, isMoArray as z, layoutOrgChart as R, lh as U, lw as b, makeNode as v, normalizeConfig as x, normalizeImported as B, normalizeRule as L, normalizeSettings as V, orthoThrough as F, personNameFromPos as M, resolveNodeStyle as w, routeConnector as G, searchNodes as Z, visibleDepths as k, waypointPath as H } from "./core.js";
-export {
-  n as CANVAS_PAD,
-  i as DEFAULTS,
-  a as DEFAULT_SETTINGS,
-  l as DEPT_SIZE,
-  s as ORIENTATIONS,
-  T as POS_SIZE,
-  d as SNAKE_STUB,
-  S as SUBTREE_MODES,
-  h as VIRTUAL_ROOT_ID,
-  p as applyOrientation,
-  u as buildChartSVG,
-  E as buildTree,
-  m as calculateBounds,
-  N as childCount,
-  c as computeDepths,
-  A as convertMoTree,
-  C as convertNestedTree,
-  r as createOrgChart,
-  O as edgeControlPoints,
-  g as edgeEndpoints,
-  D as effCenter,
-  I as exportLayout,
-  _ as fitBounds,
-  f as getVisibleTree,
-  y as indexNodes,
-  P as isHorizontal,
-  z as isMoArray,
-  R as layoutOrgChart,
-  U as lh,
-  b as lw,
-  v as makeNode,
-  x as normalizeConfig,
-  B as normalizeImported,
-  L as normalizeRule,
-  V as normalizeSettings,
-  F as orthoThrough,
-  M as personNameFromPos,
-  w as resolveNodeStyle,
-  G as routeConnector,
-  Z as searchNodes,
-  k as visibleDepths,
-  H as waypointPath
-};
+import { A as e, C as t, D as n, E as r, M as i, N as a, O as o, P as s, S as c, T as l, _ as u, a as d, b as f, c as p, d as m, f as h, g, h as _, i as v, j as y, k as b, l as x, m as S, n as C, o as w, p as T, r as E, s as D, t as O, u as k, v as A, w as j, x as M, y as N } from "./bounds-Bzdsw6ck.js";
+import { a as P, i as F, n as I, o as L, r as R, s as z, t as B } from "./core-CmbzIrLi.js";
+import { t as V } from "./createOrgChart-CjHH9xoT.js";
+/* empty css                   */
+export { n as CANVAS_PAD, o as DEFAULTS, B as DEFAULT_SETTINGS, b as DEPT_SIZE, e as ORIENTATIONS, y as POS_SIZE, i as SNAKE_STUB, a as SUBTREE_MODES, s as VIRTUAL_ROOT_ID, x as applyOrientation, P as buildChartSVG, M as buildTree, O as calculateBounds, c as childCount, t as computeDepths, _ as convertMoTree, g as convertNestedTree, V as createOrgChart, E as edgeControlPoints, v as edgeEndpoints, d as effCenter, L as exportLayout, C as fitBounds, j as getVisibleTree, l as indexNodes, k as isHorizontal, u as isMoArray, m as layoutOrgChart, h as lh, T as lw, A as makeNode, S as normalizeConfig, N as normalizeImported, I as normalizeRule, R as normalizeSettings, w as orthoThrough, f as personNameFromPos, F as resolveNodeStyle, D as routeConnector, z as searchNodes, r as visibleDepths, p as waypointPath };

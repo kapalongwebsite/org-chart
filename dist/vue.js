@@ -1,324 +1,358 @@
-import "./vanilla.js";
-import { defineComponent as P, ref as g, shallowRef as L, computed as E, onMounted as T, watch as a, onBeforeUnmount as w, h as i, Teleport as h, markRaw as O } from "vue";
-import { createOrgChart as A } from "./local-org-chart.js";
-const v = [
-  "node-click",
-  "node-select",
-  "node-drag-start",
-  "node-drag",
-  "node-drag-end",
-  "layout-change",
-  "orientation-change",
-  "subtree-mode-change",
-  "edit-mode-change",
-  "node-change",
-  "settings-change",
-  "inspector-open",
-  "inspector-close",
-  "settings-open",
-  "settings-close",
-  "fullscreen-change",
-  "history-change",
-  "attach-start",
-  "attach-cancel",
-  "user-select",
-  "presets-change",
-  "preset-load",
-  "selection-change",
-  "legend-change",
-  "edges-select",
-  "edges-reset"
-];
-function B(n) {
-  const d = {};
-  return n && (n.bg && (d.background = n.bg), n.text && (d.color = n.text), n.border && (d.borderColor = n.border)), d;
+import { t as e } from "./createOrgChart-CjHH9xoT.js";
+/* empty css                   */
+import { Teleport as t, computed as n, defineComponent as r, h as i, markRaw as a, onBeforeUnmount as o, onMounted as s, ref as c, shallowRef as l, watch as u } from "vue";
+//#region src/vue/OrgChart.js
+var d = /* @__PURE__ */ "node-click.node-select.node-drag-start.node-drag.node-drag-end.layout-change.orientation-change.subtree-mode-change.edit-mode-change.node-change.settings-change.inspector-open.inspector-close.settings-open.settings-close.fullscreen-change.history-change.attach-start.attach-cancel.user-select.presets-change.preset-load.selection-change.legend-change.edges-select.edges-reset".split(".");
+function f(e) {
+	let t = {};
+	return e && (e.bg && (t.background = e.bg), e.text && (t.color = e.text), e.border && (t.borderColor = e.border)), t;
 }
-const M = P({
-  name: "OrgChart",
-  props: {
-    nodes: { type: Array, default: () => [] },
-    orientation: { type: String, default: "TopToBottom" },
-    subtreeMode: { type: String, default: "Balanced" },
-    spacingX: { type: Number, default: 40 },
-    spacingY: { type: Number, default: 70 },
-    enableDragging: { type: Boolean, default: !0 },
-    enablePan: { type: Boolean, default: !0 },
-    enableZoom: { type: Boolean, default: !0 },
-    readonly: { type: Boolean, default: !1 },
-    editMode: { type: Boolean, default: !1 },
-    inspector: { type: Boolean, default: !0 },
-    inspectorTarget: { type: [String, Object], default: null },
-    // mount the inspector drawer outside the canvas
-    settingsTarget: { type: [String, Object], default: null },
-    // mount the settings drawer outside the canvas
-    fullscreenControl: { type: Boolean, default: !0 },
-    // floating fullscreen button on the canvas
-    fitOnLayoutChange: { type: [Boolean, String], default: !0 },
-    // re-frame after relayout: true|'fit' · 'recenter' · false|'none'
-    showImages: { type: Boolean, default: !0 },
-    // show person photos; off → user-silhouette icon
-    photoHeight: { type: Number, default: 104 },
-    // person-photo height in px (uniform, larger = bigger image)
-    cardWidth: { type: Number, default: 180 },
-    // person-card width in px (global; height = photoHeight + text block)
-    photoContain: { type: Boolean, default: !0 },
-    // fit the WHOLE photo inside the card (no crop); false = crop/cover
-    legend: { type: Boolean, default: !1 },
-    // show the floating legend
-    legendTarget: { type: [String, Object], default: null },
-    // mount the legend into an external element
-    autoEdgeSide: { type: Boolean, default: !1 },
-    // (opt-in) endpoints follow waypoints onto any box side
-    userSearch: { type: Function, default: null },
-    // (query, node) => Promise<user[]> | user[] — person-name typeahead from your API
-    userToFields: { type: Function, default: null },
-    // (user, node) => field patch for a chosen user
-    snapAlign: { type: Boolean, default: !0 },
-    // snap-to-align (parent axis + siblings) while dragging
-    settings: { type: Object, default: null },
-    fitOnInit: { type: Boolean, default: !0 },
-    toolbar: { type: [Boolean, Object], default: !0 },
-    // false | true | { subtree, orient, actions, grid, mode, export }
-    persist: { type: Boolean, default: !1 },
-    storageKey: { type: String, default: "local-org-chart.state" }
-  },
-  emits: v,
-  setup(n, { emit: d, expose: N, slots: l }) {
-    const p = g(null);
-    let e = null;
-    const r = g(!1), c = g({}), S = L([]), u = g(null), f = g(!1), m = g(!!n.legend), C = E(() => !(n.nodes && n.nodes.length));
-    function y() {
-      e && (c.value = e.getState());
-    }
-    function b() {
-      if (!e || !l.node) {
-        S.value = [];
-        return;
-      }
-      S.value = e.getPositioned().map((t) => {
-        const o = e.getNodeSlotEl(t.node.id);
-        return o ? { id: t.node.id, node: O(t.node), target: O(o), themeStyle: B(e.nodeThemeStyle(t.node.id)) } : null;
-      }).filter(Boolean);
-    }
-    return T(() => {
-      e = A(p.value, {
-        nodes: n.nodes,
-        orientation: n.orientation,
-        subtreeMode: n.subtreeMode,
-        spacingX: n.spacingX,
-        spacingY: n.spacingY,
-        enableDragging: n.enableDragging,
-        enablePan: n.enablePan,
-        enableZoom: n.enableZoom,
-        readonly: n.readonly,
-        editMode: n.editMode,
-        inspector: n.inspector,
-        inspectorTarget: n.inspectorTarget || null,
-        settingsTarget: n.settingsTarget || null,
-        fullscreenControl: n.fullscreenControl,
-        fitOnLayoutChange: n.fitOnLayoutChange,
-        showImages: n.showImages,
-        photoHeight: n.photoHeight,
-        cardWidth: n.cardWidth,
-        photoContain: n.photoContain,
-        legend: n.legend,
-        legendTarget: n.legendTarget || null,
-        legendSlot: !!l.legend,
-        autoEdgeSide: n.autoEdgeSide,
-        userSearch: n.userSearch || null,
-        userToFields: n.userToFields || null,
-        snapAlign: n.snapAlign,
-        settings: n.settings || void 0,
-        fitOnInit: n.fitOnInit,
-        // a #toolbar slot replaces the built-in toolbar
-        toolbar: l.toolbar ? !1 : n.toolbar,
-        nodeSlots: !!l.node,
-        inspectorSlot: !!l.inspector,
-        settingsSlot: !!l.settings,
-        persist: n.persist,
-        storageKey: n.storageKey
-      }), v.forEach((t) => e.on(t, (o) => d(t, o))), e.on("nodes-rendered", b), ["layout-change", "edit-mode-change", "settings-change", "node-select", "node-change"].forEach((t) => e.on(t, y)), e.on("inspector-open", (t) => {
-        u.value = t;
-      }), e.on("inspector-close", () => {
-        u.value = null;
-      }), e.on("settings-open", () => {
-        f.value = !0;
-      }), e.on("settings-close", () => {
-        f.value = !1;
-      }), e.on("legend-change", (t) => {
-        m.value = !!t.legend;
-      }), y(), b(), r.value = !0;
-    }), a(() => n.nodes, (t) => {
-      e && (e.setNodes(t || []), b(), y());
-    }), a(() => n.orientation, (t) => e && e.setOrientation(t)), a(() => n.subtreeMode, (t) => e && e.setSubtreeMode(t)), a(() => [n.spacingX, n.spacingY], ([t, o]) => e && e.setSpacing(t, o)), a(() => n.readonly, (t) => e && e.setOption("readonly", t)), a(() => n.editMode, (t) => e && e.setEditMode(t)), a(() => n.settings, (t) => {
-      e && t && e.setSettings(t);
-    }, { deep: !0 }), a(() => n.enableDragging, (t) => e && e.setOption("enableDragging", t)), a(() => n.enablePan, (t) => e && e.setOption("enablePan", t)), a(() => n.enableZoom, (t) => e && e.setOption("enableZoom", t)), a(() => n.fitOnLayoutChange, (t) => e && e.setOption("fitOnLayoutChange", t)), a(() => n.showImages, (t) => e && e.setShowImages(t)), a(() => n.photoHeight, (t) => e && e.setPhotoHeight(t)), a(() => n.cardWidth, (t) => e && e.setCardWidth(t)), a(() => n.photoContain, (t) => e && e.setPhotoContain(t)), a(() => n.legend, (t) => e && e.setShowLegend(t)), a(() => n.autoEdgeSide, (t) => e && e.setAutoEdgeSide(t)), a(() => n.userSearch, (t) => e && e.setOption("userSearch", t || null)), a(() => n.userToFields, (t) => e && e.setOption("userToFields", t || null)), a(() => n.snapAlign, (t) => e && e.setOption("snapAlign", t)), w(() => {
-      e && (e.destroy(), e = null);
-    }), N({
-      // ---- view / layout ----
-      fitToScreen: () => e && e.fitToScreen(),
-      relayout: () => e && e.relayout(),
-      resetView: () => e && e.resetView(),
-      expandAll: () => e && e.expandAll(),
-      collapseAll: () => e && e.collapseAll(),
-      toggleCollapse: (t) => e && e.toggleCollapse(t),
-      centerOnNode: (t) => e && e.centerOnNode(t),
-      // ---- search ----
-      search: (t) => e && e.search(t),
-      clearSearch: () => e && e.clearSearch(),
-      // ---- orientation / subtree ----
-      setOrientation: (t) => e && e.setOrientation(t),
-      setSubtreeMode: (t) => e && e.setSubtreeMode(t),
-      setSpacing: (t, o) => e && e.setSpacing(t, o),
-      // ---- grid (single canonical name each; setOption('showGrid', …) also works) ----
-      setShowGrid: (t) => e && e.setShowGrid(t),
-      setSnapToGrid: (t) => e && e.setSnapToGrid(t),
-      setAlignToGrid: (t) => e && e.setAlignToGrid(t),
-      toggleGrid: (t) => e && e.toggleGrid(t),
-      // ---- fullscreen ----
-      enterFullscreen: () => e && e.enterFullscreen(),
-      exitFullscreen: () => e && e.exitFullscreen(),
-      toggleFullscreen: (t) => e && e.toggleFullscreen(t),
-      isFullscreen: () => !!(e && e.isFullscreen()),
-      // ---- undo / redo ----
-      undo: () => e && e.undo(),
-      redo: () => e && e.redo(),
-      canUndo: () => !!(e && e.canUndo()),
-      canRedo: () => !!(e && e.canRedo()),
-      // ---- images / legend / multi-select ----
-      setShowImages: (t) => e && e.setShowImages(t),
-      isShowingImages: () => !!(e && e.isShowingImages()),
-      setPhotoHeight: (t) => e && e.setPhotoHeight(t),
-      setCardWidth: (t) => e && e.setCardWidth(t),
-      setCardSize: (t) => e && e.setCardSize(t),
-      setPhotoContain: (t) => e && e.setPhotoContain(t),
-      setShowLegend: (t) => e && e.setShowLegend(t),
-      toggleLegend: (t) => e && e.toggleLegend(t),
-      isShowingLegend: () => !!(e && e.isShowingLegend()),
-      setAutoEdgeSide: (t) => e && e.setAutoEdgeSide(t),
-      isAutoEdgeSide: () => !!(e && e.isAutoEdgeSide()),
-      getSelection: () => e ? e.getSelection() : [],
-      setSelection: (t) => e && e.setSelection(t),
-      clearSelection: () => e && e.clearSelection(),
-      getEdgeSelection: () => e ? e.getEdgeSelection() : [],
-      setEdgeSelection: (t) => e && e.setEdgeSelection(t),
-      clearEdgeSelection: () => e && e.clearEdgeSelection(),
-      resetSelectedEdges: () => e && e.resetSelectedEdges(),
-      // ---- edit mode / inspector / settings ----
-      setEditMode: (t) => e && e.setEditMode(t),
-      isEditMode: () => e && e.isEditMode(),
-      updateNode: (t, o) => e && e.updateNode(t, o),
-      addChild: (t) => e && e.addChild(t),
-      deleteNode: (t) => e && e.deleteNode(t),
-      reparentNode: (t, o) => e && e.reparentNode(t, o),
-      detachNode: (t) => e && e.detachNode(t),
-      attachNode: (t, o) => e && e.attachNode(t, o),
-      beginAttach: (t) => e && e.beginAttach(t),
-      cancelAttach: () => e && e.cancelAttach(),
-      isAttaching: () => !!(e && e.isAttaching()),
-      openInspector: (t) => e && e.openInspector(t),
-      closeInspector: () => e && e.closeInspector(),
-      nodeScreenRect: (t) => e && e.nodeScreenRect(t),
-      getSettings: () => e && e.getSettings(),
-      setSettings: (t) => e && e.setSettings(t),
-      toggleSettings: (t) => e && e.toggleSettings(t),
-      resetSettings: () => e && e.resetSettings(),
-      // ---- layout presets (built-in UI in the settings drawer, or build your own with these) ----
-      saveLayoutPreset: (t, o) => e && e.saveLayoutPreset(t, o),
-      loadLayoutPreset: (t) => e && e.loadLayoutPreset(t),
-      deleteLayoutPreset: (t) => e && e.deleteLayoutPreset(t),
-      listLayoutPresets: () => e ? e.listLayoutPresets() : [],
-      getLayoutPresets: () => e ? e.getLayoutPresets() : {},
-      getLayout: (t) => e && e.getLayout(t),
-      // portable object → POST to your backend
-      applyLayout: (t) => e && e.applyLayout(t),
-      // ...and apply one fetched from it
-      // ---- data ----
-      setNodes: (t, o, s) => e && e.setNodes(t, o, s),
-      loadJSON: (t) => e && e.loadJSON(t),
-      getState: () => e && e.getState(),
-      getNodes: () => e && e.getNodes(),
-      getPositioned: () => e && e.getPositioned(),
-      // ---- export ----
-      exportJSON: (t) => e && e.exportJSON(t),
-      exportSVG: () => e && e.exportSVG(),
-      exportPNG: (t) => e && e.exportPNG(t),
-      exportWebP: (t) => e && e.exportWebP(t),
-      exportPDF: () => e && e.exportPDF(),
-      buildSVG: (t) => e && e.buildSVG(t),
-      // ---- generic / advanced ----
-      setOption: (t, o) => e && e.setOption(t, o),
-      on: (t, o) => e && e.on(t, o),
-      off: (t, o) => e && e.off(t, o),
-      // ---- raw engine instance (escape hatch) ----
-      instance: () => e
-    }), () => {
-      const t = [];
-      if (l.toolbar && t.push(i(
-        "div",
-        { class: "loc-vue-toolbar" },
-        r.value ? l.toolbar({ chart: e, state: c.value }) : []
-      )), t.push(i("div", { ref: p, class: "loc-vue-host" })), l.node)
-        for (const o of S.value)
-          t.push(i(
-            h,
-            { to: o.target, key: "n:" + o.id },
-            l.node({
-              node: o.node,
-              selected: c.value.selectedNodeId === o.id,
-              editMode: !!c.value.editMode,
-              themeStyle: o.themeStyle,
-              update: (s) => e && e.updateNode(o.id, s),
-              select: () => e && e.openInspector(o.id)
-            })
-          ));
-      if (l.inspector && r.value && u.value && e) {
-        const o = e.getInspectorBody();
-        o && t.push(i(
-          h,
-          { to: o, key: "inspector" },
-          l.inspector({
-            node: u.value.node,
-            editMode: !!c.value.editMode,
-            update: (s) => e.updateNode(u.value.id, s),
-            close: () => e.closeInspector()
-          })
-        ));
-      }
-      if (l.settings && r.value && f.value && e) {
-        const o = e.getSettingsBody();
-        o && t.push(i(
-          h,
-          { to: o, key: "settings" },
-          l.settings({
-            settings: e.getSettings(),
-            update: (s) => e.setSettings(s),
-            reset: () => e.resetSettings(),
-            close: () => e.toggleSettings(!1)
-          })
-        ));
-      }
-      if (l.legend && r.value && m.value && e) {
-        const o = e.getLegendBody();
-        o && t.push(i(
-          h,
-          { to: o, key: "legend" },
-          l.legend({
-            nodes: e.getNodes(),
-            settings: e.getSettings(),
-            close: () => e.setShowLegend(!1)
-          })
-        ));
-      }
-      return l.empty && C.value && t.push(i("div", { class: "loc-vue-empty" }, l.empty())), i("div", { class: "loc-vue-wrap" }, t);
-    };
-  }
-}), G = {
-  install(n, d = {}) {
-    n.component(d.name || "OrgChart", M);
-  }
-};
-export {
-  M as OrgChart,
-  G as default
-};
+var p = r({
+	name: "OrgChart",
+	props: {
+		nodes: {
+			type: Array,
+			default: () => []
+		},
+		orientation: {
+			type: String,
+			default: "TopToBottom"
+		},
+		subtreeMode: {
+			type: String,
+			default: "Balanced"
+		},
+		spacingX: {
+			type: Number,
+			default: 40
+		},
+		spacingY: {
+			type: Number,
+			default: 70
+		},
+		enableDragging: {
+			type: Boolean,
+			default: !0
+		},
+		enablePan: {
+			type: Boolean,
+			default: !0
+		},
+		enableZoom: {
+			type: Boolean,
+			default: !0
+		},
+		readonly: {
+			type: Boolean,
+			default: !1
+		},
+		editMode: {
+			type: Boolean,
+			default: !1
+		},
+		inspector: {
+			type: Boolean,
+			default: !0
+		},
+		inspectorTarget: {
+			type: [String, Object],
+			default: null
+		},
+		settingsTarget: {
+			type: [String, Object],
+			default: null
+		},
+		fullscreenControl: {
+			type: Boolean,
+			default: !0
+		},
+		fitOnLayoutChange: {
+			type: [Boolean, String],
+			default: !0
+		},
+		showImages: {
+			type: Boolean,
+			default: !0
+		},
+		photoHeight: {
+			type: Number,
+			default: 104
+		},
+		cardWidth: {
+			type: Number,
+			default: 180
+		},
+		photoContain: {
+			type: Boolean,
+			default: !0
+		},
+		legend: {
+			type: Boolean,
+			default: !1
+		},
+		legendTarget: {
+			type: [String, Object],
+			default: null
+		},
+		autoEdgeSide: {
+			type: Boolean,
+			default: !1
+		},
+		userSearch: {
+			type: Function,
+			default: null
+		},
+		userToFields: {
+			type: Function,
+			default: null
+		},
+		snapAlign: {
+			type: Boolean,
+			default: !0
+		},
+		settings: {
+			type: Object,
+			default: null
+		},
+		fitOnInit: {
+			type: Boolean,
+			default: !0
+		},
+		toolbar: {
+			type: [Boolean, Object],
+			default: !0
+		},
+		persist: {
+			type: Boolean,
+			default: !1
+		},
+		storageKey: {
+			type: String,
+			default: "local-org-chart.state"
+		}
+	},
+	emits: d,
+	setup(r, { emit: p, expose: m, slots: h }) {
+		let g = c(null), _ = null, v = c(!1), y = c({}), b = l([]), x = c(null), S = c(!1), C = c(!!r.legend), w = n(() => !(r.nodes && r.nodes.length));
+		function T() {
+			_ && (y.value = _.getState());
+		}
+		function E() {
+			if (!_ || !h.node) {
+				b.value = [];
+				return;
+			}
+			b.value = _.getPositioned().map((e) => {
+				let t = _.getNodeSlotEl(e.node.id);
+				return t ? {
+					id: e.node.id,
+					node: a(e.node),
+					target: a(t),
+					themeStyle: f(_.nodeThemeStyle(e.node.id))
+				} : null;
+			}).filter(Boolean);
+		}
+		return s(() => {
+			_ = e(g.value, {
+				nodes: r.nodes,
+				orientation: r.orientation,
+				subtreeMode: r.subtreeMode,
+				spacingX: r.spacingX,
+				spacingY: r.spacingY,
+				enableDragging: r.enableDragging,
+				enablePan: r.enablePan,
+				enableZoom: r.enableZoom,
+				readonly: r.readonly,
+				editMode: r.editMode,
+				inspector: r.inspector,
+				inspectorTarget: r.inspectorTarget || null,
+				settingsTarget: r.settingsTarget || null,
+				fullscreenControl: r.fullscreenControl,
+				fitOnLayoutChange: r.fitOnLayoutChange,
+				showImages: r.showImages,
+				photoHeight: r.photoHeight,
+				cardWidth: r.cardWidth,
+				photoContain: r.photoContain,
+				legend: r.legend,
+				legendTarget: r.legendTarget || null,
+				legendSlot: !!h.legend,
+				autoEdgeSide: r.autoEdgeSide,
+				userSearch: r.userSearch || null,
+				userToFields: r.userToFields || null,
+				snapAlign: r.snapAlign,
+				settings: r.settings || void 0,
+				fitOnInit: r.fitOnInit,
+				toolbar: !h.toolbar && r.toolbar,
+				nodeSlots: !!h.node,
+				inspectorSlot: !!h.inspector,
+				settingsSlot: !!h.settings,
+				persist: r.persist,
+				storageKey: r.storageKey
+			}), d.forEach((e) => _.on(e, (t) => p(e, t))), _.on("nodes-rendered", E), [
+				"layout-change",
+				"edit-mode-change",
+				"settings-change",
+				"node-select",
+				"node-change"
+			].forEach((e) => _.on(e, T)), _.on("inspector-open", (e) => {
+				x.value = e;
+			}), _.on("inspector-close", () => {
+				x.value = null;
+			}), _.on("settings-open", () => {
+				S.value = !0;
+			}), _.on("settings-close", () => {
+				S.value = !1;
+			}), _.on("legend-change", (e) => {
+				C.value = !!e.legend;
+			}), T(), E(), v.value = !0;
+		}), u(() => r.nodes, (e) => {
+			_ && (_.setNodes(e || []), E(), T());
+		}), u(() => r.orientation, (e) => _ && _.setOrientation(e)), u(() => r.subtreeMode, (e) => _ && _.setSubtreeMode(e)), u(() => [r.spacingX, r.spacingY], ([e, t]) => _ && _.setSpacing(e, t)), u(() => r.readonly, (e) => _ && _.setOption("readonly", e)), u(() => r.editMode, (e) => _ && _.setEditMode(e)), u(() => r.settings, (e) => {
+			_ && e && _.setSettings(e);
+		}, { deep: !0 }), u(() => r.enableDragging, (e) => _ && _.setOption("enableDragging", e)), u(() => r.enablePan, (e) => _ && _.setOption("enablePan", e)), u(() => r.enableZoom, (e) => _ && _.setOption("enableZoom", e)), u(() => r.fitOnLayoutChange, (e) => _ && _.setOption("fitOnLayoutChange", e)), u(() => r.showImages, (e) => _ && _.setShowImages(e)), u(() => r.photoHeight, (e) => _ && _.setPhotoHeight(e)), u(() => r.cardWidth, (e) => _ && _.setCardWidth(e)), u(() => r.photoContain, (e) => _ && _.setPhotoContain(e)), u(() => r.legend, (e) => _ && _.setShowLegend(e)), u(() => r.autoEdgeSide, (e) => _ && _.setAutoEdgeSide(e)), u(() => r.userSearch, (e) => _ && _.setOption("userSearch", e || null)), u(() => r.userToFields, (e) => _ && _.setOption("userToFields", e || null)), u(() => r.snapAlign, (e) => _ && _.setOption("snapAlign", e)), o(() => {
+			_ &&= (_.destroy(), null);
+		}), m({
+			fitToScreen: () => _ && _.fitToScreen(),
+			relayout: () => _ && _.relayout(),
+			resetView: () => _ && _.resetView(),
+			expandAll: () => _ && _.expandAll(),
+			collapseAll: () => _ && _.collapseAll(),
+			toggleCollapse: (e) => _ && _.toggleCollapse(e),
+			centerOnNode: (e) => _ && _.centerOnNode(e),
+			search: (e) => _ && _.search(e),
+			clearSearch: () => _ && _.clearSearch(),
+			setOrientation: (e) => _ && _.setOrientation(e),
+			setSubtreeMode: (e) => _ && _.setSubtreeMode(e),
+			setSpacing: (e, t) => _ && _.setSpacing(e, t),
+			setShowGrid: (e) => _ && _.setShowGrid(e),
+			setSnapToGrid: (e) => _ && _.setSnapToGrid(e),
+			setAlignToGrid: (e) => _ && _.setAlignToGrid(e),
+			toggleGrid: (e) => _ && _.toggleGrid(e),
+			enterFullscreen: () => _ && _.enterFullscreen(),
+			exitFullscreen: () => _ && _.exitFullscreen(),
+			toggleFullscreen: (e) => _ && _.toggleFullscreen(e),
+			isFullscreen: () => !!(_ && _.isFullscreen()),
+			undo: () => _ && _.undo(),
+			redo: () => _ && _.redo(),
+			canUndo: () => !!(_ && _.canUndo()),
+			canRedo: () => !!(_ && _.canRedo()),
+			setShowImages: (e) => _ && _.setShowImages(e),
+			isShowingImages: () => !!(_ && _.isShowingImages()),
+			setPhotoHeight: (e) => _ && _.setPhotoHeight(e),
+			setCardWidth: (e) => _ && _.setCardWidth(e),
+			setCardSize: (e) => _ && _.setCardSize(e),
+			setPhotoContain: (e) => _ && _.setPhotoContain(e),
+			setShowLegend: (e) => _ && _.setShowLegend(e),
+			toggleLegend: (e) => _ && _.toggleLegend(e),
+			isShowingLegend: () => !!(_ && _.isShowingLegend()),
+			setAutoEdgeSide: (e) => _ && _.setAutoEdgeSide(e),
+			isAutoEdgeSide: () => !!(_ && _.isAutoEdgeSide()),
+			getSelection: () => _ ? _.getSelection() : [],
+			setSelection: (e) => _ && _.setSelection(e),
+			clearSelection: () => _ && _.clearSelection(),
+			getEdgeSelection: () => _ ? _.getEdgeSelection() : [],
+			setEdgeSelection: (e) => _ && _.setEdgeSelection(e),
+			clearEdgeSelection: () => _ && _.clearEdgeSelection(),
+			resetSelectedEdges: () => _ && _.resetSelectedEdges(),
+			setEditMode: (e) => _ && _.setEditMode(e),
+			isEditMode: () => _ && _.isEditMode(),
+			updateNode: (e, t) => _ && _.updateNode(e, t),
+			addChild: (e) => _ && _.addChild(e),
+			deleteNode: (e) => _ && _.deleteNode(e),
+			reparentNode: (e, t) => _ && _.reparentNode(e, t),
+			detachNode: (e) => _ && _.detachNode(e),
+			attachNode: (e, t) => _ && _.attachNode(e, t),
+			beginAttach: (e) => _ && _.beginAttach(e),
+			cancelAttach: () => _ && _.cancelAttach(),
+			isAttaching: () => !!(_ && _.isAttaching()),
+			openInspector: (e) => _ && _.openInspector(e),
+			closeInspector: () => _ && _.closeInspector(),
+			nodeScreenRect: (e) => _ && _.nodeScreenRect(e),
+			getSettings: () => _ && _.getSettings(),
+			setSettings: (e) => _ && _.setSettings(e),
+			toggleSettings: (e) => _ && _.toggleSettings(e),
+			resetSettings: () => _ && _.resetSettings(),
+			saveLayoutPreset: (e, t) => _ && _.saveLayoutPreset(e, t),
+			loadLayoutPreset: (e) => _ && _.loadLayoutPreset(e),
+			deleteLayoutPreset: (e) => _ && _.deleteLayoutPreset(e),
+			listLayoutPresets: () => _ ? _.listLayoutPresets() : [],
+			getLayoutPresets: () => _ ? _.getLayoutPresets() : {},
+			getLayout: (e) => _ && _.getLayout(e),
+			applyLayout: (e) => _ && _.applyLayout(e),
+			setNodes: (e, t, n) => _ && _.setNodes(e, t, n),
+			loadJSON: (e) => _ && _.loadJSON(e),
+			getState: () => _ && _.getState(),
+			getNodes: () => _ && _.getNodes(),
+			getPositioned: () => _ && _.getPositioned(),
+			exportJSON: (e) => _ && _.exportJSON(e),
+			exportSVG: () => _ && _.exportSVG(),
+			exportPNG: (e) => _ && _.exportPNG(e),
+			exportWebP: (e) => _ && _.exportWebP(e),
+			exportPDF: () => _ && _.exportPDF(),
+			buildSVG: (e) => _ && _.buildSVG(e),
+			setOption: (e, t) => _ && _.setOption(e, t),
+			on: (e, t) => _ && _.on(e, t),
+			off: (e, t) => _ && _.off(e, t),
+			instance: () => _
+		}), () => {
+			let e = [];
+			if (h.toolbar && e.push(i("div", { class: "loc-vue-toolbar" }, v.value ? h.toolbar({
+				chart: _,
+				state: y.value
+			}) : [])), e.push(i("div", {
+				ref: g,
+				class: "loc-vue-host"
+			})), h.node) for (let n of b.value) e.push(i(t, {
+				to: n.target,
+				key: "n:" + n.id
+			}, h.node({
+				node: n.node,
+				selected: y.value.selectedNodeId === n.id,
+				editMode: !!y.value.editMode,
+				themeStyle: n.themeStyle,
+				update: (e) => _ && _.updateNode(n.id, e),
+				select: () => _ && _.openInspector(n.id)
+			})));
+			if (h.inspector && v.value && x.value && _) {
+				let n = _.getInspectorBody();
+				n && e.push(i(t, {
+					to: n,
+					key: "inspector"
+				}, h.inspector({
+					node: x.value.node,
+					editMode: !!y.value.editMode,
+					update: (e) => _.updateNode(x.value.id, e),
+					close: () => _.closeInspector()
+				})));
+			}
+			if (h.settings && v.value && S.value && _) {
+				let n = _.getSettingsBody();
+				n && e.push(i(t, {
+					to: n,
+					key: "settings"
+				}, h.settings({
+					settings: _.getSettings(),
+					update: (e) => _.setSettings(e),
+					reset: () => _.resetSettings(),
+					close: () => _.toggleSettings(!1)
+				})));
+			}
+			if (h.legend && v.value && C.value && _) {
+				let n = _.getLegendBody();
+				n && e.push(i(t, {
+					to: n,
+					key: "legend"
+				}, h.legend({
+					nodes: _.getNodes(),
+					settings: _.getSettings(),
+					close: () => _.setShowLegend(!1)
+				})));
+			}
+			return h.empty && w.value && e.push(i("div", { class: "loc-vue-empty" }, h.empty())), i("div", { class: "loc-vue-wrap" }, e);
+		};
+	}
+}), m = { install(e, t = {}) {
+	e.component(t.name || "OrgChart", p);
+} };
+//#endregion
+export { p as OrgChart, m as default };

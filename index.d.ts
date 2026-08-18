@@ -57,6 +57,42 @@ export function buildChartSVG(positioned: PositionedNode[], paths: string[], opt
 export const SUBTREE_MODES: SubtreeMode[];
 export const ORIENTATIONS: Orientation[];
 
+// ---- deterministic physical-canvas print engine ----
+export type PrintLayoutFamily = 'portrait-sectioned' | 'wide-row' | 'portrait-spine' | 'custom';
+export interface PrintProfile {
+  schemaVersion?: 1;
+  templateId?: string;
+  templateVersion?: number;
+  widthMm: number;
+  heightMm: number;
+  safeMarginMm?: number;
+  headerHeightMm?: number;
+  footerHeightMm?: number;
+  preferredUnit?: 'mm' | 'cm' | 'in' | 'ft';
+  dpi?: number;
+  minFontMm?: number;
+  layoutFamily: PrintLayoutFamily;
+  layout?: Record<string, any>;
+}
+export interface PrintDiagnostic { level: 'error' | 'warning'; code: string; message: string; }
+export interface PrintLayoutResult {
+  ok: boolean;
+  profile: Required<Omit<PrintProfile, 'layout'>> & { layout: Record<string, any> };
+  diagnostics: PrintDiagnostic[];
+  positioned?: PositionedNode[];
+  contentBox: { x: number; y: number; width: number; height: number };
+  transform?: { scale: number; x: number; y: number };
+  effectiveFontMm?: number;
+  [key: string]: any;
+}
+export const PRINT_LAYOUT_FAMILIES: readonly PrintLayoutFamily[];
+export function recommendPrintLayout(nodes: OrgNode[], canvas: { widthMm: number; heightMm: number }): { family: PrintLayoutFamily; reasons: string[]; stats: { count: number; maxDepth: number; maxChildren: number }; canvasAspect: number };
+export function normalizePrintProfile(profile: PrintProfile): Required<Omit<PrintProfile, 'layout'>> & { layout: Record<string, any> };
+export function layoutPrintChart(nodes: OrgNode[], profile: PrintProfile): PrintLayoutResult;
+export function renderPrintChartFragment(layout: PrintLayoutResult, options?: { photoDataByUrl?: Record<string, string>; allowRemotePhotos?: boolean }): string;
+export function renderPrintChartSvg(layout: PrintLayoutResult, options?: { photoDataByUrl?: Record<string, string>; allowRemotePhotos?: boolean; background?: string; ariaLabel?: string }): string;
+export function svgElementToPdfBlob(svgElement: SVGElement, dimensions: { widthMm: number; heightMm: number }): Promise<Blob>;
+
 // ---- vanilla ----
 export interface ThemeRule {
   enabled?: boolean;
