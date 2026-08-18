@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.0
+
+- Added the opt-in `local-org-chart/print` entry point for deterministic physical-canvas layouts.
+- Added portrait-sectioned, wide-row, portrait-spine, and custom/manual print families.
+- Added readability and overlap diagnostics that can block unsafe exports.
+- Added exact-dimension SVG composition helpers and client-side vector PDF Blob generation.
+- Kept the interactive core and Vue/vanilla entry points unchanged.
+
 All notable changes to **local-org-chart**. This is a private package (not published to npm);
 versions are tags in the private GitHub repo (e.g. `v1.0.0`).
 

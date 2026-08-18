@@ -1,5 +1,14 @@
 # local-org-chart
 
+## Physical print layouts
+
+The optional `local-org-chart/print` entry point lays out the same node model on
+an explicitly sized physical canvas. It never guesses tarp dimensions and never
+silently changes a saved layout family. Use `recommendPrintLayout()` to present a
+recommendation, `layoutPrintChart()` to obtain fit diagnostics, and only export
+when `result.ok` is true. `renderPrintChartFragment()` is intended for a host
+application that owns the official seal, header, background, and footer.
+
 A dependency-free **organizational chart engine** with automatic subtree layout.
 Built from scratch in vanilla JavaScript — no Syncfusion, GoJS, yFiles, D3, or any
 paid/heavy diagram library. Ships three layers:
