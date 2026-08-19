@@ -55,13 +55,13 @@ export function convertMoTree(roots) {
     if (n.type === 'organization') {
       out.push({ id: myId, parentId, type: 'department', label: n.name || 'UNIT',
                  width: DEPT_SIZE.width, height: DEPT_SIZE.height,
-                 data: { level: n.meta && n.meta.level, srcId: n.id } });
+                 data: { is_head: Boolean(n.is_head), level: n.meta && n.meta.level, srcId: n.id } });
     } else {
       const vacant = n.type === 'vacant';
       out.push({ id: myId, parentId, type: 'position', label: n.position || 'POSITION',
                  personName: vacant ? '— VACANT —' : (n.name || '—'),
                  status: vacant ? 'VACANT' : 'FILLED', width: POS_SIZE.width, height: POS_SIZE.height,
-                 data: { photo_url: n.photo_url || null, srcId: n.id } });
+                 data: { is_head: Boolean(n.is_head), photo_url: n.photo_url || null, srcId: n.id } });
     }
     const kids = (n.children || []).slice()
       .sort((a, b) => ((a.meta && a.meta.sort_order) || 0) - ((b.meta && b.meta.sort_order) || 0));

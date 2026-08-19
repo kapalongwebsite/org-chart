@@ -1,5 +1,133 @@
 # Changelog
 
+## 1.18.0
+
+- Full Grid Smart calculations now run in a cancellable Web Worker by default,
+  including the initial mount. The visible chart remains interactive while a
+  structural result is calculated, superseded results are discarded, and a
+  bounded exact-input cache makes repeated layouts and undo/redo inexpensive.
+  Consumers can observe `layout-start`, `layout-complete`, `layout-cancel`, and
+  `layout-error`, or await `whenLayoutSettled()`. Set `layoutWorker: false` only
+  when synchronous first-paint compatibility is required.
+- Width/height inputs and layout settings sliders now keep draft values locally
+  and commit structural recalculation once on change instead of solving once per
+  typed digit or slider movement. Family-trunk dragging likewise calculates
+  once at pointer release rather than on every pointer move.
+- Split layout recalculation into two explicit APIs. `relayout()` now rebuilds
+  automatic geometry while rebasing and preserving manual card positions and
+  retaining manual connector/family routes. `forceRelayout()` clears every
+  manual geometry override before rebuilding the full chart; `resetView()` uses
+  that destructive behavior. Both actions remain undoable. Adding a child also
+  rebases existing manual offsets so a structural insertion cannot make an
+  already positioned card jump.
+- Host/canvas resizing no longer regenerates automatic geometry by default. It
+  now changes only the viewport; responsive geometry is explicit through
+  `reflowOnResize: true`, while physical tarp sizing remains in the print API.
+- Multi-node dragging now flushes its final card and shared-family connector
+  geometry before pointer release clears the drag state, so quick group moves
+  cannot leave lines behind. The inspector and `node-click` action are also
+  deferred or suppressed appropriately so grabbing a card does not open its drawer.
+- Automatic Grid Smart waypoints now deform with manual node offsets. A
+  Ctrl/Command-marquee group move carries the selected row bus and short card
+  approaches with the cards while retaining a truthful connection to the
+  unmoved parent-side trunk, instead of keeping the old bus and adding doglegs.
+
+- Selected-edge endpoint handles now inherit the currently painted automatic
+  Grid Smart route. A connector entering a card from above exposes the top
+  anchor instead of falling back to a horizontal side, and adding the first
+  manual waypoint preserves the existing automatic path before editing it.
+- Grid Smart keeps top-level peer divisions in source-ordered, balanced shelf
+  rows. An office with three divisions and direct personnel uses one truthful
+  left/centre/right rank on square and desktop canvases, fits with symmetric
+  outer canvas framing instead of internal balancing gaps, and may still stack
+  on mobile. A two-person
+  outer division uses a horizontal pair so it occupies its available cells and
+  keeps the same compact gutter as its siblings instead of being pushed outward.
+  Larger peer
+  sets retain balanced shelf rows. Direct personnel remain in a separate band,
+  while each division's descendants continue to use sparse occupancy packing.
+- Grid Smart now preserves the longest safe family prefix shared by sibling
+  routes. Same-parent cards leave through one trunk and reuse row/column buses;
+  only the final child branch is routed independently. Logical child edges stay
+  individually selectable and manual waypoints remain authoritative.
+- Grid Smart now compacts legacy private route tails before final family-network
+  construction. A child
+  aligned with its parent uses the direct corridor whenever it is card- and
+  channel-safe instead of following a sibling rail away from the centerline and
+  turning back immediately before the card. The final family pass preserves
+  row-specific buses instead of flattening wrapped siblings into one top rail
+  with misleading long drops.
+- Wrapped, leaf-only personnel sections align their heading card over the
+  nearest continuous internal grid gutter. Their shared spine can therefore
+  leave the section in one straight line and serve each personnel row through
+  short local approaches without changing any parent-child relationship.
+- Added first-class parent-family connector networks. Grid Smart evaluates one
+  shared orthogonal trunk and row/column buses for siblings, penalizes distant
+  parent departures, preserves direct safe children, and falls back to the
+  individual obstacle router when a family candidate is unsafe.
+- Connector rendering now separates one parent-owned physical family network
+  from logical child edges. Layout results expose the network's stem segments,
+  buses, junctions, and private branches; the interactive chart, SVG/PNG/PDF
+  export, and physical print output consume that network directly instead of
+  painting complete sibling paths and deduplicating them afterward. Invisible
+  per-child paths continue to power selection, editing, detach, and reparent,
+  and an edited family is explicitly rebuilt from those constraints.
+- Shared family trunks are selectable and draggable in edit mode. Stable
+  parent-keyed `familyRouteOverrides` participate in undo/redo, persistence,
+  presets, JSON round-trips, and Vue/vanilla APIs. Resetting a family route only
+  removes its visual constraint; detach/reparent remain explicit relationship
+  changes, and existing child waypoints/anchors retain highest precedence.
+- Simplified the default editor surface: subtree-strategy buttons are hidden
+  unless explicitly enabled with `toolbar: { subtree: true }`, and legacy
+  per-node layout overrides require `advancedLayoutControls: true`. Existing
+  saved modes and the programmatic layout APIs remain compatible.
+- Added the experimental API-selectable `GridSmart` mode. It converts measured subtrees
+  into sparse card-and-channel footprints inside a quantized occupancy mould. Sibling
+  subtree bounds may interlock only where their actual nodes, hierarchy channels, and
+  clearance cells remain disjoint, eliminating the former solid-rectangle limitation.
+  Card centres use the same lattice and every eligible automatic edge is rerouted through
+  the shortest card-free orthogonal path. A channel is accepted only when it does not
+  intersect an unrelated family's reserved route; otherwise the known-safe route remains.
+- Grid Smart removes same-axis overshoots and rectangular out-and-back routes, reserves
+  unrelated connector channels against both perpendicular crossings and collinear overlap,
+  and keeps a straight ingress/egress slot at every card. Its card rows reserve at least two
+  lattice tracks between them so snapping cannot collapse the connector lane into a card.
+- Added deterministic `AutoSmart` recursive block-grid layout and made it the default
+  layout mode. Structural subtrees remain intact while peer blocks and direct personnel
+  are packed against the target canvas shape.
+- Auto Smart evaluates whole-chart packing shapes, ordered flexible row partitions, and
+  safe vertical density variants. Each mixed-height subtree also compares row grids,
+  contiguous columns, and deterministic balanced masonry columns. Its whole-chart
+  finalist score now includes hierarchy-rank scatter, direct-staff/division mixing,
+  connector detours, bend count, and density instead of treating the smallest rectangle
+  as automatically best.
+- Mixed direct staff can occupy a dedicated band before structural divisions when that
+  improves hierarchy clarity. Structural-only sibling sets remain in source-ordered rows,
+  and unbalanced orphan rows such as 5+1 or 3+1 are rejected in favor of balanced fills
+  such as 3+3 or 2+2.
+- Removed the near-landscape floor from compact personnel groups so Auto Smart can
+  produce genuinely portrait layouts for narrow mobile hosts instead of shrinking a
+  desktop-shaped chart into a small strip.
+- Nested branches now receive a context-aware share of the parent target shape instead of
+  making every division independently landscape. Large charts use more vertical space,
+  fit at a larger readable scale, and avoid the previous wide, shallow result.
+- Packed staff grids use shared card-free interior trunks when possible. Stacked subtree
+  rows use a stair-step backbone that changes lanes only in empty row gaps, falling back
+  to a nearby exterior lane only for the row that needs it. This shortens connector runs
+  without routing lines through cards; manual waypoints and endpoint anchors remain
+  authoritative.
+- Featured office heads occupy their own centered rank. Other branches use reserved side
+  lanes around that card, and measured synthetic group margins keep every automatic edge
+  out of unrelated cards.
+- Fixed the standalone print SVG's valueless data attribute so the output is valid XML for
+  strict SVG renderers and PDF conversion, not only permissive browser HTML parsers.
+- Interactive charts use their host dimensions and reflow after material aspect changes;
+  explicit `targetSize` and `targetAspect` remain available for stable custom canvases.
+- Wide-row and portrait-sectioned print families now use the same Auto Smart core with the
+  exact physical content box as their target. Existing Alternate and manual modes remain.
+- Added dense 42-node regression coverage for compactness, determinism, target-shape
+  adaptation, safe interior connector routing, manual overrides, and overlap prevention.
+
 ## 1.17.0
 
 - Added the opt-in `local-org-chart/print` entry point for deterministic physical-canvas layouts.

@@ -3,7 +3,7 @@
 export type Orientation = 'TopToBottom' | 'BottomToTop' | 'LeftToRight' | 'RightToLeft';
 export type OrientationInput = Orientation | 'Top' | 'Bottom' | 'Left' | 'Right';
 export type SubtreeMode =
-  | 'Balanced' | 'Center' | 'Left' | 'Right'
+  | 'AutoSmart' | 'GridSmart' | 'Auto' | 'Balanced' | 'Center' | 'Left' | 'Right'
   | 'Alternate' | 'AlternateLeft' | 'AlternateRight' | 'Matrix' | 'Custom';
 
 export interface OrgNode {
@@ -27,20 +27,67 @@ export interface LayoutOptions {
   spacingY?: number;
   gridSize?: number;
   alignGrid?: boolean;
+  autoEdgeSide?: boolean;
+  /** Desired final width / height used by AutoSmart and GridSmart. Default 1.6. */
+  targetAspect?: number;
+  /** Exact target shape; takes precedence over targetAspect. */
+  targetSize?: { width: number; height: number } | null;
+  /** Recalculate automatic geometry after material viewport aspect changes. Default false. */
+  reflowOnResize?: boolean;
+  familyRouteOverrides?: Record<string, FamilyRouteOverride> | null;
+}
+
+export interface FamilyRouteOverride { trunkOffset: number; }
+export interface FamilyRouteSegment {
+  id?: string;
+  a: { x: number; y: number };
+  b: { x: number; y: number };
+  d?: string;
+  childIds: string[];
+  role?: 'shared' | 'branch';
+}
+export interface FamilyNetwork {
+  model: 'shared-family-network';
+  parentId: string;
+  childIds: string[];
+  source: { x: number; y: number };
+  segments: FamilyRouteSegment[];
+  stemSegments: FamilyRouteSegment[];
+  sharedSegments: FamilyRouteSegment[];
+  buses: FamilyRouteSegment[];
+  branches: Array<{ childId: string; segments: FamilyRouteSegment[] }>;
+  junctions: Array<{ point: { x: number; y: number }; segmentIds: string[] }>;
+  trunk: FamilyRouteSegment | null;
+  horizontalFlow: boolean;
+}
+
+export interface ConnectorPath {
+  id: string;
+  d: string;
+  style?: any;
 }
 
 export interface PositionedNode {
   node: OrgNode;
   cx: number; cy: number; w: number; h: number;
-  parentId: string; routeType: 'bus' | 'spine-left' | 'spine-right';
+  parentId: string; routeType: 'bus' | 'packed' | 'spine-left' | 'spine-right';
+  routePoints?: Array<{ x: number; y: number }> | null;
+  resolvedLayoutMode?: SubtreeMode;
 }
 
 export interface Bounds { x: number; y: number; w: number; h: number; }
 export interface LayoutResult {
   positioned: PositionedNode[];
   posById: Record<string, PositionedNode>;
-  cfg: Omit<Required<LayoutOptions>, 'orientation'> & { orientation: Orientation };
+  cfg: {
+    orientation: Orientation; subtreeMode: SubtreeMode;
+    spacingX: number; spacingY: number; gridSize: number;
+    alignGrid: boolean; autoEdgeSide: boolean; targetAspect: number;
+    familyRouteOverrides: Record<string, FamilyRouteOverride> | null;
+  };
   bounds: Bounds;
+  framingBounds: Bounds;
+  familyNetworks: FamilyNetwork[];
 }
 
 // ---- core ----
@@ -52,7 +99,10 @@ export function fitBounds(bounds: Bounds, viewportW: number, viewportH: number, 
 export function normalizeImported(data: any): { nodes: OrgNode[]; meta: any };
 export function makeNode(src: OrgNode): OrgNode;
 export function exportLayout(state: any, nodes: OrgNode[], manualOffsets?: any, edgeWaypoints?: any): any;
-export function buildChartSVG(positioned: PositionedNode[], paths: string[], opts?: { manualOffsets?: any; raster?: boolean; measureText?: (t: string, font: string) => number; fitOf?: (n: OrgNode) => number }): string;
+export function buildChartSVG(positioned: PositionedNode[], paths: Array<string | ConnectorPath>, opts?: { manualOffsets?: any; raster?: boolean; measureText?: (t: string, font: string) => number; fitOf?: (n: OrgNode) => number; familyNetworks?: FamilyNetwork[]; rebuildFamilyIds?: Iterable<string>; bounds?: Bounds }): string;
+export function buildVisibleConnectorSegments(paths: Array<string | ConnectorPath>, options?: { sharedStyle?: any; preserveMembership?: boolean }): Array<FamilyRouteSegment & { memberIds: string[]; shared: boolean; style?: any }>;
+export function buildFamilyConnectorNetwork(parentId: string, childPaths: Array<ConnectorPath | { id: string; points: Array<{ x: number; y: number }>; style?: any }>, options?: { horizontalFlow?: boolean }): FamilyNetwork | null;
+export function resolveConnectorGeometry(paths: Array<string | ConnectorPath>, familyNetworks?: FamilyNetwork[], options?: { sharedStyle?: any; rebuildFamilyIds?: Iterable<string> }): { segments: Array<FamilyRouteSegment & { memberIds: string[]; shared: boolean; style?: any }>; familyNetworks: FamilyNetwork[]; standaloneIds: string[] };
 
 export const SUBTREE_MODES: SubtreeMode[];
 export const ORIENTATIONS: Orientation[];
@@ -117,6 +167,8 @@ export interface CreateOptions extends LayoutOptions {
   readonly?: boolean;
   editMode?: boolean;
   inspector?: boolean;
+  /** Show legacy per-node subtree strategy overrides in the inspector. Default false. */
+  advancedLayoutControls?: boolean;
   /** Mount the inspector drawer into an external element (selector or node) instead of the canvas. */
   inspectorTarget?: string | HTMLElement | null;
   inspectorSlot?: boolean;
@@ -128,15 +180,16 @@ export interface CreateOptions extends LayoutOptions {
   fullscreenControl?: boolean;
   /** Re-frame the view after a mode/orientation/re-layout change. `true`/`'fit'` (default), `'recenter'` (keep zoom), `false`/`'none'`. */
   fitOnLayoutChange?: boolean | 'fit' | 'recenter' | 'none';
-  /** Custom target fill shape (width / height). Default 1.6 (landscape). */
-  targetAspect?: number;
-  /** Custom target size (any units) — overrides `targetAspect` with width/height. */
-  targetSize?: { width: number; height: number } | null;
   /** Snap a dragged node/waypoint to the parent's connector axis + sibling centers, with guide lines. Default true. */
   snapAlign?: boolean;
   settings?: ChartSettings;
   fitOnInit?: boolean;
-  toolbar?: boolean | Partial<Record<'subtree' | 'orient' | 'actions' | 'search' | 'grid' | 'mode' | 'export', boolean>>;
+  /** Run editor-triggered full layouts in a Web Worker. Default true. */
+  layoutWorker?: boolean;
+  /** Reuse exact completed layout results from a bounded in-memory cache. Default true. */
+  layoutCache?: boolean;
+  /** Built-in toolbar groups. The subtree strategy group is hidden unless explicitly set to true. */
+  toolbar?: boolean | Partial<Record<'subtree' | 'orient' | 'history' | 'actions' | 'search' | 'grid' | 'mode' | 'export', boolean>>;
   persist?: boolean;
   storageKey?: string;
 }
@@ -144,26 +197,29 @@ export interface CreateOptions extends LayoutOptions {
 export type OrgChartEventName =
   | 'node-click' | 'node-select' | 'node-drag-start' | 'node-drag' | 'node-drag-end'
   | 'layout-change' | 'orientation-change' | 'subtree-mode-change'
+  | 'relayout' | 'layout-start' | 'layout-complete' | 'layout-cancel' | 'layout-error'
   | 'edit-mode-change' | 'node-change' | 'settings-change'
+  | 'family-route-select' | 'family-route-change' | 'family-route-reset'
   | 'inspector-open' | 'inspector-close' | 'settings-open' | 'settings-close' | 'fullscreen-change';
 
 export interface ScreenRect { left: number; top: number; right: number; bottom: number; width: number; height: number; }
 
 export interface OrgChartInstance {
   root: HTMLElement;
-  setNodes(nodes: OrgNode[], meta?: any, options?: { resetEdits?: boolean }): void;
+  setNodes(nodes: OrgNode[], meta?: any, options?: { resetEdits?: boolean }): Promise<boolean>;
   loadJSON(data: any): number;
-  setOrientation(o: OrientationInput): void;
-  setSubtreeMode(m: SubtreeMode): void;
-  setSpacing(x?: number, y?: number): void;
+  setOrientation(o: OrientationInput): Promise<boolean>;
+  setSubtreeMode(m: SubtreeMode): Promise<boolean>;
+  setSpacing(x?: number, y?: number): Promise<boolean>;
   setOption(key: string, val: any): void;
   setShowGrid(on: boolean): boolean;
   setSnapToGrid(on: boolean): boolean;
   setAlignToGrid(on: boolean): boolean;
   toggleGrid(force?: boolean): boolean;
   fitToScreen(): void;
-  relayout(): void;
-  resetView(): void;
+  relayout(): Promise<boolean>;
+  forceRelayout(): Promise<boolean>;
+  resetView(): Promise<boolean>;
   expandAll(): void;
   collapseAll(): void;
   toggleCollapse(id: string): void;
@@ -182,10 +238,15 @@ export interface OrgChartInstance {
   setEditMode(on: boolean): void;
   isEditMode(): boolean;
   updateNode(id: string, patch: Partial<OrgNode>): void;
-  addChild(parentId: string): void;
+  addChild(parentId: string): string | null;
   deleteNode(id: string): void;
   reparentNode(id: string, newParentId: string): void;
   detachNode(id: string): void;
+  getFamilyRouteSelection(): string | null;
+  getFamilyNetworks(): FamilyNetwork[];
+  getFamilyRouteOverrides(): Record<string, FamilyRouteOverride>;
+  setFamilyRouteOverride(parentId: string, override: FamilyRouteOverride): boolean;
+  resetFamilyRoute(parentId?: string): boolean;
   openInspector(id: string): void;
   closeInspector(): void;
   /** The selected node's on-screen rectangle (viewport coords), or null. */
@@ -198,6 +259,9 @@ export interface OrgChartInstance {
   getState(): any;
   getNodes(): OrgNode[];
   getPositioned(): PositionedNode[];
+  isLayoutBusy(): boolean;
+  whenLayoutSettled(): Promise<boolean>;
+  cancelLayout(): boolean;
   on(name: OrgChartEventName, cb: (payload: any) => void): OrgChartInstance;
   off(name: OrgChartEventName, cb: (payload: any) => void): OrgChartInstance;
   destroy(): void;
@@ -211,8 +275,9 @@ export function createOrgChart(host: HTMLElement, options?: CreateOptions): OrgC
 export interface OrgChartVueInstance {
   // view / layout
   fitToScreen(): void;
-  relayout(): void;
-  resetView(): void;
+  relayout(): Promise<boolean> | null;
+  forceRelayout(): Promise<boolean> | null;
+  resetView(): Promise<boolean> | null;
   expandAll(): void;
   collapseAll(): void;
   toggleCollapse(id: string): void;
@@ -223,9 +288,9 @@ export interface OrgChartVueInstance {
   clearSearch(): void;
 
   // orientation / subtree
-  setOrientation(o: OrientationInput): void;
-  setSubtreeMode(m: SubtreeMode): void;
-  setSpacing(x?: number, y?: number): void;
+  setOrientation(o: OrientationInput): Promise<boolean> | null;
+  setSubtreeMode(m: SubtreeMode): Promise<boolean> | null;
+  setSpacing(x?: number, y?: number): Promise<boolean> | null;
 
   // grid (single canonical name each)
   setShowGrid(on: boolean): boolean;
@@ -243,10 +308,15 @@ export interface OrgChartVueInstance {
   setEditMode(on: boolean): void;
   isEditMode(): boolean;
   updateNode(id: string, patch: Partial<OrgNode>): void;
-  addChild(parentId: string): void;
+  addChild(parentId: string): string | null;
   deleteNode(id: string): void;
   reparentNode(id: string, newParentId: string): void;
   detachNode(id: string): void;
+  getFamilyRouteSelection(): string | null;
+  getFamilyNetworks(): FamilyNetwork[];
+  getFamilyRouteOverrides(): Record<string, FamilyRouteOverride>;
+  setFamilyRouteOverride(parentId: string, override: FamilyRouteOverride): boolean;
+  resetFamilyRoute(parentId?: string): boolean;
   openInspector(id: string): void;
   closeInspector(): void;
   nodeScreenRect(id: string): ScreenRect | null;
@@ -256,11 +326,14 @@ export interface OrgChartVueInstance {
   resetSettings(): void;
 
   // data
-  setNodes(nodes: OrgNode[], meta?: any, options?: { resetEdits?: boolean }): void;
+  setNodes(nodes: OrgNode[], meta?: any, options?: { resetEdits?: boolean }): Promise<boolean> | null;
   loadJSON(data: any): number;
   getState(): any;
   getNodes(): OrgNode[];
   getPositioned(): PositionedNode[];
+  isLayoutBusy(): boolean;
+  whenLayoutSettled(): Promise<boolean>;
+  cancelLayout(): boolean;
 
   // export
   exportJSON(download?: boolean): any;

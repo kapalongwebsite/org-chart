@@ -6,6 +6,7 @@ import {
   recommendPrintLayout,
   renderPrintChartSvg,
 } from '../src/print/index.js';
+import { buildVisibleConnectorSegments } from '../src/core/connectorGeometry.js';
 
 const nodes = [
   { id: 'head', type: 'position', label: 'Municipal Information Officer', personName: 'Alex Example', data: { printRole: 'head' } },
@@ -54,7 +55,45 @@ test('serializes an exact-dimension standalone SVG with chart geometry', () => {
   const result = layoutPrintChart(nodes, { widthMm: 900, heightMm: 2400, layoutFamily: 'portrait-sectioned' });
   const svg = renderPrintChartSvg(result, { ariaLabel: 'MIO official chart' });
   assert.match(svg, /width="900mm"/);
-  assert.match(svg, /data-print-chart/);
+  assert.match(svg, /data-print-chart="true"/);
   assert.match(svg, /MIO official chart/);
   assert.doesNotMatch(svg, /<script/i);
+  const connectorPaths = [...svg.matchAll(/<path d="([^"]+)" fill="none" stroke=/g)].map((match) => match[1]);
+  assert.equal(buildVisibleConnectorSegments(connectorPaths).length, connectorPaths.length,
+    'print output must not repaint overlapping shared connector intervals');
+});
+
+test('wide official tarp uses AutoSmart and keeps a large mixed office readable', () => {
+  const denseOffice = [{ id: 'office', type: 'department', label: 'Office' }];
+  for (let index = 0; index < 17; index += 1) {
+    denseOffice.push({ id: `direct-${index}`, parentId: 'office', type: 'position', label: `Direct staff ${index + 1}` });
+  }
+  for (const [group, count] of [['administration', 7], ['special-programs', 4]]) {
+    denseOffice.push({ id: group, parentId: 'office', type: 'department', label: group });
+    for (let section = 0; section < count; section += 1) {
+      const sectionId = `${group}-section-${section}`;
+      denseOffice.push({ id: sectionId, parentId: group, type: 'department', label: `Section ${section + 1}` });
+      for (let person = 0; person < 3; person += 1) {
+        denseOffice.push({ id: `${sectionId}-${person}`, parentId: sectionId, type: 'position', label: `Staff ${person + 1}` });
+      }
+    }
+  }
+
+  const result = layoutPrintChart(denseOffice, {
+    widthMm: 2400,
+    heightMm: 1500,
+    safeMarginMm: 50,
+    headerHeightMm: 250,
+    footerHeightMm: 100,
+    layoutFamily: 'wide-row',
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.cfg.subtreeMode, 'AutoSmart');
+  assert.equal(result.positioned.length, denseOffice.length);
+  assert.ok(result.effectiveFontMm >= result.profile.minFontMm);
+  assert.ok(!result.diagnostics.some((item) => item.code === 'node-overlap'));
+  const usedWidthRatio = result.bounds.w * result.transform.scale / result.contentBox.width;
+  const usedHeightRatio = result.bounds.h * result.transform.scale / result.contentBox.height;
+  assert.ok(Math.min(usedWidthRatio, usedHeightRatio) >= 0.8, 'AutoSmart should use both dimensions of the target content box');
 });

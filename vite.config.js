@@ -12,6 +12,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 //   ./print   -> deterministic physical-canvas print layout + PDF exporter
 // CSS is emitted once as dist/local-org-chart.css (cssCodeSplit: false).
 export default defineConfig({
+  // Library assets (including the layout worker) must resolve beside the
+  // installed bundle, not from the consuming application's domain root.
+  base: './',
   build: {
     cssCodeSplit: false,
     sourcemap: false,

@@ -14,7 +14,8 @@ export {
 } from './layout.js';
 
 export {
-  routeConnector, waypointPath, edgeEndpoints, edgeControlPoints, orthoThrough, effCenter,
+  routeConnector, waypointPath, edgeEndpoints, edgeControlPoints, edgeEditingWaypoints,
+  orthoThrough, effCenter,
 } from './connectors.js';
 
 export { searchNodes } from './search.js';
@@ -24,4 +25,7 @@ export {
 } from './dataImport.js';
 export { exportLayout } from './exportLayout.js';
 export { buildChartSVG } from './svgExport.js';
+export {
+  buildVisibleConnectorSegments, buildFamilyConnectorNetwork, resolveConnectorGeometry,
+} from './connectorGeometry.js';
 export { DEFAULT_SETTINGS, normalizeSettings, normalizeRule, resolveNodeStyle } from './theme.js';

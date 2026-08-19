@@ -1,6 +1,7 @@
 import { calculateBounds } from '../core/bounds.js';
 import { routeConnector, effCenter } from '../core/connectors.js';
 import { layoutOrgChart } from '../core/layout.js';
+import { resolveConnectorGeometry } from '../core/connectorGeometry.js';
 
 export const PRINT_LAYOUT_FAMILIES = Object.freeze([
   'portrait-sectioned',
@@ -10,8 +11,8 @@ export const PRINT_LAYOUT_FAMILIES = Object.freeze([
 ]);
 
 const FAMILY_OPTIONS = Object.freeze({
-  'portrait-sectioned': { orientation: 'TopToBottom', subtreeMode: 'Balanced', spacingX: 26, spacingY: 42 },
-  'wide-row': { orientation: 'TopToBottom', subtreeMode: 'Balanced', spacingX: 34, spacingY: 38 },
+  'portrait-sectioned': { orientation: 'TopToBottom', subtreeMode: 'AutoSmart', spacingX: 26, spacingY: 42 },
+  'wide-row': { orientation: 'TopToBottom', subtreeMode: 'AutoSmart', spacingX: 34, spacingY: 38 },
   'portrait-spine': { orientation: 'TopToBottom', subtreeMode: 'Alternate', spacingX: 28, spacingY: 34 },
   custom: { orientation: 'TopToBottom', subtreeMode: 'Custom', spacingX: 28, spacingY: 38 },
 });
@@ -182,10 +183,15 @@ export function layoutPrintChart(nodes, profileInput) {
 
   const family = FAMILY_OPTIONS[profile.layoutFamily];
   const customOptions = profile.layout.options || {};
-  const options = profile.layoutFamily === 'custom' ? { ...family, ...customOptions } : family;
+  const options = {
+    ...(profile.layoutFamily === 'custom' ? { ...family, ...customOptions } : family),
+    targetSize: { width: box.width, height: box.height },
+  };
   const layout = layoutOrgChart(prepared, options);
   const offsets = profile.layout.nodeOffsets || {};
-  const bounds = calculateBounds(layout.positioned, offsets, 0);
+  const bounds = Object.keys(offsets).length
+    ? calculateBounds(layout.positioned, offsets, 0)
+    : layout.framingBounds || calculateBounds(layout.positioned, offsets, 0);
   const scale = Math.min(box.width / bounds.w, box.height / bounds.h);
   const effectiveFontMm = 4.2 * scale;
 
@@ -213,6 +219,7 @@ export function layoutPrintChart(nodes, profileInput) {
     positioned: layout.positioned,
     posById: layout.posById,
     cfg: layout.cfg,
+    familyNetworks: layout.familyNetworks || [],
     offsets,
     edgeWaypoints: profile.layout.edgeWaypoints || {},
     edgeAnchors: profile.layout.edgeAnchors || {},
@@ -284,19 +291,46 @@ function cardSvg(positioned, layout, options) {
 
 export function renderPrintChartFragment(layout, options = {}) {
   if (!layout?.positioned) throw new Error('A completed print layout is required.');
-  const paths = [];
+  const logicalPaths = [];
   for (const child of layout.positioned) {
     if (!child.parentId) continue;
     const parent = layout.posById[child.parentId];
     if (!parent) continue;
-    const path = routeConnector(parent, child, layout.cfg, layout.offsets, layout.edgeWaypoints, layout.edgeAnchors[child.node.id]);
-    const style = layout.edgeStyles[child.node.id] || {};
-    const dash = style.pattern === 'dashed' ? ' stroke-dasharray="5 4"' : '';
-    paths.push(`<path d="${path}" fill="none" stroke="${escapeXml(style.color || '#476965')}" stroke-width="${clamp(finite(style.widthMm, 1), 0.3, 5)}"${dash}/>`);
+    const path = routeConnector(parent, child, layout.cfg, layout.offsets, layout.edgeWaypoints, layout.edgeAnchors);
+    const configured = layout.edgeStyles[child.node.id] || {};
+    logicalPaths.push({
+      id: child.node.id,
+      d: path,
+      style: {
+        color: configured.color || '#476965',
+        widthMm: clamp(finite(configured.widthMm, 1), 0.3, 5),
+        pattern: configured.pattern === 'dashed' ? 'dashed' : 'solid',
+      },
+    });
   }
+  const sharedStyle = { color: '#476965', widthMm: 1, pattern: 'solid' };
+  const rebuildFamilyIds = new Set();
+  const moved = (id) => {
+    const offset = layout.offsets?.[id];
+    return offset && (Math.abs(finite(offset.dx, 0)) > 0.01 || Math.abs(finite(offset.dy, 0)) > 0.01);
+  };
+  for (const network of layout.familyNetworks || []) {
+    if (moved(network.parentId) || network.childIds.some((id) => moved(id)
+      || (layout.edgeWaypoints?.[id] && layout.edgeWaypoints[id].length)
+      || layout.edgeAnchors?.[id])) rebuildFamilyIds.add(String(network.parentId));
+  }
+  const geometry = resolveConnectorGeometry(logicalPaths, layout.familyNetworks || [], {
+    sharedStyle,
+    rebuildFamilyIds,
+  });
+  const paths = geometry.segments.map((segment) => {
+    const style = segment.style || sharedStyle;
+    const dash = style.pattern === 'dashed' ? ' stroke-dasharray="5 4"' : '';
+    return `<path d="${segment.d}" fill="none" stroke="${escapeXml(style.color)}" stroke-width="${style.widthMm}"${dash}/>`;
+  });
   const cards = layout.positioned.map((item) => cardSvg(item, layout, options)).join('');
   const { x, y, scale } = layout.transform;
-  return `<g data-print-chart transform="translate(${x} ${y}) scale(${scale})">${paths.join('')}${cards}</g>`;
+  return `<g data-print-chart="true" transform="translate(${x} ${y}) scale(${scale})">${paths.join('')}${cards}</g>`;
 }
 
 export function renderPrintChartSvg(layout, options = {}) {

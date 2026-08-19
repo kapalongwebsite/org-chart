@@ -1,8 +1,8 @@
-import { t as e } from "./createOrgChart-CjHH9xoT.js";
+import { t as e } from "./createOrgChart-wPYs-t3U.js";
 /* empty css                   */
 import { Teleport as t, computed as n, defineComponent as r, h as i, markRaw as a, onBeforeUnmount as o, onMounted as s, ref as c, shallowRef as l, watch as u } from "vue";
 //#region src/vue/OrgChart.js
-var d = /* @__PURE__ */ "node-click.node-select.node-drag-start.node-drag.node-drag-end.layout-change.orientation-change.subtree-mode-change.edit-mode-change.node-change.settings-change.inspector-open.inspector-close.settings-open.settings-close.fullscreen-change.history-change.attach-start.attach-cancel.user-select.presets-change.preset-load.selection-change.legend-change.edges-select.edges-reset".split(".");
+var d = /* @__PURE__ */ "node-click.node-select.node-drag-start.node-drag.node-drag-end.layout-change.orientation-change.subtree-mode-change.relayout.layout-start.layout-complete.layout-cancel.layout-error.edit-mode-change.node-change.settings-change.inspector-open.inspector-close.settings-open.settings-close.fullscreen-change.history-change.attach-start.attach-cancel.user-select.presets-change.preset-load.selection-change.legend-change.edges-select.edges-reset.family-route-select.family-route-change.family-route-reset".split(".");
 function f(e) {
 	let t = {};
 	return e && (e.bg && (t.background = e.bg), e.text && (t.color = e.text), e.border && (t.borderColor = e.border)), t;
@@ -20,7 +20,7 @@ var p = r({
 		},
 		subtreeMode: {
 			type: String,
-			default: "Balanced"
+			default: "AutoSmart"
 		},
 		spacingX: {
 			type: Number,
@@ -118,9 +118,33 @@ var p = r({
 			type: Boolean,
 			default: !0
 		},
+		targetAspect: {
+			type: Number,
+			default: 1.6
+		},
+		targetSize: {
+			type: Object,
+			default: null
+		},
+		reflowOnResize: {
+			type: Boolean,
+			default: !1
+		},
+		layoutWorker: {
+			type: Boolean,
+			default: !0
+		},
+		layoutCache: {
+			type: Boolean,
+			default: !0
+		},
 		toolbar: {
 			type: [Boolean, Object],
 			default: !0
+		},
+		advancedLayoutControls: {
+			type: Boolean,
+			default: !1
 		},
 		persist: {
 			type: Boolean,
@@ -182,7 +206,13 @@ var p = r({
 				snapAlign: r.snapAlign,
 				settings: r.settings || void 0,
 				fitOnInit: r.fitOnInit,
+				targetAspect: r.targetAspect,
+				targetSize: r.targetSize,
+				reflowOnResize: r.reflowOnResize,
+				layoutWorker: r.layoutWorker,
+				layoutCache: r.layoutCache,
 				toolbar: !h.toolbar && r.toolbar,
+				advancedLayoutControls: r.advancedLayoutControls,
 				nodeSlots: !!h.node,
 				inspectorSlot: !!h.inspector,
 				settingsSlot: !!h.settings,
@@ -209,11 +239,12 @@ var p = r({
 			_ && (_.setNodes(e || []), E(), T());
 		}), u(() => r.orientation, (e) => _ && _.setOrientation(e)), u(() => r.subtreeMode, (e) => _ && _.setSubtreeMode(e)), u(() => [r.spacingX, r.spacingY], ([e, t]) => _ && _.setSpacing(e, t)), u(() => r.readonly, (e) => _ && _.setOption("readonly", e)), u(() => r.editMode, (e) => _ && _.setEditMode(e)), u(() => r.settings, (e) => {
 			_ && e && _.setSettings(e);
-		}, { deep: !0 }), u(() => r.enableDragging, (e) => _ && _.setOption("enableDragging", e)), u(() => r.enablePan, (e) => _ && _.setOption("enablePan", e)), u(() => r.enableZoom, (e) => _ && _.setOption("enableZoom", e)), u(() => r.fitOnLayoutChange, (e) => _ && _.setOption("fitOnLayoutChange", e)), u(() => r.showImages, (e) => _ && _.setShowImages(e)), u(() => r.photoHeight, (e) => _ && _.setPhotoHeight(e)), u(() => r.cardWidth, (e) => _ && _.setCardWidth(e)), u(() => r.photoContain, (e) => _ && _.setPhotoContain(e)), u(() => r.legend, (e) => _ && _.setShowLegend(e)), u(() => r.autoEdgeSide, (e) => _ && _.setAutoEdgeSide(e)), u(() => r.userSearch, (e) => _ && _.setOption("userSearch", e || null)), u(() => r.userToFields, (e) => _ && _.setOption("userToFields", e || null)), u(() => r.snapAlign, (e) => _ && _.setOption("snapAlign", e)), o(() => {
+		}, { deep: !0 }), u(() => r.enableDragging, (e) => _ && _.setOption("enableDragging", e)), u(() => r.enablePan, (e) => _ && _.setOption("enablePan", e)), u(() => r.enableZoom, (e) => _ && _.setOption("enableZoom", e)), u(() => r.fitOnLayoutChange, (e) => _ && _.setOption("fitOnLayoutChange", e)), u(() => r.showImages, (e) => _ && _.setShowImages(e)), u(() => r.photoHeight, (e) => _ && _.setPhotoHeight(e)), u(() => r.cardWidth, (e) => _ && _.setCardWidth(e)), u(() => r.photoContain, (e) => _ && _.setPhotoContain(e)), u(() => r.legend, (e) => _ && _.setShowLegend(e)), u(() => r.autoEdgeSide, (e) => _ && _.setAutoEdgeSide(e)), u(() => r.userSearch, (e) => _ && _.setOption("userSearch", e || null)), u(() => r.userToFields, (e) => _ && _.setOption("userToFields", e || null)), u(() => r.snapAlign, (e) => _ && _.setOption("snapAlign", e)), u(() => r.targetAspect, (e) => _ && _.setOption("targetAspect", e)), u(() => r.targetSize, (e) => _ && _.setOption("targetSize", e), { deep: !0 }), o(() => {
 			_ &&= (_.destroy(), null);
 		}), m({
 			fitToScreen: () => _ && _.fitToScreen(),
 			relayout: () => _ && _.relayout(),
+			forceRelayout: () => _ && _.forceRelayout(),
 			resetView: () => _ && _.resetView(),
 			expandAll: () => _ && _.expandAll(),
 			collapseAll: () => _ && _.collapseAll(),
@@ -254,6 +285,11 @@ var p = r({
 			setEdgeSelection: (e) => _ && _.setEdgeSelection(e),
 			clearEdgeSelection: () => _ && _.clearEdgeSelection(),
 			resetSelectedEdges: () => _ && _.resetSelectedEdges(),
+			getFamilyRouteSelection: () => _ ? _.getFamilyRouteSelection() : null,
+			getFamilyNetworks: () => _ ? _.getFamilyNetworks() : [],
+			getFamilyRouteOverrides: () => _ ? _.getFamilyRouteOverrides() : {},
+			setFamilyRouteOverride: (e, t) => _ && _.setFamilyRouteOverride(e, t),
+			resetFamilyRoute: (e) => _ && _.resetFamilyRoute(e),
 			setEditMode: (e) => _ && _.setEditMode(e),
 			isEditMode: () => _ && _.isEditMode(),
 			updateNode: (e, t) => _ && _.updateNode(e, t),
@@ -284,6 +320,9 @@ var p = r({
 			getState: () => _ && _.getState(),
 			getNodes: () => _ && _.getNodes(),
 			getPositioned: () => _ && _.getPositioned(),
+			isLayoutBusy: () => !!(_ && _.isLayoutBusy()),
+			whenLayoutSettled: () => _ ? _.whenLayoutSettled() : Promise.resolve(!1),
+			cancelLayout: () => !!(_ && _.cancelLayout()),
 			exportJSON: (e) => _ && _.exportJSON(e),
 			exportSVG: () => _ && _.exportSVG(),
 			exportPNG: (e) => _ && _.exportPNG(e),
