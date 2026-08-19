@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.18.5
+
+- Grid Smart reuses each placement's bounded coordinate lists and performs
+  indexed collision checks without allocating temporary rectangles, sets, and
+  arrays for every probe. Large first layouts keep the same deterministic
+  geometry with less CPU time and garbage collection.
+
 ## 1.18.4
 
 - Grid Smart now deduplicates occupancy-grid candidates before sorting and uses

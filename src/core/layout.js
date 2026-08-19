@@ -446,42 +446,47 @@ function buildFootprintSpatialIndex(rects, cellSize) {
       }
     }
   });
-  return { rects, buckets, cellSize };
-}
-
-function nearbyFootprintRects(index, rect, padding) {
-  const minX = Math.floor((rect.left - padding) / index.cellSize);
-  const maxX = Math.floor((rect.right + padding) / index.cellSize);
-  const minY = Math.floor((rect.top - padding) / index.cellSize);
-  const maxY = Math.floor((rect.bottom + padding) / index.cellSize);
-  const found = new Set();
-  for (let bx = minX; bx <= maxX; bx += 1) {
-    const column = index.buckets.get(bx);
-    if (!column) continue;
-    for (let by = minY; by <= maxY; by += 1) {
-      for (const rectIndex of column.get(by) || []) found.add(rectIndex);
-    }
-  }
-  return [...found].map((rectIndex) => index.rects[rectIndex]);
+  return {
+    rects,
+    buckets,
+    cellSize,
+    seen: new Uint32Array(rects.length),
+    queryStamp: 0,
+  };
 }
 
 function translatedFootprintsClear(currentRects, x, y, placedIndex, gapX, gapY, gridSize) {
+  const padding = Math.max(gapX, gapY);
   for (const current of currentRects) {
-    const translated = {
-      ...current,
-      left: current.left + x,
-      right: current.right + x,
-      top: current.top + y,
-      bottom: current.bottom + y,
-    };
-    const nearby = nearbyFootprintRects(placedIndex, translated, Math.max(gapX, gapY));
-    for (const placed of nearby) {
-      const clearance = footprintClearance(translated, placed, gapX, gapY, gridSize);
-      if (translated.right + clearance.x <= placed.left + 0.01
-        || placed.right + clearance.x <= translated.left + 0.01
-        || translated.bottom + clearance.y <= placed.top + 0.01
-        || placed.bottom + clearance.y <= translated.top + 0.01) continue;
-      return false;
+    const left = current.left + x;
+    const right = current.right + x;
+    const top = current.top + y;
+    const bottom = current.bottom + y;
+    const minX = Math.floor((left - padding) / placedIndex.cellSize);
+    const maxX = Math.floor((right + padding) / placedIndex.cellSize);
+    const minY = Math.floor((top - padding) / placedIndex.cellSize);
+    const maxY = Math.floor((bottom + padding) / placedIndex.cellSize);
+    if (placedIndex.queryStamp >= 0xfffffffe) {
+      placedIndex.seen.fill(0);
+      placedIndex.queryStamp = 1;
+    } else placedIndex.queryStamp += 1;
+    const stamp = placedIndex.queryStamp;
+    for (let bx = minX; bx <= maxX; bx += 1) {
+      const column = placedIndex.buckets.get(bx);
+      if (!column) continue;
+      for (let by = minY; by <= maxY; by += 1) {
+        for (const rectIndex of column.get(by) || []) {
+          if (placedIndex.seen[rectIndex] === stamp) continue;
+          placedIndex.seen[rectIndex] = stamp;
+          const placed = placedIndex.rects[rectIndex];
+          const clearance = footprintClearance(current, placed, gapX, gapY, gridSize);
+          if (right + clearance.x <= placed.left + 0.01
+            || placed.right + clearance.x <= left + 0.01
+            || bottom + clearance.y <= placed.top + 0.01
+            || placed.bottom + clearance.y <= top + 0.01) continue;
+          return false;
+        }
+      }
     }
   }
   return true;
@@ -582,8 +587,10 @@ function packOccupancyGrid(items, targetAspect, gapX, gapY, gridSize) {
         }
       }
       let selected = null;
-      for (const y of boundedGridCoordinates(ys)) {
-        for (const x of boundedGridCoordinates(xs)) {
+      const candidateXs = boundedGridCoordinates(xs);
+      const candidateYs = boundedGridCoordinates(ys);
+      for (const y of candidateYs) {
+        for (const x of candidateXs) {
           if (x + item.w > mouldWidth + 0.01) continue;
           if (translatedFootprintsClear(
             currentRects,

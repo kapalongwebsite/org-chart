@@ -1322,7 +1322,7 @@ function ct(e, t, n = t.targetAspect, r = 0) {
 		edgeRoutes: []
 	};
 	let c = nt(i, t), l = it(c) ? ot(e, n) : n, u = st(e, t, r), d = a.map((e) => ct(e, t, u && !J(e) && e.children.length === 2 && e.children.every((e) => e.children.length === 0) ? Math.max(1.15, l) : l, r + 1)), f = l;
-	return it(c) ? Dt(e, d, t, n, f, r) : rt(c) ? kt(e, d, c, t) : Ot(e, d, c, t);
+	return it(c) ? Et(e, d, t, n, f, r) : rt(c) ? Ot(e, d, c, t) : Dt(e, d, c, t);
 }
 function lt(e, t, n, r, i) {
 	let a = Math.max(.01, e / Math.max(1, t));
@@ -1540,7 +1540,7 @@ function ht(e, t, n, r = 0, i = 0, a = []) {
 		}, p = (e.points || []).map((e) => ({
 			x: r + e.x,
 			y: i + e.y
-		})), m = (d.y + f.y) / 2, h = p.length ? Z(At([
+		})), m = (d.y + f.y) / 2, h = p.length ? Z(kt([
 			d,
 			...p,
 			f
@@ -1593,34 +1593,30 @@ function vt(e, t) {
 	}), {
 		rects: e,
 		buckets: n,
-		cellSize: t
+		cellSize: t,
+		seen: new Uint32Array(e.length),
+		queryStamp: 0
 	};
 }
-function yt(e, t, n) {
-	let r = Math.floor((t.left - n) / e.cellSize), i = Math.floor((t.right + n) / e.cellSize), a = Math.floor((t.top - n) / e.cellSize), o = Math.floor((t.bottom + n) / e.cellSize), s = /* @__PURE__ */ new Set();
-	for (let t = r; t <= i; t += 1) {
-		let n = e.buckets.get(t);
-		if (n) for (let e = a; e <= o; e += 1) for (let t of n.get(e) || []) s.add(t);
-	}
-	return [...s].map((t) => e.rects[t]);
-}
-function bt(e, t, n, r, i, a, o) {
-	for (let s of e) {
-		let e = {
-			...s,
-			left: s.left + t,
-			right: s.right + t,
-			top: s.top + n,
-			bottom: s.bottom + n
-		}, c = yt(r, e, Math.max(i, a));
-		for (let t of c) {
-			let n = _t(e, t, i, a, o);
-			if (!(e.right + n.x <= t.left + .01 || t.right + n.x <= e.left + .01 || e.bottom + n.y <= t.top + .01 || t.bottom + n.y <= e.top + .01)) return !1;
+function yt(e, t, n, r, i, a, o) {
+	let s = Math.max(i, a);
+	for (let c of e) {
+		let e = c.left + t, l = c.right + t, u = c.top + n, d = c.bottom + n, f = Math.floor((e - s) / r.cellSize), p = Math.floor((l + s) / r.cellSize), m = Math.floor((u - s) / r.cellSize), h = Math.floor((d + s) / r.cellSize);
+		r.queryStamp >= 4294967294 ? (r.seen.fill(0), r.queryStamp = 1) : r.queryStamp += 1;
+		let g = r.queryStamp;
+		for (let t = f; t <= p; t += 1) {
+			let n = r.buckets.get(t);
+			if (n) for (let t = m; t <= h; t += 1) for (let s of n.get(t) || []) {
+				if (r.seen[s] === g) continue;
+				r.seen[s] = g;
+				let t = r.rects[s], n = _t(c, t, i, a, o);
+				if (!(l + n.x <= t.left + .01 || t.right + n.x <= e + .01 || d + n.y <= t.top + .01 || t.bottom + n.y <= u + .01)) return !1;
+			}
 		}
 	}
 	return !0;
 }
-function xt(e, t = 18) {
+function bt(e, t = 18) {
 	let n = /* @__PURE__ */ new Set();
 	for (let t of e) Number.isFinite(t) && t >= 0 && n.add(t);
 	let r = [...n].sort((e, t) => e - t);
@@ -1629,7 +1625,7 @@ function xt(e, t = 18) {
 	for (let e = 0; e < t; e += 1) i.push(r[Math.round(e * (r.length - 1) / (t - 1))]);
 	return [...new Set(i)].sort((e, t) => e - t);
 }
-function St(e, t, n, r, i) {
+function xt(e, t, n, r, i) {
 	if (!e.length) return {
 		w: 0,
 		h: 0,
@@ -1670,9 +1666,9 @@ function St(e, t, n, r, i) {
 			let d = new Set(i.map((e) => e.right)), f = new Set(i.map((e) => e.bottom)), p = new Set(e.map((e) => e.left)), m = new Set(e.map((e) => e.top));
 			for (let e of d) for (let t of p) l.add(K(e + o - t, a));
 			for (let e of f) for (let t of m) u.add(K(e + s - t, a));
-			let h = null;
-			for (let r of xt(u)) {
-				for (let i of xt(l)) if (!(i + t.w > n + .01) && bt(e, i, r, c, o, s, a)) {
+			let h = null, g = bt(l), _ = bt(u);
+			for (let r of _) {
+				for (let i of g) if (!(i + t.w > n + .01) && yt(e, i, r, c, o, s, a)) {
 					h = {
 						item: t,
 						x: i,
@@ -1682,11 +1678,11 @@ function St(e, t, n, r, i) {
 				}
 				if (h) break;
 			}
-			let g = r.length ? K(Math.max(...r.map((e) => e.y + e.item.h)) + s, a) : 0;
+			let v = r.length ? K(Math.max(...r.map((e) => e.y + e.item.h)) + s, a) : 0;
 			r.push(h || {
 				item: t,
 				x: 0,
-				y: g
+				y: v
 			});
 		}
 		let i = Math.max(...r.map((e) => e.x + e.item.w)), l = Math.max(...r.map((e) => e.y + e.item.h)), u = [...new Set(r.map((e) => e.y))].sort((e, t) => e - t), d = u.map((e) => {
@@ -1726,7 +1722,7 @@ function St(e, t, n, r, i) {
 	}
 	return m;
 }
-function Ct(e, t, n = e.w / 2) {
+function St(e, t, n = e.w / 2) {
 	let r = (e.placements || []).map((e) => [e.x, e.x + e.item.w]).sort((e, t) => e[0] - t[0] || e[1] - t[1]);
 	if (!r.length) return null;
 	let i = [];
@@ -1744,7 +1740,7 @@ function Ct(e, t, n = e.w / 2) {
 	}
 	return a.sort((e, t) => e.distance - t.distance || e.x - t.x), a[0]?.x ?? null;
 }
-function wt(e, t, n = e.w / 2) {
+function Ct(e, t, n = e.w / 2) {
 	let r = e.placements || [], i = [...new Set(r.map((e) => e.y))].sort((e, t) => e - t);
 	if (i.length < 2) return null;
 	let a = r.filter((e) => Math.abs(e.y - i[0]) < .01).sort((e, t) => e.x - t.x), o = i.at(-1), s = [];
@@ -1759,8 +1755,8 @@ function wt(e, t, n = e.w / 2) {
 	}
 	return s.sort((e, t) => e.distance - t.distance || e.x - t.x), s[0]?.x ?? null;
 }
-function Tt(e, t, n, r) {
-	let i = Ct(e, r, t);
+function wt(e, t, n, r) {
+	let i = St(e, r, t);
 	if (i != null) return i;
 	let a = e.placements || [], o = a.length ? Math.min(...a.map((e) => e.x)) : 0, s = a.length ? Math.max(...a.map((e) => e.x + e.item.w)) : e.w, c = o - n, l = s + n;
 	return Math.abs(t - c) <= Math.abs(t - l) ? c : l;
@@ -1773,11 +1769,11 @@ function J(e) {
 	let t = e?.node?.data || {}, n = String(e?.node?.label || "");
 	return t.printRole === "head" || t.is_head === !0 || t.isHead === !0 || /\b(municipal (vice )?mayor|office head|department head|head of office)\b/i.test(n);
 }
-function Et(e) {
+function Tt(e) {
 	let t = e.children.filter((e) => !J(e));
-	return (t.length === 5 && t.length === e.children.length && t.every((e) => e.children.length === 0) ? 1 : 0) + e.children.reduce((e, t) => e + Et(t), 0);
+	return (t.length === 5 && t.length === e.children.length && t.every((e) => e.children.length === 0) ? 1 : 0) + e.children.reduce((e, t) => e + Tt(t), 0);
 }
-function Dt(e, t, n, r, i, a) {
+function Et(e, t, n, r, i, a) {
 	let o = e.node, s = U(o, n), c = o.isVirtual ? 0 : W(o, n), l = n.spacingY * (n.autoSpacingYScale || 1), u = Math.max(12, n.spacingX), d = n.subtreeMode === "GridSmart" ? Math.max(n.gridSize * 2, l * .55) : Math.max(16, l * .55), f = o.isVirtual ? 0 : l, p = [], m = [], h = [];
 	e.children.forEach((e, n) => {
 		let r = {
@@ -1808,14 +1804,14 @@ function Dt(e, t, n, r, i, a) {
 		};
 		n.subtreeMode === "GridSmart" && (t.footprint = ht(e.entry, e.m, n)), x.push(t);
 	});
-	let S = u * 1.25, C = d * 1.25, w = dt(x, r, S, C, g ? x.length : 1, !!n.preferShortFirst, !!n.flexibleRows, _ && n.visualTargetAspect < 1.3 ? .75 : .5), T = x.some((e) => e.kind === "leaves"), E = n.blockFlow === "rows" || !T ? null : ft(x, r, S, C), D = n.blockFlow === "rows" || n.blockFlow === "columns" || !T ? null : pt(x, r, S, C), ee = n.subtreeMode === "GridSmart" ? St(x, r, S, C, n.gridSize) : null, te = [
+	let S = u * 1.25, C = d * 1.25, w = dt(x, r, S, C, g ? x.length : 1, !!n.preferShortFirst, !!n.flexibleRows, _ && n.visualTargetAspect < 1.3 ? .75 : .5), T = x.some((e) => e.kind === "leaves"), E = n.blockFlow === "rows" || !T ? null : ft(x, r, S, C), D = n.blockFlow === "rows" || n.blockFlow === "columns" || !T ? null : pt(x, r, S, C), ee = n.subtreeMode === "GridSmart" ? xt(x, r, S, C, n.gridSize) : null, te = [
 		w,
 		E,
 		D,
 		ee
 	].filter(Boolean).sort((e, t) => e.score - t.score || Number(e.flow === "columns") - Number(t.flow === "columns"))[0], ne = _ && (x.length >= 4 || g) && x.every((e) => e.kind === "branch"), O = n.subtreeMode === "GridSmart" ? ne ? w : ee : n.blockFlow === "columns" ? E || w : n.blockFlow === "masonry" ? D || w : n.blockFlow === "adaptive" ? te : w, k = g ? O.placements[Math.floor(O.placements.length / 2)] : null, A = k?.item.kind === "branch" ? k.x + k.item.item.m.nodeCenterX : null, re = A == null ? 0 : Math.max(A, O.w - A) * 2, j = Math.max(s, b.w, v ? y.w : 0, O.w, re), M = A == null ? (j - O.w) / 2 : j / 2 - A, N = j / 2;
 	if (n.subtreeMode === "GridSmart" && p.length === 0 && h.length === 0 && m.length > 1 && y.rows.length > 1) {
-		let e = O.placements.find((e) => e.item.kind === "leaves"), t = wt(y, Math.max(8, u * .28), y.w / 2);
+		let e = O.placements.find((e) => e.item.kind === "leaves"), t = Ct(y, Math.max(8, u * .28), y.w / 2);
 		if (e && t != null) {
 			let n = M + e.x + t;
 			n - s / 2 >= -.01 && n + s / 2 <= j + .01 && (N = n);
@@ -1849,7 +1845,7 @@ function Dt(e, t, n, r, i, a) {
 		y: I
 	}], L = de;
 	if (v) {
-		let e = (j - y.w) / 2, t = de.at(-1).x, n = e + Tt(y, t - e, u * .55, Math.max(8, u * .28)), r = de.at(-1).y;
+		let e = (j - y.w) / 2, t = de.at(-1).x, n = e + wt(y, t - e, u * .55, Math.max(8, u * .28)), r = de.at(-1).y;
 		for (let t of y.placements) {
 			let i = t.item, a = e + t.x, o = ae + t.y, s = a + i.m.nodeCenterX, c = o - Math.max(9, d * .34);
 			oe.push({
@@ -1895,7 +1891,7 @@ function Dt(e, t, n, r, i, a) {
 		for (let r = 0; r < O.rows.length; r += 1) {
 			let i = O.placements.filter((e) => e.row === r);
 			O.rows[r];
-			let a = M + Tt({
+			let a = M + wt({
 				w: O.w,
 				placements: i
 			}, N - M, u * .55, Math.max(8, u * .28)), o = P + (i[0]?.y || 0), s = r > 0 ? O.rows[r - 1] : null, c = r > 0 ? O.placements.filter((e) => e.row === r - 1) : [], l = s ? P + (c[0]?.y || 0) + s.h : n, f = r === 0 ? n : (l + o) / 2;
@@ -1918,7 +1914,7 @@ function Dt(e, t, n, r, i, a) {
 	if (fe) {
 		let e = O.placements.slice().sort((e, t) => e.y - t.y || e.x - t.x), t = L.slice(), n = t.at(-1).x, r = t.at(-1).y;
 		for (let i of e) {
-			let e = P + i.y, a = e + i.item.h, o = M + Tt({
+			let e = P + i.y, a = e + i.item.h, o = M + wt({
 				w: O.w,
 				placements: [i]
 			}, N - M, u * .55, Math.max(8, u * .28));
@@ -1963,7 +1959,7 @@ function Dt(e, t, n, r, i, a) {
 			});
 			continue;
 		}
-		let i = e.item.pack, a = t + Tt(i, (r ? r.at(-1).x : N) - t, u * .55, Math.max(8, u * .28));
+		let i = e.item.pack, a = t + wt(i, (r ? r.at(-1).x : N) - t, u * .55, Math.max(8, u * .28));
 		for (let e of i.placements) {
 			let i = e.item, o = t + e.x, s = n + e.y, c = o + i.m.nodeCenterX, l = s - Math.max(9, d * .34), u = a;
 			oe.push({
@@ -2021,7 +2017,7 @@ function Dt(e, t, n, r, i, a) {
 		resolvedMode: n.subtreeMode === "GridSmart" ? "GridSmart" : "AutoSmart"
 	};
 }
-function Ot(e, t, n, r) {
+function Dt(e, t, n, r) {
 	let i = e.node, a = U(i, r), o = i.isVirtual ? 0 : W(i, r), s = n === "Center" ? r.spacingX * .5 : r.spacingX, c = [], l = 0;
 	for (let e = 0; e < t.length; e++) c.push(l), l += t[e].w + s;
 	let u = l - s, d = c[0] + t[0].nodeCenterX, f = c[t.length - 1] + t[t.length - 1].nodeCenterX, p;
@@ -2058,7 +2054,7 @@ function Ot(e, t, n, r) {
 		edgeRoutes: b
 	};
 }
-function kt(e, t, n, r) {
+function Ot(e, t, n, r) {
 	let i = e.node, a = U(i, r), o = i.isVirtual ? 0 : W(i, r), s = n !== "AlternateRight", c = n === "Alternate", l = Math.max(16, r.spacingY * .45), u = o + (i.isVirtual ? 0 : r.spacingY), d = (t.length ? t[0].h : 0) / 2 + l / 2, f = u, p = u;
 	s ? p += d : f += d;
 	let m = [];
@@ -2140,7 +2136,7 @@ function X(e, t, n) {
 		}
 	};
 }
-function At(e, t) {
+function kt(e, t) {
 	let n = [e[0]];
 	for (let r = 1; r < e.length; r += 1) {
 		let i = n[n.length - 1], a = e[r];
@@ -2168,19 +2164,19 @@ function Z(e) {
 	}
 	return Y(t);
 }
-function jt(e, t) {
+function At(e, t) {
 	let n = .01;
 	return e.x > t.left + n && e.x < t.right - n && e.y > t.top + n && e.y < t.bottom - n;
 }
-function Mt(e, t, n) {
+function jt(e, t, n) {
 	let r = .01;
 	return Math.abs(e.x - t.x) < r ? e.x > n.left + r && e.x < n.right - r && Math.max(e.y, t.y) > n.top + r && Math.min(e.y, t.y) < n.bottom - r : Math.abs(e.y - t.y) < r ? e.y > n.top + r && e.y < n.bottom - r && Math.max(e.x, t.x) > n.left + r && Math.min(e.x, t.x) < n.right - r : !0;
 }
-function Nt(e, t) {
-	for (let n = 1; n < e.length; n += 1) if (t.some((t) => Mt(e[n - 1], e[n], t))) return !0;
+function Mt(e, t) {
+	for (let n = 1; n < e.length; n += 1) if (t.some((t) => jt(e[n - 1], e[n], t))) return !0;
 	return !1;
 }
-var Pt = class {
+var Nt = class {
 	constructor() {
 		this.items = [];
 	}
@@ -2213,7 +2209,7 @@ var Pt = class {
 		return t;
 	}
 };
-function Ft(e, t, n, r, i = null) {
+function Pt(e, t, n, r, i = null) {
 	let a = X(e, t, r), { start: o, end: s } = i || a, c = i?.reservedPaths || [], l = Math.max(6, Math.min(r.spacingX, r.spacingY) * .16), u = Math.max(10, Math.min(r.spacingX, r.spacingY) * .22), d = H(r), f = Math.abs(o.x - a.start.x) < .01 && Math.abs(o.y - a.start.y) < .01, p = Math.abs(s.x - a.end.x) < .01 && Math.abs(s.y - a.end.y) < .01, m = d ? a.end.x >= a.start.x ? 1 : -1 : a.end.y >= a.start.y ? 1 : -1, h = f ? d ? {
 		x: o.x + m * u,
 		y: o.y
@@ -2246,7 +2242,7 @@ function Ft(e, t, n, r, i = null) {
 		h.y,
 		g.y,
 		..._.flatMap((e) => [e.top, e.bottom])
-	])].sort((e, t) => e - t), b = v.indexOf(h.x), x = y.indexOf(h.y), S = v.indexOf(g.x), C = y.indexOf(g.y), w = (e, t, n) => `${e}:${t}:${n}`, T = new Pt(), E = /* @__PURE__ */ new Map(), D = /* @__PURE__ */ new Map(), ee = w(b, x, 0);
+	])].sort((e, t) => e - t), b = v.indexOf(h.x), x = y.indexOf(h.y), S = v.indexOf(g.x), C = y.indexOf(g.y), w = (e, t, n) => `${e}:${t}:${n}`, T = new Nt(), E = /* @__PURE__ */ new Map(), D = /* @__PURE__ */ new Map(), ee = w(b, x, 0);
 	E.set(ee, 0), T.push({
 		x: b,
 		y: x,
@@ -2293,8 +2289,8 @@ function Ft(e, t, n, r, i = null) {
 				x: v[i.x],
 				y: y[i.y]
 			};
-			if (_.some((e) => jt(n, e) || Mt(r, n, e)) || c.some((e) => {
-				for (let t = 1; t < e.length; t += 1) if (Rt(r, n, e[t - 1], e[t]) || Bt(r, n, e[t - 1], e[t])) return !0;
+			if (_.some((e) => At(n, e) || jt(r, n, e)) || c.some((e) => {
+				for (let t = 1; t < e.length; t += 1) if (Lt(r, n, e[t - 1], e[t]) || zt(r, n, e[t - 1], e[t])) return !0;
 				return !1;
 			})) continue;
 			let a = Math.abs(n.x - r.x) + Math.abs(n.y - r.y), o = e.direction && e.direction !== i.direction ? ne : 0, s = e.cost + a + o, l = w(i.x, i.y, i.direction);
@@ -2329,14 +2325,14 @@ function Ft(e, t, n, r, i = null) {
 		...p ? [s] : []
 	]);
 }
-function It(e, t) {
+function Ft(e, t) {
 	let n = new Map(e.map((e) => [String(e.node.id), e]));
 	for (let r of e) {
 		if (!r.parentId) continue;
 		let i = n.get(String(r.parentId));
 		if (!i) continue;
 		let { start: a, end: o } = X(i, r, t);
-		if (!Nt(At([
+		if (!Mt(kt([
 			a,
 			...r.routePoints || [],
 			o
@@ -2346,35 +2342,35 @@ function It(e, t) {
 			top: e.cy - e.node.height / 2,
 			bottom: e.cy + e.node.height / 2
 		})))) continue;
-		let s = Ft(i, r, e, t);
+		let s = Pt(i, r, e, t);
 		s?.length > 2 && (r.routeType = "packed", r.routePoints = s.slice(1, -1));
 	}
 }
-function Lt(e, t) {
+function It(e, t) {
 	return {
 		x: (e.x + t.x) / 2,
 		y: (e.y + t.y) / 2
 	};
 }
-function Rt(e, t, n, r) {
+function Lt(e, t, n, r) {
 	let i = Math.abs(e.y - t.y) < .01;
 	if (i === Math.abs(n.y - r.y) < .01) return !1;
 	let a = i ? [e, t] : [n, r], o = i ? [n, r] : [e, t];
 	return o[0].x > Math.min(a[0].x, a[1].x) + .01 && o[0].x < Math.max(a[0].x, a[1].x) - .01 && a[0].y > Math.min(o[0].y, o[1].y) + .01 && a[0].y < Math.max(o[0].y, o[1].y) - .01;
 }
-function zt(e, t) {
-	for (let n = 1; n < e.length; n += 1) for (let r = 1; r < t.length; r += 1) if (Rt(e[n - 1], e[n], t[r - 1], t[r])) return !0;
+function Rt(e, t) {
+	for (let n = 1; n < e.length; n += 1) for (let r = 1; r < t.length; r += 1) if (Lt(e[n - 1], e[n], t[r - 1], t[r])) return !0;
 	return !1;
 }
-function Bt(e, t, n, r) {
+function zt(e, t, n, r) {
 	let i = Math.abs(e.y - t.y) < .01;
 	return i === Math.abs(n.y - r.y) < .01 ? i ? Math.abs(e.y - n.y) >= .01 ? !1 : Math.min(Math.max(e.x, t.x), Math.max(n.x, r.x)) - Math.max(Math.min(e.x, t.x), Math.min(n.x, r.x)) > .01 : Math.abs(e.x - n.x) >= .01 ? !1 : Math.min(Math.max(e.y, t.y), Math.max(n.y, r.y)) - Math.max(Math.min(e.y, t.y), Math.min(n.y, r.y)) > .01 : !1;
 }
-function Vt(e, t) {
-	for (let n = 1; n < e.length; n += 1) for (let r = 1; r < t.length; r += 1) if (Bt(e[n - 1], e[n], t[r - 1], t[r])) return !0;
+function Bt(e, t) {
+	for (let n = 1; n < e.length; n += 1) for (let r = 1; r < t.length; r += 1) if (zt(e[n - 1], e[n], t[r - 1], t[r])) return !0;
 	return !1;
 }
-function Ht(e, t) {
+function Vt(e, t) {
 	let n = Math.min(e.length, t.length), r = [];
 	for (let i = 0; i < n; i += 1) {
 		let n = e[i];
@@ -2383,7 +2379,7 @@ function Ht(e, t) {
 	}
 	return Z(r);
 }
-function Ut(e) {
+function Ht(e) {
 	let t = e.map((e) => ({
 		child: e,
 		points: Y(e.routePoints || [])
@@ -2392,14 +2388,14 @@ function Ut(e) {
 		let r = e.points.slice(0, 1);
 		for (let n of t) {
 			if (n === e || !e.points.length || !n.points.length) continue;
-			let t = Ht(e.points, n.points);
+			let t = Vt(e.points, n.points);
 			t.length > r.length && (r = t);
 		}
 		n.set(String(e.child.node.id), r);
 	}
 	return n;
 }
-function Wt(e, t, n) {
+function Ut(e, t, n) {
 	let r = e.routePoints;
 	if (!r?.length) return;
 	let i = X(t, e, n), a = H(n), o = Math.max(10, Math.min(n.spacingX, n.spacingY) * .22), s = Math.max(1, n.gridSize), c = r.at(-1);
@@ -2421,31 +2417,31 @@ function Wt(e, t, n) {
 		x: d
 	};
 }
-function Gt(e, t) {
+function Wt(e, t) {
 	let n = new Map(e.map((e) => [String(e.node.id), e])), r = /* @__PURE__ */ new Map(), i = /* @__PURE__ */ new Map();
 	for (let a of e) {
 		if (!a.parentId || !n.has(String(a.parentId))) continue;
 		let e = String(a.parentId);
 		r.has(e) || r.set(e, []), r.get(e).push(a);
 		let o = n.get(e);
-		Wt(a, o, t);
+		Ut(a, o, t);
 		let s = X(o, a, t);
-		i.set(String(a.node.id), Z(At([
+		i.set(String(a.node.id), Z(kt([
 			s.start,
 			...a.routePoints || [],
 			s.end
 		], H(t))));
 	}
 	for (let [a, o] of r) {
-		let r = n.get(a), s = Ut(o.filter((e) => !J({ node: e.node })));
+		let r = n.get(a), s = Ht(o.filter((e) => !J({ node: e.node })));
 		for (let n of o) {
 			if (J({ node: n.node })) continue;
-			let o = X(r, n, t), c = s.get(String(n.node.id)) || Y(n.routePoints || []).slice(0, 1), l = Ft(r, n, e, t, {
+			let o = X(r, n, t), c = s.get(String(n.node.id)) || Y(n.routePoints || []).slice(0, 1), l = Pt(r, n, e, t, {
 				start: c.at(-1) || o.start,
 				end: o.end
 			});
 			if (!l || l.length < 2) continue;
-			let u = Z(At(Y([
+			let u = Z(kt(Y([
 				o.start,
 				...c,
 				...l.slice(1)
@@ -2453,25 +2449,25 @@ function Gt(e, t) {
 			e.some((e) => {
 				if (!e.parentId || String(e.parentId) === a || e.node.id === n.node.id) return !1;
 				let t = i.get(String(e.node.id));
-				return t ? zt(u, t) || Vt(u, t) : !1;
-			}) || (n.routeType = "packed", n.routePoints = u.length > 2 ? u.slice(1, -1) : [Lt(u[0], u[1])], i.set(String(n.node.id), u));
+				return t ? Rt(u, t) || Bt(u, t) : !1;
+			}) || (n.routeType = "packed", n.routePoints = u.length > 2 ? u.slice(1, -1) : [It(u[0], u[1])], i.set(String(n.node.id), u));
 		}
 	}
 	for (let t of e) {
 		let e = i.get(String(t.node.id));
-		!e || e.length < 2 || J({ node: t.node }) || (t.routeType = "packed", t.routePoints = e.length > 2 ? e.slice(1, -1) : [Lt(e[0], e[1])]);
+		!e || e.length < 2 || J({ node: t.node }) || (t.routeType = "packed", t.routePoints = e.length > 2 ? e.slice(1, -1) : [It(e[0], e[1])]);
 	}
-	return It(e, t), qt(e, t), Xt(e, t), cn(e, t);
+	return Ft(e, t), Kt(e, t), Yt(e, t), sn(e, t);
 }
-function Kt(e, t, n) {
+function Gt(e, t, n) {
 	let r = X(e, t, n);
-	return Z(At([
+	return Z(kt([
 		r.start,
 		...t.routePoints || [],
 		r.end
 	], H(n)));
 }
-function qt(e, t) {
+function Kt(e, t) {
 	let n = new Map(e.map((e) => [String(e.node.id), e])), r = e.map((e) => {
 		let t = e.parentId == null ? null : n.get(String(e.parentId));
 		return t ? {
@@ -2485,7 +2481,7 @@ function qt(e, t) {
 		let t = 0, r = e, i = /* @__PURE__ */ new Set();
 		for (; r?.parentId != null && !i.has(String(r.node.id));) i.add(String(r.node.id)), r = n.get(String(r.parentId)), t += 1;
 		return t;
-	}, o = (e) => Kt(e.parent, e.child, t), s = (e, t) => e.parentId !== t.parentId && (zt(o(e), o(t)) || Vt(o(e), o(t))), c = Math.max(1, r.length * 2);
+	}, o = (e) => Gt(e.parent, e.child, t), s = (e, t) => e.parentId !== t.parentId && (Rt(o(e), o(t)) || Bt(o(e), o(t))), c = Math.max(1, r.length * 2);
 	for (let n = 0; n < c; n += 1) {
 		let n = null;
 		for (let e = 0; e < r.length && !n; e += 1) for (let t = e + 1; t < r.length; t += 1) if (s(r[e], r[t])) {
@@ -2498,31 +2494,31 @@ function qt(e, t) {
 			return Number(n) - Number(r) || a(t.child) - a(e.child);
 		}), l = !1;
 		for (let n of c) {
-			let i = r.filter((e) => e !== n && e.parentId !== n.parentId).map(o), a = X(n.parent, n.child, t), s = Ft(n.parent, n.child, e, t, {
+			let i = r.filter((e) => e !== n && e.parentId !== n.parentId).map(o), a = X(n.parent, n.child, t), s = Pt(n.parent, n.child, e, t, {
 				...a,
 				reservedPaths: i
 			});
 			if (!s || s.length < 2) continue;
 			let c = Z(s);
-			if (!i.some((e) => zt(c, e) || Vt(c, e))) {
-				n.child.routeType = "packed", n.child.routePoints = c.length > 2 ? c.slice(1, -1) : [Lt(c[0], c[1])], l = !0;
+			if (!i.some((e) => Rt(c, e) || Bt(c, e))) {
+				n.child.routeType = "packed", n.child.routePoints = c.length > 2 ? c.slice(1, -1) : [It(c[0], c[1])], l = !0;
 				break;
 			}
 		}
 		if (!l) return;
 	}
 }
-function Jt(e) {
+function qt(e) {
 	let t = 0;
 	for (let n = 1; n < e.length; n += 1) t += Math.abs(e[n].x - e[n - 1].x) + Math.abs(e[n].y - e[n - 1].y);
 	return t;
 }
-function Yt(e) {
+function Jt(e) {
 	let t = 0;
 	for (let n = 2; n < e.length; n += 1) Math.abs(e[n - 2].y - e[n - 1].y) < .01 != Math.abs(e[n - 1].y - e[n].y) < .01 && (t += 1);
 	return t;
 }
-function Xt(e, t) {
+function Yt(e, t) {
 	let n = new Map(e.map((e) => [String(e.node.id), e])), r = e.map((e) => {
 		let t = e.parentId == null ? null : n.get(String(e.parentId));
 		return t ? {
@@ -2532,7 +2528,7 @@ function Xt(e, t) {
 		} : null;
 	}).filter(Boolean), i = /* @__PURE__ */ new Map();
 	for (let e of r) i.has(e.parentId) || i.set(e.parentId, []), i.get(e.parentId).push(e);
-	let a = new Map(r.map((e) => [String(e.child.node.id), Kt(e.parent, e.child, t)])), o = H(t);
+	let a = new Map(r.map((e) => [String(e.child.node.id), Gt(e.parent, e.child, t)])), o = H(t);
 	for (let t of r) {
 		if (J({ node: t.child.node })) continue;
 		let n = String(t.child.node.id), s = a.get(n);
@@ -2540,7 +2536,7 @@ function Xt(e, t) {
 		let c = 0;
 		for (let e of i.get(t.parentId) || []) {
 			if (e === t) continue;
-			let n = Ht(s, a.get(String(e.child.node.id)) || []);
+			let n = Vt(s, a.get(String(e.child.node.id)) || []);
 			c = Math.max(c, n.length - 1);
 		}
 		let l = e.filter((e) => e.node.id !== t.parent.node.id && e.node.id !== t.child.node.id).map((e) => ({
@@ -2548,12 +2544,12 @@ function Xt(e, t) {
 			right: e.cx + e.node.width / 2,
 			top: e.cy - e.node.height / 2,
 			bottom: e.cy + e.node.height / 2
-		})), u = s.at(-1), d = Jt(s), f = Yt(s), p = s, m = (e) => r.some((n) => {
+		})), u = s.at(-1), d = qt(s), f = Jt(s), p = s, m = (e) => r.some((n) => {
 			if (n === t || n.parentId === t.parentId) return !1;
 			let r = a.get(String(n.child.node.id));
-			return r && (zt(e, r) || Vt(e, r));
+			return r && (Rt(e, r) || Bt(e, r));
 		}), h = [s[0], u];
-		(o ? Math.abs(h[0].y - h[1].y) < .01 : Math.abs(h[0].x - h[1].x) < .01) && !Nt(h, l) && !m(h) && (p = h);
+		(o ? Math.abs(h[0].y - h[1].y) < .01 : Math.abs(h[0].x - h[1].x) < .01) && !Mt(h, l) && !m(h) && (p = h);
 		for (let e = c; e < s.length - 1; e += 1) {
 			let t = s[e], n = o ? Math.abs(t.y - u.y) < .01 ? [t, u] : [
 				t,
@@ -2569,12 +2565,12 @@ function Xt(e, t) {
 					y: t.y
 				},
 				u
-			], r = Z([...s.slice(0, e), ...n]), i = Jt(r), a = Yt(r), c = Math.abs(r[0].y - r[1].y) < .01, h = Math.abs(r.at(-2).y - r.at(-1).y) < .01;
-			if (c !== o || h !== o || a > f || a === f && i >= d - .01 || Nt(r, l) || m(r)) continue;
-			let g = Jt(p), _ = Yt(p);
+			], r = Z([...s.slice(0, e), ...n]), i = qt(r), a = Jt(r), c = Math.abs(r[0].y - r[1].y) < .01, h = Math.abs(r.at(-2).y - r.at(-1).y) < .01;
+			if (c !== o || h !== o || a > f || a === f && i >= d - .01 || Mt(r, l) || m(r)) continue;
+			let g = qt(p), _ = Jt(p);
 			(a < _ || a === _ && i < g - .01) && (p = r);
 		}
-		p !== s && (t.child.routeType = "packed", t.child.routePoints = p.length > 2 ? p.slice(1, -1) : [Lt(p[0], p[1])], a.set(n, p));
+		p !== s && (t.child.routeType = "packed", t.child.routePoints = p.length > 2 ? p.slice(1, -1) : [It(p[0], p[1])], a.set(n, p));
 	}
 }
 function Q(e, t) {
@@ -2586,7 +2582,7 @@ function Q(e, t) {
 		flow: e.y
 	};
 }
-function Zt(e, t, n) {
+function Xt(e, t, n) {
 	return n ? {
 		x: t,
 		y: e
@@ -2595,7 +2591,7 @@ function Zt(e, t, n) {
 		y: t
 	};
 }
-function Qt(e) {
+function Zt(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) for (let e = 1; e < n.length; e += 1) {
 		let r = n[e - 1], i = n[e], a = Math.abs(r.y - i.y) < .01, o = a ? r.y : r.x, s = Math.min(a ? r.x : r.y, a ? i.x : i.y), c = Math.max(a ? r.x : r.y, a ? i.x : i.y);
@@ -2612,21 +2608,21 @@ function Qt(e) {
 	}
 	return n;
 }
-function $t(e, t) {
-	let n = e.reduce((e, t) => e + Yt(t), 0), r = Math.max(10, Math.min(t.spacingX, t.spacingY) * .22), i = e.reduce((e, t) => {
+function Qt(e, t) {
+	let n = e.reduce((e, t) => e + Jt(t), 0), r = Math.max(10, Math.min(t.spacingX, t.spacingY) * .22), i = e.reduce((e, t) => {
 		if (t.length <= 2) return e;
 		let n = t.at(-2), i = t.at(-1), a = Math.abs(n.x - i.x) + Math.abs(n.y - i.y);
 		return e + Math.max(0, a - r);
 	}, 0);
-	return Qt(e) + n * Math.max(12, Math.min(t.spacingX, t.spacingY) * .45) + i;
+	return Zt(e) + n * Math.max(12, Math.min(t.spacingX, t.spacingY) * .45) + i;
 }
-function en(e) {
+function $t(e) {
 	let t = e?.segments || [];
 	for (let e = 0; e < t.length; e += 1) {
 		let n = t[e], r = new Set((n.childIds || []).map(String));
 		for (let i = e + 1; i < t.length; i += 1) {
 			let e = t[i];
-			if (!(e.childIds || []).some((e) => r.has(String(e))) && Rt(n.a, n.b, e.a, e.b)) {
+			if (!(e.childIds || []).some((e) => r.has(String(e))) && Lt(n.a, n.b, e.a, e.b)) {
 				let t = Math.abs(n.a.y - n.b.y) < .01, r = t ? n : e;
 				return {
 					first: n,
@@ -2641,48 +2637,48 @@ function en(e) {
 	}
 	return null;
 }
-function tn(e, t, n, r) {
+function en(e, t, n, r) {
 	return et(e, t.map((e, t) => ({
 		id: String(e.node.id),
 		points: n[t]
 	})), { horizontalFlow: r });
 }
-function nn(e, t, n) {
+function tn(e, t, n) {
 	return Math.abs(t.y - n.y) < .01 ? Math.abs(e.y - t.y) < .01 && e.x >= Math.min(t.x, n.x) - .01 && e.x <= Math.max(t.x, n.x) + .01 : Math.abs(e.x - t.x) < .01 && e.y >= Math.min(t.y, n.y) - .01 && e.y <= Math.max(t.y, n.y) + .01;
 }
-function rn(e, t) {
-	for (let n = 1; n < e.length; n += 1) if (nn(t, e[n - 1], e[n])) return {
+function nn(e, t) {
+	for (let n = 1; n < e.length; n += 1) if (tn(t, e[n - 1], e[n])) return {
 		prefix: Y([...e.slice(0, n), t]),
 		suffix: Y([t, ...e.slice(n)])
 	};
 	return null;
 }
-function an(e, t) {
+function rn(e, t) {
 	return e && t && Math.abs(e.x - t.x) < .01 && Math.abs(e.y - t.y) < .01;
 }
-function on(e, t, n, r) {
-	let i = n.map((e) => e.map((e) => ({ ...e }))), a = new Map(t.map((e, t) => [String(e.node.id), t])), o = Math.max(4, t.length * 3), s = tn(e, t, i, r), c = !1;
+function an(e, t, n, r) {
+	let i = n.map((e) => e.map((e) => ({ ...e }))), a = new Map(t.map((e, t) => [String(e.node.id), t])), o = Math.max(4, t.length * 3), s = en(e, t, i, r), c = !1;
 	for (let n = 0; n < o; n += 1) {
-		let n = en(s);
+		let n = $t(s);
 		if (!n || !n.point) break;
 		let o = n.first, l = n.second;
 		(l.role === "bus" && o.role !== "bus" || l.role === o.role && (l.childIds?.length || 0) > (o.childIds?.length || 0)) && ([o, l] = [l, o]);
 		let u = (o.childIds || []).map(String).find((e) => {
 			let t = a.get(e);
-			return t != null && rn(i[t], n.point);
+			return t != null && nn(i[t], n.point);
 		});
 		if (!u) break;
-		let d = rn(i[a.get(u)], n.point), f = !1;
+		let d = nn(i[a.get(u)], n.point), f = !1;
 		for (let e of (l.childIds || []).map(String)) {
 			let t = a.get(e);
 			if (t == null) continue;
-			let r = rn(i[t], n.point);
-			if (!r || !an(d.prefix[0], r.prefix[0])) continue;
+			let r = nn(i[t], n.point);
+			if (!r || !rn(d.prefix[0], r.prefix[0])) continue;
 			let o = Z(Y([...d.prefix, ...r.suffix.slice(1)]));
 			o.length < 2 || (i[t] = o, f = !0);
 		}
 		if (!f) break;
-		c = !0, s = tn(e, t, i, r);
+		c = !0, s = en(e, t, i, r);
 	}
 	return {
 		paths: i,
@@ -2690,7 +2686,7 @@ function on(e, t, n, r) {
 		repaired: c
 	};
 }
-function sn(e, t, n, r) {
+function on(e, t, n, r) {
 	let i = H(r), a = Q(X(e, t[0], r).start, i), o = Math.max(r.gridSize, Math.min(r.spacingX, r.spacingY) * .35), s = t.map((e) => {
 		let t = Q({
 			x: e.cx,
@@ -2717,7 +2713,7 @@ function sn(e, t, n, r) {
 	let f = [...new Set(s.flatMap((e) => [e.min, e.max]))].sort((e, t) => e - t);
 	for (let e = 1; e < f.length; e += 1) f[e] - f[e - 1] >= o * 1.4 && c.push((f[e] + f[e - 1]) / 2);
 	for (let n of t) {
-		let t = Kt(e, n, r);
+		let t = Gt(e, n, r);
 		for (let e = 1; e < t.length; e += 1) {
 			let n = Q(t[e - 1], i), r = Q(t[e], i);
 			Math.abs(n.cross - r.cross) < .01 && Math.abs(n.flow - r.flow) > o && c.push(n.cross);
@@ -2728,12 +2724,12 @@ function sn(e, t, n, r) {
 	let m = Math.max(1, r.gridSize);
 	return [...new Set(c.map((e) => Math.round(e / m) * m))];
 }
-function cn(e, t) {
+function sn(e, t) {
 	let n = H(t), r = new Map(e.map((e) => [String(e.node.id), e])), i = /* @__PURE__ */ new Map(), a = /* @__PURE__ */ new Map(), o = [];
 	for (let n of e) {
 		if (n.parentId == null) continue;
 		let e = r.get(String(n.parentId));
-		if (!e || (a.set(String(n.node.id), Kt(e, n, t)), J({ node: n.node }))) continue;
+		if (!e || (a.set(String(n.node.id), Gt(e, n, t)), J({ node: n.node }))) continue;
 		let o = String(n.parentId);
 		i.has(o) || i.set(o, {
 			parent: e,
@@ -2745,10 +2741,10 @@ function cn(e, t) {
 		if (c.children.length < 2) continue;
 		let { parent: s, children: l } = c, u = l.map((e) => a.get(String(e.node.id))), d = {
 			paths: u,
-			score: $t(u, t),
+			score: Qt(u, t),
 			generated: !1
 		}, f = Q(X(s, l[0], t).start, n), p = l.map((e) => Q(X(s, e, t).end, n).flow).reduce((e, t) => e + Math.sign(t - f.flow), 0) >= 0 ? 1 : -1, m = Math.max(10, Math.min(t.spacingX, t.spacingY) * .22), h = f.flow + p * m, g = t.familyRouteOverrides?.[i];
-		for (let o of sn(s, l, e, t)) {
+		for (let o of on(s, l, e, t)) {
 			let c = [], u = !0;
 			for (let r of l) {
 				let i = X(s, r, t), a = Q(i.start, n), l = Q(i.end, n), d = [i.start, i.end], f = e.filter((e) => e.node.id !== s.node.id && e.node.id !== r.node.id).map((e) => ({
@@ -2757,19 +2753,19 @@ function cn(e, t) {
 					top: e.cy - e.node.height / 2,
 					bottom: e.cy + e.node.height / 2
 				}));
-				if (Math.abs(a.cross - l.cross) < .01 && !Nt(d, f)) {
+				if (Math.abs(a.cross - l.cross) < .01 && !Mt(d, f)) {
 					c.push(d);
 					continue;
 				}
 				let g = l.flow - p * m, _ = Z([
 					i.start,
-					Zt(a.cross, h, n),
-					Zt(o, h, n),
-					Zt(o, g, n),
-					Zt(l.cross, g, n),
+					Xt(a.cross, h, n),
+					Xt(o, h, n),
+					Xt(o, g, n),
+					Xt(l.cross, g, n),
 					i.end
 				]);
-				if (Nt(_, f)) {
+				if (Mt(_, f)) {
 					u = !1;
 					break;
 				}
@@ -2777,9 +2773,9 @@ function cn(e, t) {
 			}
 			if (!u || c.some((e) => [...a].some(([t, n]) => {
 				let a = r.get(t);
-				return a && String(a.parentId) !== i && (zt(e, n) || Vt(e, n));
+				return a && String(a.parentId) !== i && (Rt(e, n) || Bt(e, n));
 			}))) continue;
-			let _ = Math.abs(o - f.cross) * 1.75, v = $t(c, t) + _, y = Number.isFinite(Number(g?.trunkOffset)) ? Math.round((f.cross + Number(g.trunkOffset)) / Math.max(1, t.gridSize)) * Math.max(1, t.gridSize) : null, b = y != null && Math.abs(o - y) < .01;
+			let _ = Math.abs(o - f.cross) * 1.75, v = Qt(c, t) + _, y = Number.isFinite(Number(g?.trunkOffset)) ? Math.round((f.cross + Number(g.trunkOffset)) / Math.max(1, t.gridSize)) * Math.max(1, t.gridSize) : null, b = y != null && Math.abs(o - y) < .01;
 			(b && !d.requested || b === !!d.requested && v < d.score - .01) && (d = {
 				paths: c,
 				score: v,
@@ -2787,17 +2783,17 @@ function cn(e, t) {
 				requested: b
 			});
 		}
-		let _ = on(i, l, d.paths, n);
+		let _ = an(i, l, d.paths, n);
 		d.paths = _.paths, d.network = _.network, d.repaired = _.repaired, (d.generated || d.repaired) && l.forEach((e, t) => {
 			let n = d.paths[t];
-			e.routeType = "packed", e.routePoints = n.length > 2 ? n.slice(1, -1) : [Lt(n[0], n[1])], a.set(String(e.node.id), n);
+			e.routeType = "packed", e.routePoints = n.length > 2 ? n.slice(1, -1) : [It(n[0], n[1])], a.set(String(e.node.id), n);
 		});
-		let v = d.network || tn(i, l, l.map((e) => a.get(String(e.node.id))), n);
+		let v = d.network || en(i, l, l.map((e) => a.get(String(e.node.id))), n);
 		v && o.push(v);
 	}
 	return o;
 }
-function ln(e, t) {
+function cn(e, t) {
 	let n = new Map(e.map((e) => [String(e.node.id), e])), r = /* @__PURE__ */ new Map();
 	for (let i of e) {
 		if (i.parentId == null) continue;
@@ -2806,7 +2802,7 @@ function ln(e, t) {
 		let a = String(i.parentId);
 		r.has(a) || r.set(a, []), r.get(a).push({
 			childId: String(i.node.id),
-			points: Kt(e, i, t)
+			points: Gt(e, i, t)
 		});
 	}
 	let i = [];
@@ -2819,7 +2815,7 @@ function ln(e, t) {
 	}
 	return i;
 }
-function un(e, t) {
+function ln(e, t) {
 	let n = ct(e, t), r = [], i = Object.create(null);
 	return (function e(n, a, o, s) {
 		let c = n.node, l = o + a.nodeCenterX, u = s + a.nodeCenterY;
@@ -2850,7 +2846,7 @@ function un(e, t) {
 		for (let t of a.childPlacements) e(t.entry, t.m, o + t.cx, s + t.cy);
 	})(e, n, 0, 0), r;
 }
-function dn(e) {
+function un(e) {
 	let t = Infinity, n = Infinity, r = -Infinity, i = -Infinity;
 	for (let a of e) t = Math.min(t, a.lx - a.w / 2), n = Math.min(n, a.ly - a.h / 2), r = Math.max(r, a.lx + a.w / 2), i = Math.max(i, a.ly + a.h / 2);
 	return Number.isFinite(t) ? {
@@ -2861,7 +2857,7 @@ function dn(e) {
 		h: 0
 	};
 }
-function fn(e) {
+function dn(e) {
 	let t = new Map(e.map((e) => [String(e.node.id), e])), n = /* @__PURE__ */ new Map();
 	for (let t of e) {
 		if (!t.parentId) continue;
@@ -2911,7 +2907,7 @@ function fn(e) {
 		mixedBandPenalty: c / Math.max(1, l)
 	};
 }
-function pn(e, t) {
+function fn(e, t) {
 	let n = t.subtreeMode === "GridSmart" ? [1, 1.8] : [
 		.72,
 		.84,
@@ -3001,12 +2997,12 @@ function pn(e, t) {
 		for (let o of n) {
 			let n = G(t.targetAspect * o, .2, 6);
 			for (let s of r) for (let r of i) {
-				let i = un(e, {
+				let i = ln(e, {
 					...t,
 					targetAspect: n,
 					autoSpacingYScale: s,
 					...r
-				}), c = dn(i), l = c.w / Math.max(1, c.h), u = i.reduce((e, t) => e + t.w * t.h, 0), d = Math.max(1, c.w * c.h / Math.max(1, u)), f = Math.abs(Math.log(Math.max(.01, l) / t.targetAspect)), p = fn(i), m = Math.log(d) * .65 + p.detourRatio * .25 + p.bendsPerEdge * .02 + p.rankScatter * 1.4 + p.mixedBandPenalty * .9;
+				}), c = un(i), l = c.w / Math.max(1, c.h), u = i.reduce((e, t) => e + t.w * t.h, 0), d = Math.max(1, c.w * c.h / Math.max(1, u)), f = Math.abs(Math.log(Math.max(.01, l) / t.targetAspect)), p = dn(i), m = Math.log(d) * .65 + p.detourRatio * .25 + p.bendsPerEdge * .02 + p.rankScatter * 1.4 + p.mixedBandPenalty * .9;
 				a.push({
 					positioned: i,
 					shapePenalty: f,
@@ -3024,8 +3020,8 @@ function pn(e, t) {
 	let s = Math.min(...a.map((e) => e.shapePenalty)), c = t.subtreeMode === "GridSmart" ? Math.max(.08, s + .04) : Math.max(.05, s + .02), l = a.filter((e) => e.shapePenalty <= c);
 	l.sort((e, t) => e.clarityScore - t.clarityScore || e.densityRatio - t.densityRatio || e.shapePenalty - t.shapePenalty || Math.abs(e.targetMultiplier - 1) - Math.abs(t.targetMultiplier - 1) || Math.abs(e.autoSpacingYScale - 1) - Math.abs(t.autoSpacingYScale - 1) || Number(e.blockFlow !== "rows") - Number(t.blockFlow !== "rows") || Number(e.flexibleRows) - Number(t.flexibleRows) || Number(e.preferShortFirst) - Number(t.preferShortFirst));
 	let u = l[0];
-	if (t.subtreeMode === "GridSmart" && t.visualTargetAspect >= .8 && Et(e) === 1) {
-		let n = un(e, {
+	if (t.subtreeMode === "GridSmart" && t.visualTargetAspect >= .8 && Tt(e) === 1) {
+		let n = ln(e, {
 			...t,
 			targetAspect: G(t.targetAspect * u.targetMultiplier, .2, 6),
 			autoSpacingYScale: u.autoSpacingYScale,
@@ -3034,12 +3030,12 @@ function pn(e, t) {
 			flexibleRows: u.flexibleRows,
 			preferShortFirst: u.preferShortFirst,
 			preferFiveLeafRank: !0
-		}), r = dn(u.positioned), i = dn(n), a = i.w / Math.max(1, r.w), o = i.h / Math.max(1, r.h), s = i.w * i.h / Math.max(1, r.w * r.h);
+		}), r = un(u.positioned), i = un(n), a = i.w / Math.max(1, r.w), o = i.h / Math.max(1, r.h), s = i.w * i.h / Math.max(1, r.w * r.h);
 		if (a <= 1.12 && o <= 1.12 && s <= 1.15) return n;
 	}
 	return u.positioned;
 }
-function mn(e, t, n) {
+function pn(e, t, n) {
 	let r = Object.create(null);
 	for (let n of e) {
 		let e = t[n.node.id] || 0;
@@ -3053,7 +3049,7 @@ function mn(e, t, n) {
 		n.alignGrid && (s = Math.ceil(s / a) * a), o += s;
 	}
 }
-function hn(e, t, n) {
+function mn(e, t, n) {
 	switch (n.orientation) {
 		case "BottomToTop": return {
 			x: e,
@@ -3073,7 +3069,7 @@ function hn(e, t, n) {
 		};
 	}
 }
-function gn(e = {}) {
+function hn(e = {}) {
 	let t = e.orientation || "TopToBottom", n = e.subtreeMode || "AutoSmart", r = e.targetSize, i = (r && Number(r.width) > 0 && Number(r.height) > 0 ? Number(r.width) / Number(r.height) : null) || Number(e.targetAspect) || 1.6, a = t === "LeftToRight" || t === "RightToLeft" ? 1 / i : i;
 	return {
 		orientation: t,
@@ -3088,12 +3084,12 @@ function gn(e = {}) {
 		targetAspect: Math.min(6, Math.max(.2, a))
 	};
 }
-function _n(e, t = {}) {
-	let n = gn(t), r = u(l((e || []).map(Ve))), i = it(n.subtreeMode) ? pn(r, n) : un(r, n);
-	n.subtreeMode === "Matrix" && mn(i, d(r), n);
+function gn(e, t = {}) {
+	let n = hn(t), r = u(l((e || []).map(Ve))), i = it(n.subtreeMode) ? fn(r, n) : ln(r, n);
+	n.subtreeMode === "Matrix" && pn(i, d(r), n);
 	for (let e of i) {
-		let t = hn(e.lx, e.ly, n);
-		e.cx = t.x, e.cy = t.y, e.routePoints &&= e.routePoints.map((e) => hn(e.x, e.y, n));
+		let t = mn(e.lx, e.ly, n);
+		e.cx = t.x, e.cy = t.y, e.routePoints &&= e.routePoints.map((e) => mn(e.x, e.y, n));
 	}
 	let a = Infinity, o = Infinity;
 	for (let e of i) a = Math.min(a, e.cx - e.node.width / 2), o = Math.min(o, e.cy - e.node.height / 2);
@@ -3111,20 +3107,20 @@ function _n(e, t = {}) {
 		}));
 	}
 	let f = [];
-	n.subtreeMode === "GridSmart" ? f = Gt(i, n) || [] : it(n.subtreeMode) && (It(i, n), f = ln(i, n));
+	n.subtreeMode === "GridSmart" ? f = Wt(i, n) || [] : it(n.subtreeMode) && (Ft(i, n), f = cn(i, n));
 	let p = Object.create(null);
 	for (let e of i) p[e.node.id] = e;
-	let m = vn(i);
+	let m = _n(i);
 	return {
 		positioned: i,
 		posById: p,
 		cfg: n,
 		bounds: m,
-		framingBounds: yn(i, m, n),
+		framingBounds: vn(i, m, n),
 		familyNetworks: f
 	};
 }
-function vn(e) {
+function _n(e) {
 	let t = Infinity, n = Infinity, r = -Infinity, i = -Infinity;
 	for (let a of e) t = Math.min(t, a.cx - a.node.width / 2), n = Math.min(n, a.cy - a.node.height / 2), r = Math.max(r, a.cx + a.node.width / 2), i = Math.max(i, a.cy + a.node.height / 2);
 	return isFinite(t) ? {
@@ -3139,7 +3135,7 @@ function vn(e) {
 		h: 0
 	};
 }
-function yn(e, t, n) {
+function vn(e, t, n) {
 	if (n.subtreeMode !== "GridSmart" || !e.length) return t;
 	let r = new Map(e.map((e) => [String(e.node.id), e])), i = e.filter((e) => !e.parentId || !r.has(String(e.parentId)));
 	if (i.length !== 1) return t;
@@ -3174,17 +3170,17 @@ function $(e, t) {
 		y: e.cy + (n ? n.dy : 0)
 	};
 }
-function bn(e, t) {
+function yn(e, t) {
 	let n = e && t && t[e.node.id];
 	return {
 		dx: Number(n?.dx) || 0,
 		dy: Number(n?.dy) || 0
 	};
 }
-function xn(e, t, n, r) {
+function bn(e, t, n, r) {
 	let i = Array.isArray(t?.routePoints) ? t.routePoints : [];
 	if (!i.length) return i;
-	let a = bn(e, r), o = bn(t, r), s = {
+	let a = yn(e, r), o = yn(t, r), s = {
 		dx: o.dx - a.dx,
 		dy: o.dy - a.dy
 	}, c = i.map((e) => ({
@@ -3202,10 +3198,10 @@ function xn(e, t, n, r) {
 	}
 	return c;
 }
-function Sn(e, t, n, r, i, a) {
+function xn(e, t, n, r, i, a) {
 	let o = i && i[t.node.id], s = a && a[t.node.id];
-	if (o && o.length || s) return On(e, t, o || [], n, r, s);
-	if (t.routePoints && t.routePoints.length) return On(e, t, xn(e, t, n, r), n, r, null);
+	if (o && o.length || s) return Dn(e, t, o || [], n, r, s);
+	if (t.routePoints && t.routePoints.length) return Dn(e, t, bn(e, t, n, r), n, r, null);
 	let c = $(e, r), l = $(t, r), u = e.node.width, d = e.node.height, f = t.node.width, p = t.node.height, m = H(n), h = c.y - d / 2, g = c.y + d / 2, _ = c.x - u / 2, v = c.x + u / 2, y = l.y - p / 2, b = l.y + p / 2, x = l.x - f / 2, S = l.x + f / 2, C = [];
 	if (t.routeType === "bus") {
 		if (m) {
@@ -3224,7 +3220,7 @@ function Sn(e, t, n, r, i, a) {
 	}
 	return "M " + C.map((e) => e[0].toFixed(1) + " " + e[1].toFixed(1)).join(" L ");
 }
-function Cn(e, t, n, r, i, a, o) {
+function Sn(e, t, n, r, i, a, o) {
 	let s = $(e, a), c = $(t, a), l = e.node.width, u = e.node.height, d = t.node.width, f = t.node.height, p, m;
 	return p = o && o.p ? {
 		x: s.x + o.p.nx * l / 2,
@@ -3249,9 +3245,9 @@ function Cn(e, t, n, r, i, a, o) {
 		E: m
 	};
 }
-function wn(e, t, n, r, i, a) {
-	let o = Cn(e, t, n.length ? n[0] : $(t, i), n.length ? n[n.length - 1] : $(e, i), r, i, a), s = o.S, c = o.E;
-	if (r.autoEdgeSide && n.length) a && a.p || (s = En(e, $(e, i), n[0])), a && a.c || (c = En(t, $(t, i), n[n.length - 1]));
+function Cn(e, t, n, r, i, a) {
+	let o = Sn(e, t, n.length ? n[0] : $(t, i), n.length ? n[n.length - 1] : $(e, i), r, i, a), s = o.S, c = o.E;
+	if (r.autoEdgeSide && n.length) a && a.p || (s = Tn(e, $(e, i), n[0])), a && a.c || (c = Tn(t, $(t, i), n[n.length - 1]));
 	else if (!n.length && !(a && a.c) && t.routeType !== "bus") {
 		let n = $(t, i), a = $(e, i), o = t.node.width, s = t.node.height;
 		c = H(r) ? {
@@ -3267,10 +3263,10 @@ function wn(e, t, n, r, i, a) {
 		y: e.y
 	})), [c]);
 }
-function Tn(e, t, n, r, i, a) {
-	return n || Array.isArray(t) && t.length ? t || [] : r && i ? xn(r, e, i, a) : Array.isArray(e?.routePoints) ? e.routePoints : [];
+function wn(e, t, n, r, i, a) {
+	return n || Array.isArray(t) && t.length ? t || [] : r && i ? bn(r, e, i, a) : Array.isArray(e?.routePoints) ? e.routePoints : [];
 }
-function En(e, t, n) {
+function Tn(e, t, n) {
 	let r = e.node.width, i = e.node.height, a = n.x - t.x, o = n.y - t.y;
 	return Math.abs(a) * i >= Math.abs(o) * r ? {
 		x: t.x + (a >= 0 ? r / 2 : -r / 2),
@@ -3280,7 +3276,7 @@ function En(e, t, n) {
 		y: t.y + (o >= 0 ? i / 2 : -i / 2)
 	};
 }
-function Dn(e, t) {
+function En(e, t) {
 	let n = [e[0]];
 	for (let r = 1; r < e.length; r++) {
 		let i = n[n.length - 1], a = e[r];
@@ -3305,12 +3301,12 @@ function Dn(e, t) {
 	}
 	return n.filter((e, t) => t === 0 || Math.abs(e.x - n[t - 1].x) > .01 || Math.abs(e.y - n[t - 1].y) > .01);
 }
-function On(e, t, n, r, i, a) {
-	return "M " + Dn(wn(e, t, n, r, i, a), H(r)).map((e) => e.x.toFixed(1) + " " + e.y.toFixed(1)).join(" L ");
+function Dn(e, t, n, r, i, a) {
+	return "M " + En(Cn(e, t, n, r, i, a), H(r)).map((e) => e.x.toFixed(1) + " " + e.y.toFixed(1)).join(" L ");
 }
 //#endregion
 //#region src/core/bounds.js
-function kn(e, t, n) {
+function On(e, t, n) {
 	n ??= 0;
 	let r = Infinity, i = Infinity, a = -Infinity, o = -Infinity;
 	for (let n of e) {
@@ -3329,7 +3325,7 @@ function kn(e, t, n) {
 		h: 100
 	};
 }
-function An(e, t, n, r = {}) {
+function kn(e, t, n, r = {}) {
 	let i = r.maxZoom == null ? 1.4 : r.maxZoom, a = r.margin == null ? .92 : r.margin, o = e.w || 1, s = e.h || 1, c = Math.min(t / o, n / s, i) * a;
 	return {
 		zoom: c,
@@ -3338,4 +3334,4 @@ function An(e, t, n, r = {}) {
 	};
 }
 //#endregion
-export { d as A, Ke as C, f as D, p as E, s as F, t as I, r as L, a as M, o as N, u as O, i as P, e as R, Ve as S, l as T, $e as _, Cn as a, Ue as b, Sn as c, H as d, _n as f, et as g, gn as h, Tn as i, n as j, c as k, On as l, U as m, An as n, $ as o, W as p, wn as r, Dn as s, kn as t, hn as u, tt as v, He as w, Ge as x, We as y };
+export { d as A, Ke as C, f as D, p as E, s as F, t as I, r as L, a as M, o as N, u as O, i as P, e as R, Ve as S, l as T, $e as _, Sn as a, Ue as b, xn as c, H as d, gn as f, et as g, hn as h, wn as i, n as j, c as k, Dn as l, U as m, kn as n, $ as o, W as p, Cn as r, En as s, On as t, mn as u, tt as v, He as w, Ge as x, We as y };

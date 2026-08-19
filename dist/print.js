@@ -1,4 +1,4 @@
-import { c as e, f as t, o as n, t as r, v as i } from "./bounds-CAhLOk4F.js";
+import { c as e, f as t, o as n, t as r, v as i } from "./bounds-DB-baibt.js";
 //#region src/print/index.js
 var a = Object.freeze([
 	"portrait-sectioned",
