@@ -288,10 +288,12 @@ All methods are available on:
 | `toggleCollapse(id)` | Toggle a single node's collapsed state |
 | `centerOnNode(id)` | Pan to center a specific node in the viewport |
 
-Resizing the chart host changes only the viewport and does not regenerate chart
-geometry. Set `reflowOnResize: true` only for an intentionally responsive
-screen layout. Exact tarp and print dimensions belong to the physical-canvas
-print API rather than ordinary viewport resizing.
+Interactive charts use the stable `targetAspect` (1.6 by default) regardless of
+their host element's dimensions. Resizing the host changes only the viewport,
+so desktop, tablet, mobile, and fullscreen keep the same nodes and connectors
+while `fitToScreen()` adjusts zoom and pan. Set `reflowOnResize: true` only for
+an intentionally responsive screen layout. Exact tarp and print dimensions
+belong to the physical-canvas print API rather than ordinary viewport resizing.
 
 Full structural calculations are asynchronous by default. The current chart
 stays visible while the worker calculates, and only the newest request may

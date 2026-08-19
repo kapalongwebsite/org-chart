@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.18.3
+
+- Interactive Auto Smart and Grid Smart layouts now use the configured
+  `targetAspect` independently of the host element's dimensions. Desktop,
+  tablet, mobile, and fullscreen therefore retain identical node and connector
+  geometry while fit/zoom/pan adapts the view. Viewport-driven geometry remains
+  available only through the explicit `reflowOnResize: true` option, and an
+  explicit `targetSize` still takes precedence for intentional output shapes.
+
 ## 1.18.2
 
 - Fixed blank charts in Vue applications when worker results were reconciled
