@@ -9,6 +9,7 @@ import {
   childCount, computeDepths, normalizeImported, exportLayout, buildChartSVG,
   resolveNodeStyle, normalizeRule, POS_SIZE,
 } from '../core/index.js';
+import { resolveInteractiveLayoutTarget } from './layoutTarget.js';
 import { resolveConnectorGeometry } from '../core/connectorGeometry.js';
 import LayoutWorker from '../core/layout.worker.js?worker';
 import { cloneLayoutValue } from './cloneLayoutValue.js';
@@ -82,8 +83,8 @@ const DEFAULT_OPTS = {
   userToFields: null,
   fitOnLayoutChange: true, // re-frame after mode/orientation/re-layout: true|'fit' · 'recenter' · false|'none'
   fitOnInit: true,
-  targetAspect: 1.6,   // AutoSmart target when the host has not been measured yet
-  targetSize: null,    // optional fixed target; otherwise use the live canvas size
+  targetAspect: 1.6,   // stable interactive layout shape (independent of viewport)
+  targetSize: null,    // optional explicit layout/output shape
   reflowOnResize: false, // opt in when viewport aspect changes should regenerate geometry
   layoutWorker: true,  // move editor-triggered full layout work off the UI thread
   layoutCache: true,   // reuse exact completed layouts (bounded process-wide LRU)
@@ -253,17 +254,15 @@ export function createOrgChart(host, userOpts = {}) {
 
   // ================= layout pipeline =================
   function cfg() {
+    const layoutTarget = resolveInteractiveLayoutTarget(opts, canvas);
     return normalizeConfig({
       orientation: state.orientation, subtreeMode: state.subtreeMode,
       spacingX: state.spacingX, spacingY: state.spacingY,
       gridSize: state.gridSize, alignGrid: state.alignGrid,
       autoEdgeSide: state.autoEdgeSide,
       familyRouteOverrides,
-      targetAspect: opts.targetAspect,
-      targetSize: opts.targetSize || {
-        width: canvas.clientWidth,
-        height: canvas.clientHeight,
-      },
+      targetAspect: layoutTarget.targetAspect,
+      targetSize: layoutTarget.targetSize,
     });
   }
   function runLayout() {

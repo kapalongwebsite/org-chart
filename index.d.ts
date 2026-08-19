@@ -28,11 +28,11 @@ export interface LayoutOptions {
   gridSize?: number;
   alignGrid?: boolean;
   autoEdgeSide?: boolean;
-  /** Desired final width / height used by AutoSmart and GridSmart. Default 1.6. */
+  /** Stable interactive layout width / height used by AutoSmart and GridSmart. Default 1.6. */
   targetAspect?: number;
-  /** Exact target shape; takes precedence over targetAspect. */
+  /** Explicit output/layout shape; takes precedence over targetAspect. */
   targetSize?: { width: number; height: number } | null;
-  /** Recalculate automatic geometry after material viewport aspect changes. Default false. */
+  /** Opt into viewport-driven automatic geometry after material aspect changes. Default false. */
   reflowOnResize?: boolean;
   familyRouteOverrides?: Record<string, FamilyRouteOverride> | null;
 }
