@@ -184,9 +184,15 @@ export function createOrgChart(host, userOpts = {}) {
   overlay.appendChild(familySelectionG);
   overlay.appendChild(edgeHandlesG);
   const zoomReadout = el('div', 'loc-zoomreadout'); zoomReadout.textContent = '100%';
+  const layoutStatus = el('div', 'loc-layout-status');
+  layoutStatus.hidden = true;
+  layoutStatus.setAttribute('role', 'status');
+  layoutStatus.setAttribute('aria-live', 'polite');
+  layoutStatus.innerHTML = '<span class="loc-layout-spinner" aria-hidden="true"></span>'
+    + '<span>Arranging chart&hellip;</span>';
 
   content.appendChild(gridEl); content.appendChild(svg); content.appendChild(nodesLayer); content.appendChild(overlay);
-  canvas.appendChild(content); canvas.appendChild(zoomReadout);
+  canvas.appendChild(content); canvas.appendChild(zoomReadout); canvas.appendChild(layoutStatus);
 
   // floating canvas-level fullscreen control (opt-out via fullscreenControl: false)
   let fsFloat = null;
@@ -330,7 +336,10 @@ export function createOrgChart(host, userOpts = {}) {
   }
   function setLayoutBusy(on) {
     layoutBusy = !!on;
+    const initialLayoutBusy = layoutBusy && positioned.length === 0;
     root.classList.toggle('loc-layout-busy', layoutBusy);
+    root.classList.toggle('loc-layout-initial-busy', initialLayoutBusy);
+    layoutStatus.hidden = !initialLayoutBusy;
     if (layoutBusy) root.setAttribute('aria-busy', 'true');
     else root.removeAttribute('aria-busy');
   }

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.18.4
+
+- Grid Smart now deduplicates occupancy-grid candidates before sorting and uses
+  numeric spatial-index buckets. Large first layouts perform substantially less
+  allocation and collision-search work while producing identical chart geometry.
+- The initial worker layout now shows a lightweight, accessible arranging state
+  instead of an unexplained blank canvas. Existing charts remain visible and
+  interactive during later re-layout operations.
+
 ## 1.18.3
 
 - Interactive Auto Smart and Grid Smart layouts now use the configured
