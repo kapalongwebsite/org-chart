@@ -1,5 +1,5 @@
-import { C as e, D as t, E as n, F as r, S as i, c as a, d as o, f as s, h as c, i as l, k as u, n as ee, o as d, r as te, s as ne, t as re, v as ie } from "./bounds-CAhLOk4F.js";
-import { a as ae, i as oe, n as se, o as ce, s as le } from "./core--iXSOaZm.js";
+import { C as e, D as t, E as n, F as r, S as i, c as a, d as o, f as s, h as c, i as l, k as u, n as ee, o as d, r as te, s as ne, t as re, v as ie } from "./bounds-DB-baibt.js";
+import { a as ae, i as oe, n as se, o as ce, s as le } from "./core-5QJXg6bb.js";
 //#region src/vanilla/layoutTarget.js
 function ue(e) {
 	let t = Number(e?.clientWidth), n = Number(e?.clientHeight);
@@ -17,7 +17,7 @@ function de(e = {}, t = null) {
 //#endregion
 //#region src/core/layout.worker.js?worker
 function fe(e) {
-	return new Worker("" + new URL("assets/layout.worker-fj2W-XDG.js", import.meta.url).href, { name: e?.name });
+	return new Worker("" + new URL("assets/layout.worker-CeA7MAPu.js", import.meta.url).href, { name: e?.name });
 }
 //#endregion
 //#region src/vanilla/cloneLayoutValue.js
