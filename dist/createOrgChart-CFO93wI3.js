@@ -5,13 +5,18 @@ function ue(e) {
 	return new Worker("" + new URL("assets/layout.worker-C2cAKTC0.js", import.meta.url).href, { name: e?.name });
 }
 //#endregion
-//#region src/vanilla/createOrgChart.js
-var de = 116, fe = "http://www.w3.org/2000/svg", pe = .72, me = 12, he = /* @__PURE__ */ new Map();
-function ge(e) {
-	return typeof structuredClone == "function" ? structuredClone(e) : JSON.parse(JSON.stringify(e));
+//#region src/vanilla/cloneLayoutValue.js
+function de(e) {
+	if (typeof structuredClone == "function") try {
+		return structuredClone(e);
+	} catch {}
+	return JSON.parse(JSON.stringify(e));
 }
+//#endregion
+//#region src/vanilla/createOrgChart.js
+var fe = 116, pe = "http://www.w3.org/2000/svg", me = .72, he = 12, ge = /* @__PURE__ */ new Map();
 function _e(e, t) {
-	for (he.has(e) && he.delete(e), he.set(e, ge(t)); he.size > me;) he.delete(he.keys().next().value);
+	for (ge.has(e) && ge.delete(e), ge.set(e, de(t)); ge.size > he;) ge.delete(ge.keys().next().value);
 }
 var ve = {
 	Top: "TopToBottom",
@@ -67,8 +72,8 @@ var be = {
 	persist: !1,
 	storageKey: "local-org-chart.state"
 };
-function f(me, ve = {}) {
-	if (!me || !me.appendChild) throw Error("createOrgChart: first argument must be a DOM element.");
+function f(he, ve = {}) {
+	if (!he || !he.appendChild) throw Error("createOrgChart: first argument must be a DOM element.");
 	let f = Object.assign({}, be, ve), xe = f.alignGrid == null ? f.subtreeMode === "GridSmart" : !!f.alignGrid, Se = +f.maxZoom > 1 ? +f.maxZoom : 4, p = {
 		orientation: ye(f.orientation),
 		subtreeMode: f.subtreeMode,
@@ -130,23 +135,23 @@ function f(me, ve = {}) {
 	N.className = "loc-root", N.tabIndex = -1;
 	let P = f.toolbar ? oa() : null;
 	P && N.appendChild(P);
-	let F = B("div", "loc-canvas"), Ge = B("div", "loc-content"), Ke = B("div", "loc-grid"), qe = document.createElementNS(fe, "svg");
+	let F = B("div", "loc-canvas"), Ge = B("div", "loc-content"), Ke = B("div", "loc-grid"), qe = document.createElementNS(pe, "svg");
 	qe.setAttribute("class", "loc-connectors");
-	let Je = document.createElementNS(fe, "g");
+	let Je = document.createElementNS(pe, "g");
 	Je.setAttribute("class", "loc-visible-edges");
-	let Ye = document.createElementNS(fe, "g");
+	let Ye = document.createElementNS(pe, "g");
 	Ye.setAttribute("class", "loc-logical-edges");
-	let Xe = document.createElementNS(fe, "g");
+	let Xe = document.createElementNS(pe, "g");
 	Xe.setAttribute("class", "loc-edgehits");
-	let Ze = document.createElementNS(fe, "g");
+	let Ze = document.createElementNS(pe, "g");
 	Ze.setAttribute("class", "loc-familyhits"), qe.appendChild(Je), qe.appendChild(Ye), qe.appendChild(Xe), qe.appendChild(Ze);
-	let Qe = B("div", "loc-nodes"), I = document.createElementNS(fe, "svg");
+	let Qe = B("div", "loc-nodes"), I = document.createElementNS(pe, "svg");
 	I.setAttribute("class", "loc-overlay");
-	let L = document.createElementNS(fe, "g");
+	let L = document.createElementNS(pe, "g");
 	L.setAttribute("class", "loc-edgehandles");
-	let $e = document.createElementNS(fe, "g");
+	let $e = document.createElementNS(pe, "g");
 	$e.setAttribute("class", "loc-family-selection");
-	let et = document.createElementNS(fe, "g");
+	let et = document.createElementNS(pe, "g");
 	et.setAttribute("class", "loc-aligns"), I.appendChild(et), I.appendChild($e), I.appendChild(L);
 	let tt = B("div", "loc-zoomreadout");
 	tt.textContent = "100%", Ge.appendChild(Ke), Ge.appendChild(qe), Ge.appendChild(Qe), Ge.appendChild(I), F.appendChild(Ge), F.appendChild(tt);
@@ -167,7 +172,7 @@ function f(me, ve = {}) {
 	let ut = ft(f.legendTarget) || F;
 	ut.appendChild(lt), ut !== F && lt.classList.add("loc-legend-external");
 	let dt = lt.querySelector("[data-role=\"legend-body\"]");
-	Ot(), kt(), me.appendChild(N);
+	Ot(), kt(), he.appendChild(N);
 	function B(e, t) {
 		let n = document.createElement(e);
 		return t && (n.className = t), n;
@@ -230,10 +235,10 @@ function f(me, ve = {}) {
 		return e;
 	}
 	function yt(e, t) {
-		let n = ge(gt(e)), r = vt(), i = Object.assign(Object.create(null), t || {}, r);
+		let n = de(gt(e)), r = vt(), i = Object.assign(Object.create(null), t || {}, r);
 		for (let e of n.positioned || []) {
 			let t = h[String(e.node.id)];
-			t && (e.node = Object.assign({}, e.node, ge(t)));
+			t && (e.node = Object.assign({}, e.node, de(t)));
 		}
 		C = n.positioned || [], w = Object.create(null);
 		for (let e of C) w[String(e.node.id)] = e;
@@ -311,7 +316,7 @@ function f(me, ve = {}) {
 			id: n,
 			reason: e
 		});
-		let l = f.layoutCache !== !1 && he.get(i);
+		let l = f.layoutCache !== !1 && ge.get(i);
 		if (l) return Promise.resolve().then(() => St(c, l, 0, !0)), s;
 		let u = JSON.parse(i);
 		if (!Be) return wt(c, u), s;
@@ -363,7 +368,7 @@ function f(me, ve = {}) {
 		N.style.setProperty("--loc-photo-h", (p.photoHeight || 104) + "px"), N.style.setProperty("--loc-photo-fit", p.photoContain ? "contain" : "cover");
 	}
 	function kt() {
-		let e = Math.max(100, p.cardWidth || r.width), t = Math.max(60, (p.photoHeight || 104) + de);
+		let e = Math.max(100, p.cardWidth || r.width), t = Math.max(60, (p.photoHeight || 104) + fe);
 		for (let n of m) n.type !== "department" && (n.width = e, n.height = t);
 	}
 	function At(e) {
@@ -413,7 +418,7 @@ function f(me, ve = {}) {
 	}
 	function Ft(e) {
 		if (e.style.setProperty("--loc-fit", "1"), !Pt(e)) return;
-		let t = pe, n = 1;
+		let t = me, n = 1;
 		for (let r = 0; r < 7; r++) {
 			let r = (t + n) / 2;
 			e.style.setProperty("--loc-fit", String(r)), Pt(e) ? n = r : t = r;
@@ -429,7 +434,7 @@ function f(me, ve = {}) {
 		r.title = a, r.setAttribute("aria-label", a);
 	}
 	function Lt(e) {
-		return document.createElementNS(fe, e);
+		return document.createElementNS(pe, e);
 	}
 	function Rt(e) {
 		return a(w[e.node.parentId], e, pt(), g, _, v);
