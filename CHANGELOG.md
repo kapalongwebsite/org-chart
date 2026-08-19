@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.18.2
+
+- Fixed blank charts in Vue applications when worker results were reconciled
+  with reactive node props. Layout snapshot cloning now falls back to the
+  library's JSON-serializable contract when `structuredClone()` rejects a
+  framework proxy with `DataCloneError`.
+
 ## 1.18.1
 
 - Saved layouts now wait for their asynchronous worker calculation before the

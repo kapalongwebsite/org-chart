@@ -11,6 +11,7 @@ import {
 } from '../core/index.js';
 import { resolveConnectorGeometry } from '../core/connectorGeometry.js';
 import LayoutWorker from '../core/layout.worker.js?worker';
+import { cloneLayoutValue } from './cloneLayoutValue.js';
 
 // person-card height = photo height + this fixed text block, so the image always
 // "tops" the card at its full size and the name/title area stays consistent.
@@ -27,11 +28,6 @@ const FIT_MIN = 0.72;
 // even when several chart instances are mounted in the same application.
 const LAYOUT_CACHE_LIMIT = 12;
 const layoutResultCache = new Map();
-
-function cloneLayoutValue(value) {
-  if (typeof structuredClone === 'function') return structuredClone(value);
-  return JSON.parse(JSON.stringify(value));
-}
 
 function rememberLayout(signature, result) {
   if (layoutResultCache.has(signature)) layoutResultCache.delete(signature);
