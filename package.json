@@ -1,6 +1,6 @@
 {
   "name": "local-org-chart",
-  "version": "1.18.0",
+  "version": "1.18.1",
   "private": true,
   "description": "Organizational chart engine with deterministic adaptive-grid Auto Smart layout, legacy layout modes, 4 orientations, pan/zoom/drag, search, expand-collapse, manual offsets, orthogonal connector waypoints, and SVG/PNG/PDF/JSON export. Ships a framework-independent core, a plain-JS renderer, and a Vue 3 wrapper.",
   "type": "module",

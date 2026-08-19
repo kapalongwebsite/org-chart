@@ -1570,18 +1570,21 @@ function f(me, ve = {}) {
 		return fi(!(e && e.full === !1));
 	}
 	function mi(e) {
-		if (e) {
-			if ($r(e.view), e.full && e.layout) {
-				g = J(e.layout.manualOffsets) || Object.create(null), _ = J(e.layout.edgeWaypoints) || Object.create(null), v = J(e.layout.edgeAnchors) || Object.create(null), y = J(e.layout.familyRouteOverrides) || Object.create(null), b = J(e.layout.nodeOverrides) || Object.create(null), Or();
-				let t = new Set(e.layout.collapsed || []);
-				for (let e of m) e.collapsed = t.has(e.id);
-			} else g = Object.create(null), _ = Object.create(null), v = Object.create(null), y = Object.create(null);
-			p.selectedNodeId = null, p.selectedEdgeId = null, p.selectedFamilyId = null, L.innerHTML = "", $e.innerHTML = "";
-			for (let e in T) T[e].remove(), delete T[e];
-			for (let e in E) E[e].remove(), delete E[e];
-			for (let e in D) D[e].remove(), delete D[e];
-			Jt(), $(), V("preset"), z.classList.contains("loc-open") && qr(), Qt(), Y(), j("settings-change", G());
-		}
+		if (!e) return Promise.resolve(!1);
+		if ($r(e.view), e.full && e.layout) {
+			g = J(e.layout.manualOffsets) || Object.create(null), _ = J(e.layout.edgeWaypoints) || Object.create(null), v = J(e.layout.edgeAnchors) || Object.create(null), y = J(e.layout.familyRouteOverrides) || Object.create(null), b = J(e.layout.nodeOverrides) || Object.create(null), Or();
+			let t = new Set(e.layout.collapsed || []);
+			for (let e of m) e.collapsed = t.has(e.id);
+		} else g = Object.create(null), _ = Object.create(null), v = Object.create(null), y = Object.create(null);
+		p.selectedNodeId = null, p.selectedEdgeId = null, p.selectedFamilyId = null, L.innerHTML = "", $e.innerHTML = "";
+		for (let e in T) T[e].remove(), delete T[e];
+		for (let e in E) E[e].remove(), delete E[e];
+		for (let e in D) D[e].remove(), delete D[e];
+		Jt(), $();
+		let t = V("preset");
+		return z.classList.contains("loc-open") && qr(), t.then((e) => {
+			e && Qt();
+		}), Y(), j("settings-change", G()), t;
 	}
 	function hi() {
 		let e = ui();

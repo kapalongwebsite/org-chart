@@ -256,6 +256,8 @@ export interface OrgChartInstance {
   toggleSettings(force?: boolean): void;
   /** Restore spacing / grid / theme rules to the as-configured defaults. */
   resetSettings(): void;
+  getLayout(options?: { full?: boolean }): any;
+  applyLayout(layout: any): Promise<boolean>;
   getState(): any;
   getNodes(): OrgNode[];
   getPositioned(): PositionedNode[];
@@ -324,6 +326,8 @@ export interface OrgChartVueInstance {
   setSettings(settings: ChartSettings): void;
   toggleSettings(force?: boolean): void;
   resetSettings(): void;
+  getLayout(options?: { full?: boolean }): any;
+  applyLayout(layout: any): Promise<boolean> | null;
 
   // data
   setNodes(nodes: OrgNode[], meta?: any, options?: { resetEdits?: boolean }): Promise<boolean> | null;
