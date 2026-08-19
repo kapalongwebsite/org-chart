@@ -1585,9 +1585,10 @@ function vt(e, t) {
 	let n = /* @__PURE__ */ new Map();
 	return e.forEach((e, r) => {
 		let i = Math.floor(e.left / t), a = Math.floor(e.right / t), o = Math.floor(e.top / t), s = Math.floor(e.bottom / t);
-		for (let e = i; e <= a; e += 1) for (let t = o; t <= s; t += 1) {
-			let i = `${e}:${t}`;
-			n.has(i) || n.set(i, []), n.get(i).push(r);
+		for (let e = i; e <= a; e += 1) {
+			let t = n.get(e);
+			t || (t = /* @__PURE__ */ new Map(), n.set(e, t));
+			for (let e = o; e <= s; e += 1) t.has(e) || t.set(e, []), t.get(e).push(r);
 		}
 	}), {
 		rects: e,
@@ -1597,7 +1598,10 @@ function vt(e, t) {
 }
 function yt(e, t, n) {
 	let r = Math.floor((t.left - n) / e.cellSize), i = Math.floor((t.right + n) / e.cellSize), a = Math.floor((t.top - n) / e.cellSize), o = Math.floor((t.bottom + n) / e.cellSize), s = /* @__PURE__ */ new Set();
-	for (let t = r; t <= i; t += 1) for (let n = a; n <= o; n += 1) for (let r of e.buckets.get(`${t}:${n}`) || []) s.add(r);
+	for (let t = r; t <= i; t += 1) {
+		let n = e.buckets.get(t);
+		if (n) for (let e = a; e <= o; e += 1) for (let t of n.get(e) || []) s.add(t);
+	}
 	return [...s].map((t) => e.rects[t]);
 }
 function bt(e, t, n, r, i, a, o) {
@@ -1617,11 +1621,13 @@ function bt(e, t, n, r, i, a, o) {
 	return !0;
 }
 function xt(e, t = 18) {
-	let n = [...new Set(e.filter((e) => Number.isFinite(e) && e >= 0))].sort((e, t) => e - t);
-	if (n.length <= t) return n;
-	let r = [];
-	for (let e = 0; e < t; e += 1) r.push(n[Math.round(e * (n.length - 1) / (t - 1))]);
-	return [...new Set(r)].sort((e, t) => e - t);
+	let n = /* @__PURE__ */ new Set();
+	for (let t of e) Number.isFinite(t) && t >= 0 && n.add(t);
+	let r = [...n].sort((e, t) => e - t);
+	if (r.length <= t) return r;
+	let i = [];
+	for (let e = 0; e < t; e += 1) i.push(r[Math.round(e * (r.length - 1) / (t - 1))]);
+	return [...new Set(i)].sort((e, t) => e - t);
 }
 function St(e, t, n, r, i) {
 	if (!e.length) return {
@@ -1659,26 +1665,28 @@ function St(e, t, n, r, i) {
 				right: t.right + e.x,
 				top: t.top + e.y,
 				bottom: t.bottom + e.y
-			}))), c = vt(i, Math.max(64, o * 2, s * 1.2)), l = [0], u = [0];
-			for (let e of r) l.push(K(e.x + e.item.w + o, a)), u.push(K(e.y + e.item.h + s, a));
-			for (let t of i) for (let n of e) l.push(K(t.right + o - n.left, a)), u.push(K(t.bottom + s - n.top, a));
-			let d = null;
+			}))), c = vt(i, Math.max(64, o * 2, s * 1.2)), l = /* @__PURE__ */ new Set([0]), u = /* @__PURE__ */ new Set([0]);
+			for (let e of r) l.add(K(e.x + e.item.w + o, a)), u.add(K(e.y + e.item.h + s, a));
+			let d = new Set(i.map((e) => e.right)), f = new Set(i.map((e) => e.bottom)), p = new Set(e.map((e) => e.left)), m = new Set(e.map((e) => e.top));
+			for (let e of d) for (let t of p) l.add(K(e + o - t, a));
+			for (let e of f) for (let t of m) u.add(K(e + s - t, a));
+			let h = null;
 			for (let r of xt(u)) {
 				for (let i of xt(l)) if (!(i + t.w > n + .01) && bt(e, i, r, c, o, s, a)) {
-					d = {
+					h = {
 						item: t,
 						x: i,
 						y: r
 					};
 					break;
 				}
-				if (d) break;
+				if (h) break;
 			}
-			let f = r.length ? K(Math.max(...r.map((e) => e.y + e.item.h)) + s, a) : 0;
-			r.push(d || {
+			let g = r.length ? K(Math.max(...r.map((e) => e.y + e.item.h)) + s, a) : 0;
+			r.push(h || {
 				item: t,
 				x: 0,
-				y: f
+				y: g
 			});
 		}
 		let i = Math.max(...r.map((e) => e.x + e.item.w)), l = Math.max(...r.map((e) => e.y + e.item.h)), u = [...new Set(r.map((e) => e.y))].sort((e, t) => e - t), d = u.map((e) => {

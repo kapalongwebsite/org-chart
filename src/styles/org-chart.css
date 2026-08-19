@@ -119,6 +119,25 @@
   padding: 2px 8px; font-size: 11px; color: var(--loc-text-gray); pointer-events: none;
 }
 
+.loc-layout-status {
+  position: absolute; inset: 0; z-index: 7;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  color: var(--loc-text-gray); font-size: 13px; font-weight: 600;
+  background: rgba(245, 247, 251, .88);
+  background: color-mix(in srgb, var(--loc-bg) 88%, transparent);
+  pointer-events: none;
+}
+.loc-layout-status[hidden] { display: none; }
+.loc-layout-spinner {
+  width: 18px; height: 18px; border: 2px solid color-mix(in srgb, var(--loc-accent) 22%, transparent);
+  border-top-color: var(--loc-accent); border-radius: 50%;
+  animation: loc-layout-spin .7s linear infinite;
+}
+@keyframes loc-layout-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .loc-layout-spinner { animation: none; }
+}
+
 /* ---------- Node cards ---------- */
 .loc-node {
   position: absolute; left: 0; top: 0; transform-origin: 0 0;

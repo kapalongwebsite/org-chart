@@ -435,10 +435,14 @@ function buildFootprintSpatialIndex(rects, cellSize) {
     const minY = Math.floor(rect.top / cellSize);
     const maxY = Math.floor(rect.bottom / cellSize);
     for (let bx = minX; bx <= maxX; bx += 1) {
+      let column = buckets.get(bx);
+      if (!column) {
+        column = new Map();
+        buckets.set(bx, column);
+      }
       for (let by = minY; by <= maxY; by += 1) {
-        const key = `${bx}:${by}`;
-        if (!buckets.has(key)) buckets.set(key, []);
-        buckets.get(key).push(index);
+        if (!column.has(by)) column.set(by, []);
+        column.get(by).push(index);
       }
     }
   });
@@ -452,8 +456,10 @@ function nearbyFootprintRects(index, rect, padding) {
   const maxY = Math.floor((rect.bottom + padding) / index.cellSize);
   const found = new Set();
   for (let bx = minX; bx <= maxX; bx += 1) {
+    const column = index.buckets.get(bx);
+    if (!column) continue;
     for (let by = minY; by <= maxY; by += 1) {
-      for (const rectIndex of index.buckets.get(`${bx}:${by}`) || []) found.add(rectIndex);
+      for (const rectIndex of column.get(by) || []) found.add(rectIndex);
     }
   }
   return [...found].map((rectIndex) => index.rects[rectIndex]);
@@ -482,8 +488,11 @@ function translatedFootprintsClear(currentRects, x, y, placedIndex, gapX, gapY, 
 }
 
 function boundedGridCoordinates(values, limit = 18) {
-  const sorted = [...new Set(values.filter((value) => Number.isFinite(value) && value >= 0))]
-    .sort((a, b) => a - b);
+  const unique = new Set();
+  for (const value of values) {
+    if (Number.isFinite(value) && value >= 0) unique.add(value);
+  }
+  const sorted = [...unique].sort((a, b) => a - b);
   if (sorted.length <= limit) return sorted;
   const bounded = [];
   for (let index = 0; index < limit; index += 1) {
@@ -549,16 +558,27 @@ function packOccupancyGrid(items, targetAspect, gapX, gapY, gridSize) {
         placedRects,
         Math.max(64, gridGapX * 2, gridGapY * 1.2),
       );
-      const xs = [0];
-      const ys = [0];
+      // Footprint pairs frequently resolve to the same lattice coordinate.
+      // Deduplicate while generating candidates so a large subtree does not
+      // allocate and sort hundreds of thousands of repeated values.
+      const xs = new Set([0]);
+      const ys = new Set([0]);
       for (const placed of placements) {
-        xs.push(gridCeil(placed.x + placed.item.w + gridGapX, latticeSize));
-        ys.push(gridCeil(placed.y + placed.item.h + gridGapY, latticeSize));
+        xs.add(gridCeil(placed.x + placed.item.w + gridGapX, latticeSize));
+        ys.add(gridCeil(placed.y + placed.item.h + gridGapY, latticeSize));
       }
-      for (const placedRect of placedRects) {
-        for (const currentRect of currentRects) {
-          xs.push(gridCeil(placedRect.right + gridGapX - currentRect.left, latticeSize));
-          ys.push(gridCeil(placedRect.bottom + gridGapY - currentRect.top, latticeSize));
+      const placedRights = new Set(placedRects.map((rect) => rect.right));
+      const placedBottoms = new Set(placedRects.map((rect) => rect.bottom));
+      const currentLefts = new Set(currentRects.map((rect) => rect.left));
+      const currentTops = new Set(currentRects.map((rect) => rect.top));
+      for (const right of placedRights) {
+        for (const left of currentLefts) {
+          xs.add(gridCeil(right + gridGapX - left, latticeSize));
+        }
+      }
+      for (const bottom of placedBottoms) {
+        for (const top of currentTops) {
+          ys.add(gridCeil(bottom + gridGapY - top, latticeSize));
         }
       }
       let selected = null;
