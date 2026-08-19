@@ -3,6 +3,7 @@
 // function and an optional `fitOf` (per-node font-fit) from the caller.
 import { effCenter } from './connectors.js';
 import { calculateBounds } from './bounds.js';
+import { resolveConnectorGeometry } from './connectorGeometry.js';
 
 const FONT = '"Segoe UI", system-ui, -apple-system, Arial, sans-serif';
 const BADGE = {
@@ -91,10 +92,15 @@ export function buildChartSVG(positioned, paths, opts = {}) {
   const measure = opts.measureText || (() => 0);
   const fitOf = opts.fitOf || (() => 1);
   const ex = { photoH: opts.photoHeight || 62, images: opts.images || null, contain: opts.photoContain !== false };
-  const b = calculateBounds(positioned, manualOffsets, 40);
+  const b = opts.bounds || calculateBounds(positioned, manualOffsets, 40);
 
   let pathStr = '';
-  for (const d of paths) if (d) pathStr += `<path d="${d}" fill="none" stroke="#4a5568" stroke-width="2"/>`;
+  const geometry = resolveConnectorGeometry(paths, opts.familyNetworks || [], {
+    rebuildFamilyIds: opts.rebuildFamilyIds || [],
+  });
+  for (const segment of geometry.segments) {
+    pathStr += `<path d="${segment.d}" fill="none" stroke="#4a5568" stroke-width="2"/>`;
+  }
 
   let cards = '';
   for (const p of positioned) {

@@ -9,12 +9,60 @@ export function effCenter(p, manualOffsets) {
   return { x: p.cx + (off ? off.dx : 0), y: p.cy + (off ? off.dy : 0) };
 }
 
+function offsetOf(positioned, manualOffsets) {
+  const offset = positioned && manualOffsets && manualOffsets[positioned.node.id];
+  return {
+    dx: Number(offset?.dx) || 0,
+    dy: Number(offset?.dy) || 0,
+  };
+}
+
+/* GridSmart routePoints are absolute automatic lanes. A manual node move must
+   deform the automatic lane instead of leaving it behind and adding a dogleg:
+   - translate the whole route with the parent (common group movement), then
+   - move the final child-row bus on the flow axis and its child approach on
+     both axes by the child's movement relative to the parent.
+   Manual waypoints never use this helper; they remain exactly user-authored. */
+function movedAutomaticWaypoints(parent, child, cfg, manualOffsets) {
+  const source = Array.isArray(child?.routePoints) ? child.routePoints : [];
+  if (!source.length) return source;
+  const parentOffset = offsetOf(parent, manualOffsets);
+  const childOffset = offsetOf(child, manualOffsets);
+  const relative = {
+    dx: childOffset.dx - parentOffset.dx,
+    dy: childOffset.dy - parentOffset.dy,
+  };
+  const points = source.map((point) => ({
+    x: point.x + parentOffset.dx,
+    y: point.y + parentOffset.dy,
+  }));
+  const lastIndex = points.length - 1;
+  const last = points[lastIndex];
+  let laneStart = lastIndex;
+  if (isHorizontal(cfg)) {
+    while (laneStart > 0 && Math.abs(points[laneStart - 1].x - last.x) < 0.01) laneStart -= 1;
+    for (let index = laneStart; index <= lastIndex; index += 1) points[index].x += relative.dx;
+    points[lastIndex].y += relative.dy;
+  } else {
+    while (laneStart > 0 && Math.abs(points[laneStart - 1].y - last.y) < 0.01) laneStart -= 1;
+    for (let index = laneStart; index <= lastIndex; index += 1) points[index].y += relative.dy;
+    points[lastIndex].x += relative.dx;
+  }
+  return points;
+}
+
 /* one orthogonal path between parent & child.
    Manual waypoints OR manual endpoint anchors override the auto route. */
 export function routeConnector(parent, child, cfg, manualOffsets, edgeWaypoints, edgeAnchors) {
   const wps = edgeWaypoints && edgeWaypoints[child.node.id];
   const anchors = edgeAnchors && edgeAnchors[child.node.id];
   if ((wps && wps.length) || anchors) return waypointPath(parent, child, wps || [], cfg, manualOffsets, anchors);
+  // AutoSmart may provide deterministic lanes around packed rows. They are
+  // subordinate to user-edited waypoints/anchors, so manual line editing still
+  // has exactly the same precedence as before.
+  if (child.routePoints && child.routePoints.length) {
+    return waypointPath(parent, child, movedAutomaticWaypoints(parent, child, cfg, manualOffsets), cfg, manualOffsets, null);
+  }
 
   const P = effCenter(parent, manualOffsets), C = effCenter(child, manualOffsets);
   const pw = parent.node.width, ph = parent.node.height;
@@ -100,6 +148,20 @@ export function edgeControlPoints(parent, child, wps, cfg, manualOffsets, anchor
   return [S].concat(wps.map((w) => ({ x: w.x, y: w.y })), [E]);
 }
 
+/* Editing controls must follow the route that is currently visible. GridSmart
+   stores its automatic orthogonal channel on the positioned child; ignoring
+   those points makes an edit handle fall back to the generic facing side even
+   when the painted line enters through another side. Manual waypoints or
+   anchors remain authoritative and intentionally replace the automatic route. */
+export function edgeEditingWaypoints(child, manualWaypoints, anchors, parent, cfg, manualOffsets) {
+  if (anchors || (Array.isArray(manualWaypoints) && manualWaypoints.length)) {
+    return manualWaypoints || [];
+  }
+  return parent && cfg
+    ? movedAutomaticWaypoints(parent, child, cfg, manualOffsets)
+    : Array.isArray(child?.routePoints) ? child.routePoints : [];
+}
+
 /* midpoint of whichever box side faces `toward` (aspect-aware diagonal split) */
 function facingEdge(posNode, center, toward) {
   const w = posNode.node.width, h = posNode.node.height;
@@ -115,7 +177,22 @@ export function orthoThrough(controls, horizontal) {
     if (A.x !== B.x && A.y !== B.y) out.push(horizontal ? { x: B.x, y: A.y } : { x: A.x, y: B.y });
     out.push(B);
   }
-  return out;
+  let changed = true;
+  while (changed && out.length > 2) {
+    changed = false;
+    for (let i = 1; i < out.length - 1; i += 1) {
+      const a = out[i - 1], b = out[i], c = out[i + 1];
+      const sameColumn = Math.abs(a.x - b.x) < 0.01 && Math.abs(b.x - c.x) < 0.01;
+      const sameRow = Math.abs(a.y - b.y) < 0.01 && Math.abs(b.y - c.y) < 0.01;
+      if (!sameColumn && !sameRow) continue;
+      out.splice(i, 1);
+      changed = true;
+      break;
+    }
+  }
+  return out.filter((point, index) => index === 0
+    || Math.abs(point.x - out[index - 1].x) > 0.01
+    || Math.abs(point.y - out[index - 1].y) > 0.01);
 }
 
 export function waypointPath(parent, child, wps, cfg, manualOffsets, anchors) {

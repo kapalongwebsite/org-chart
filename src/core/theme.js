@@ -15,7 +15,7 @@ export const DEFAULT_SETTINGS = {
   spacingY: 70,
   gridSize: 22,
   orientation: 'TopToBottom',
-  subtreeMode: 'Balanced',
+  subtreeMode: 'AutoSmart',
   showToolbar: true,
   showGrid: false,
   snapGrid: false,

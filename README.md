@@ -9,7 +9,7 @@ recommendation, `layoutPrintChart()` to obtain fit diagnostics, and only export
 when `result.ok` is true. `renderPrintChartFragment()` is intended for a host
 application that owns the official seal, header, background, and footer.
 
-A dependency-free **organizational chart engine** with automatic subtree layout.
+An **organizational chart engine** with automatic compact-grid and legacy subtree layouts.
 Built from scratch in vanilla JavaScript — no Syncfusion, GoJS, yFiles, D3, or any
 paid/heavy diagram library. Ships three layers:
 
@@ -24,8 +24,20 @@ paid/heavy diagram library. Ships three layers:
 
 ## 1. What it does
 
-- **8 subtree layout modes:** `Balanced`, `Center`, `Left`, `Right`, `Alternate`,
-  `AlternateLeft`, `AlternateRight`, `Matrix`.
+- **10 subtree layout modes:** `AutoSmart` (default), `GridSmart`, `Balanced`, `Center`, `Left`,
+  `Right`, `Alternate`, `AlternateLeft`, `AlternateRight`, `Matrix`. Auto Smart
+  recursively packs measured structural subtrees and direct personnel into a compact
+  target-aware grid. It evaluates ordered rows, contiguous columns, and balanced
+  masonry columns per subtree, but scores hierarchy clarity, connector detours, and
+  balanced row fills before accepting a denser arrangement. Direct staff may form a
+  dedicated band when that keeps divisions unambiguous. The selected geometry uses
+  card-aware orthogonal routing. Grid Smart is an API-selectable experimental mode that
+  converts measured subtrees into sparse card-and-channel footprints inside a quantized
+  invisible occupancy mould. Sibling subtree bounds may overlap only where their actual
+  cards, hierarchy channels, and clearance cells remain disjoint, allowing complementary
+  branches to interlock without mixing their connections. It then snaps card centres onto
+  the same lattice and routes every automatic edge through reserved card-free channels,
+  preferring shorter paths with fewer bends.
 - **4 orientations:** `TopToBottom`, `BottomToTop`, `LeftToRight`, `RightToLeft`.
 - Absolutely-positioned HTML cards + SVG orthogonal connectors.
 - Pan, zoom, node dragging (with optional grid snapping), manual offsets.
@@ -103,7 +115,7 @@ import 'local-org-chart/style.css'
       ref="chart"
       :nodes="nodes"
       orientation="TopToBottom"
-      subtree-mode="Balanced"
+      subtree-mode="AutoSmart"
       @node-click="onNodeClick"
       @layout-change="onLayoutChange"
     />
@@ -158,7 +170,7 @@ import 'local-org-chart/style.css'
 const chart = createOrgChart(document.getElementById('chart'), {
   nodes,
   orientation: 'TopToBottom',
-  subtreeMode: 'Balanced',
+  subtreeMode: 'AutoSmart',
 })
 
 chart.on('node-click', (e) => console.log(e.id))
@@ -205,7 +217,7 @@ you render a chart.
 |------|------|---------|-------------|
 | `nodes` | `Array` | `[]` | flat node list (see schema below) |
 | `orientation` | `String` | `'TopToBottom'` | one of the 4 orientations |
-| `subtreeMode` | `String` | `'Balanced'` | one of the 8 subtree modes |
+| `subtreeMode` | `String` | `'AutoSmart'` | one of the 9 subtree modes |
 | `spacingX` | `Number` | `40` | horizontal gap |
 | `spacingY` | `Number` | `70` | vertical gap |
 | `enableDragging` | `Boolean` | `true` | allow node drag |
@@ -229,7 +241,10 @@ you render a chart.
 | `userToFields` | `Function` | `null` | `(user, node) => patch` — map a chosen user to node fields (default: name/title/photo_url) |
 | `snapAlign` | `Boolean` | `true` | while dragging, snap to the parent's connector axis + sibling centers (with guide lines) |
 | `fitOnInit` | `Boolean` | `true` | frame the chart on mount |
-| `toolbar` | `Boolean` | `true` | show the built-in toolbar |
+| `layoutWorker` | `Boolean` | `true` | calculate full structural layouts off the UI thread; set `false` only for synchronous first-paint compatibility |
+| `layoutCache` | `Boolean` | `true` | reuse exact completed layouts from a bounded in-memory cache |
+| `toolbar` | `Boolean \| Object` | `true` | show the built-in toolbar; legacy subtree-strategy buttons are opt-in with `{ subtree: true }` |
+| `advancedLayoutControls` | `Boolean` | `false` | show legacy per-node layout-strategy overrides in the inspector |
 | `persist` | `Boolean` | `false` | mirror state to `localStorage` |
 | `storageKey` | `String` | `'local-org-chart.state'` | persistence key |
 
@@ -241,6 +256,8 @@ feature flags updates the chart automatically (no manual re-init). When changing
 
 `node-click`, `node-select`, `node-drag-start`, `node-drag`, `node-drag-end`,
 `layout-change`, `orientation-change`, `subtree-mode-change`, `edit-mode-change`,
+`layout-start`, `layout-complete` (`{ reason, durationMs, cached }`),
+`layout-cancel`, `layout-error`,
 `node-change`, `settings-change`, `inspector-open`/`-close`, `settings-open`/`-close`,
 `fullscreen-change`, `history-change` (`{ canUndo, canRedo }`), `attach-start`/`attach-cancel`,
 `user-select` (`{ id, user, node }` — a typeahead pick), `presets-change`, `preset-load`,
@@ -260,12 +277,28 @@ All methods are available on:
 | Method | Description |
 |--------|-------------|
 | `fitToScreen()` | Zoom & pan to frame all visible nodes |
-| `relayout()` | Recalculate layout; clears manual offsets & waypoints |
-| `resetView()` | Clear search + relayout + fit (one-stop view reset) |
+| `relayout()` | Recalculate automatic geometry while preserving manual card and connector adjustments |
+| `forceRelayout()` | Clear manual geometry and rebuild every card and connector from the chart data |
+| `resetView()` | Clear search + force re-layout + fit (one-stop full reset) |
+| `isLayoutBusy()` | Whether a full layout is currently being calculated |
+| `whenLayoutSettled()` | Promise resolving `true` when the latest layout applies, or `false` if it is cancelled/fails |
+| `cancelLayout()` | Cancel the active calculation; returns whether one was active |
 | `expandAll()` | Expand every collapsed node |
 | `collapseAll()` | Collapse every non-root node with children |
 | `toggleCollapse(id)` | Toggle a single node's collapsed state |
 | `centerOnNode(id)` | Pan to center a specific node in the viewport |
+
+Resizing the chart host changes only the viewport and does not regenerate chart
+geometry. Set `reflowOnResize: true` only for an intentionally responsive
+screen layout. Exact tarp and print dimensions belong to the physical-canvas
+print API rather than ordinary viewport resizing.
+
+Full structural calculations are asynchronous by default. The current chart
+stays visible while the worker calculates, and only the newest request may
+apply. `relayout()`, `forceRelayout()`, `resetView()`, `setNodes()`,
+`setOrientation()`, `setSubtreeMode()`, and `setSpacing()` return a completion
+promise. Width/height fields and built-in layout sliders calculate once when the
+edit is committed, not for every intermediate keystroke or slider position.
 
 ### Fullscreen
 
@@ -289,10 +322,16 @@ All methods are available on:
 
 ### Orientation / Subtree
 
+The normal toolbar intentionally exposes one automatic layout experience. Legacy
+subtree strategies remain available to saved charts and programmatic consumers,
+but their toolbar group appears only with `toolbar: { subtree: true }`. Likewise,
+set `advancedLayoutControls: true` only for expert editors that need per-node
+strategy overrides.
+
 | Method | Description |
 |--------|-------------|
 | `setOrientation(o)` | `TopToBottom`, `BottomToTop`, `LeftToRight`, `RightToLeft`; aliases `Top`, `Bottom`, `Left`, `Right` |
-| `setSubtreeMode(m)` | `'Balanced'` · `'Center'` · `'Left'` · `'Right'` · `'Alternate'` · `'AlternateLeft'` · `'AlternateRight'` · `'Matrix'` (API-only — see note) |
+| `setSubtreeMode(m)` | `'AutoSmart'` · `'GridSmart'` (experimental API mode) · `'Balanced'` · `'Center'` · `'Left'` · `'Right'` · `'Alternate'` · `'AlternateLeft'` · `'AlternateRight'` · `'Matrix'` (API-only — see note) |
 | `setSpacing(x?, y?)` | Adjust horizontal / vertical gap between nodes |
 
 > **Note on `Matrix`:** it's accepted by the API but **not shown in the toolbar / inspector**,
@@ -344,7 +383,9 @@ Each box that has children shows a **`+` / `−`** handle centered on its **bott
 "Expand"/"Collapse" hint). `−` = expanded, `+` = collapsed (subtree hidden). Collapsing hides the
 **whole** subtree below that node. Toggling a node **does not re-flow the rest of the chart** — the
 other boxes stay exactly where they are, so an accidental collapse won't scramble your layout. Use
-**Re-layout** (or `relayout()`) to reflow everything on purpose.
+**Re-layout** (or `relayout()`) to incorporate structural changes while preserving
+manual card and connector decisions. Use `forceRelayout()` only when you intend to
+clear manual geometry and regenerate the complete chart.
 
 ### Multi-select & group move
 
@@ -374,6 +415,59 @@ picked lines highlight. Press **Delete** to **straighten** them (drop their wayp
 | `resetSelectedEdges()` | Straighten the selected lines (remove waypoints + endpoint anchors) |
 
 > Listen to `edges-select` (`{ ids }`) and `edges-reset` (`{ ids }`).
+
+### GridSmart family connector networks
+
+GridSmart routes siblings as one parent-owned family network: a shared exit, an
+editable orthogonal stem, row/column buses, and short private branches. The layout
+result exposes these as `familyNetworks`; every network contains its physical
+`segments`, `stemSegments`, `buses`, `branches`, and `junctions`, together with the
+logical `parentId` and `childIds` that the geometry represents.
+
+The family network is the primary visible geometry. Screen, SVG/PNG/PDF export,
+and print draw each physical network segment once; they do not paint one complete
+parent-to-child route for every sibling and then cover up the duplicates. Complete
+per-child paths remain transparent relationship/editing geometry so a child can
+still be selected, detached, reparented, or given a manual waypoint. A manual node
+or edge move explicitly rebuilds the affected parent network from those edited
+constraints before it is painted. Standalone single-child relationships retain the
+normal individual connector path.
+
+When a personnel-only section wraps across multiple rows, GridSmart may shift the
+section heading card onto the nearest card-free grid gutter. This placement change
+lets one straight family spine feed short row buses, avoiding long drops that could
+make later-row siblings look like descendants of the row above.
+
+When an office root has three structural branches plus direct personnel,
+GridSmart keeps the divisions in one source-ordered left/centre/right rank on
+square and desktop canvases, with the middle division on the office centreline.
+Two-person outer divisions use a horizontal pair to preserve compact sibling
+gutters, and any remaining asymmetry is absorbed by the outer fitted canvas
+margin instead of being inserted between divisions; mobile may still stack them.
+Four or more peer division headings use balanced
+source-ordered shelf rows. Direct personnel remain in their own preceding band,
+and descendants inside each division still use
+the sparse occupancy mould, so the top-level hierarchy stays visually clear without
+giving up compact section-level packing.
+
+In edit mode, drag the highlighted shared trunk to move the whole family channel.
+Dragging or adding waypoints on a private child branch still creates the existing
+child-specific override and takes precedence over the family route. Delete/Backspace
+on a selected family trunk resets its visual constraint to automatic routing; it does
+not delete relationships. Detach and reparent remain explicit structural actions.
+
+| Method | Description |
+|--------|-------------|
+| `getFamilyRouteSelection()` | Selected parent-family id, or `null` |
+| `getFamilyNetworks()` | Current parent-owned stem, buses, branches, junctions, and affected child ids |
+| `getFamilyRouteOverrides()` | Portable parent-keyed trunk constraints |
+| `setFamilyRouteOverride(parentId, { trunkOffset })` | Pin a safe family trunk offset from the parent axis |
+| `resetFamilyRoute(parentId?)` | Remove the manual family constraint and regenerate automatically |
+
+Route precedence is: child waypoints/anchors, manual family constraint, automatic
+family network, then the individual obstacle router as a safety fallback. Full
+layouts, JSON export, persistence, and undo/redo include `familyRouteOverrides`;
+older saved layouts remain valid because the field is optional.
 
 ### Legend
 
@@ -480,6 +574,9 @@ Presets live under `localStorage` key `${storageKey}.presets`, independent of `p
 | `deleteNode(id)` | Delete a node + its descendants (edit mode only) |
 | `reparentNode(id, newParentId)` | Re-wire a node's parent — **connection only, no relayout** (positions are kept) |
 | `detachNode(id)` | Detach from parent (remove the connection); nothing moves |
+| `getFamilyRouteSelection()` | Return the selected shared family connector |
+| `setFamilyRouteOverride(parentId, override)` | Move/pin a shared family trunk without changing relationships |
+| `resetFamilyRoute(parentId?)` | Reset a shared family trunk to automatic routing |
 | `attachNode(id, parentId)` | Attach under a parent (add the connection); nothing moves |
 | `beginAttach(id)` / `cancelAttach()` | Interactive attach: after `beginAttach`, the next node click becomes `id`'s parent |
 | `openInspector(id)` | Open the right slide-in panel for a node |
@@ -561,7 +658,7 @@ overlaying the canvas.
 
 ### Requested toolbar support
 
-Supported: all subtree modes (`Balanced`, `Center`, `Left`, `Right`, `Alternate`,
+Supported: all subtree modes (`AutoSmart`, `Balanced`, `Center`, `Left`, `Right`, `Alternate`,
 `AlternateLeft`, `AlternateRight`, `Matrix`), all four orientations, fit, re-layout,
 reset, expand/collapse, search, show grid, snap to grid, align to grid, edit mode,
 settings panel, **fullscreen**, PNG, SVG, PDF, JSON export, JSON import, and raw SVG
@@ -590,6 +687,7 @@ uses the browser print dialog from a generated SVG rather than a binary PDF writ
     <div class="my-toolbar">
       <button @click="chartRef.fitToScreen()">Fit</button>
       <button @click="chartRef.relayout()">Re-layout</button>
+      <button @click="chartRef.forceRelayout()">Force re-layout</button>
       <button @click="chartRef.resetView()">Reset</button>
       <button @click="chartRef.toggleFullscreen()">Fullscreen</button>
       <button @click="chartRef.expandAll()">Expand</button>
@@ -756,7 +854,7 @@ const nodes = ref([/* … */])
 .my-search, .my-select { padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
 </style>
 ```
-Common `chart` methods for buttons: `fitToScreen()`, `resetView()`, `relayout()`, `expandAll()`,
+Common `chart` methods for buttons: `fitToScreen()`, `resetView()`, `relayout()`, `forceRelayout()`, `expandAll()`,
 `collapseAll()`, `setOrientation(o)`, `setSubtreeMode(m)`, `setEditMode(on)`, `toggleFullscreen()`,
 `search(q)`, `toggleSettings()`, `exportSVG()/exportPNG()/exportPDF()/exportJSON()`. Read
 `state.subtreeMode` / `state.orientation` / `state.editMode` / `state.zoom` for active styling.
@@ -812,6 +910,11 @@ Select a connector in **edit mode** and you get, besides the waypoint dots:
 - **Parent-end square** (filled) — drag it **onto another box to re-parent** that node (changes
   `parentId`, the tree relays out; cycles are prevented). **Double-click** it to **detach** the node
   (make it a root). There's also a **Detach** button in the inspector footer.
+
+Endpoint squares follow the currently painted automatic route: a line entering
+from above starts with its child endpoint on the top edge. Adding the first
+manual waypoint preserves that automatic route and then edits it, so selection
+or the first adjustment does not make the connector jump to another side.
 
 These stay tree-consistent — re-parenting moves a node under a new parent; it does **not** create
 arbitrary cross-links (a tree layout can't auto-place those). Anchors persist + export; re-parent /

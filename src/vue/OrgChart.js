@@ -18,11 +18,13 @@ import { createOrgChart } from '../vanilla/createOrgChart.js';
 const EVENTS = [
   'node-click', 'node-select', 'node-drag-start', 'node-drag', 'node-drag-end',
   'layout-change', 'orientation-change', 'subtree-mode-change',
+  'relayout', 'layout-start', 'layout-complete', 'layout-cancel', 'layout-error',
   'edit-mode-change', 'node-change', 'settings-change',
   'inspector-open', 'inspector-close', 'settings-open', 'settings-close', 'fullscreen-change',
   'history-change', 'attach-start', 'attach-cancel', 'user-select',
   'presets-change', 'preset-load', 'selection-change', 'legend-change',
   'edges-select', 'edges-reset',
+  'family-route-select', 'family-route-change', 'family-route-reset',
 ];
 
 function toStyle(s) {
@@ -36,7 +38,7 @@ export const OrgChart = defineComponent({
   props: {
     nodes: { type: Array, default: () => [] },
     orientation: { type: String, default: 'TopToBottom' },
-    subtreeMode: { type: String, default: 'Balanced' },
+    subtreeMode: { type: String, default: 'AutoSmart' },
     spacingX: { type: Number, default: 40 },
     spacingY: { type: Number, default: 70 },
     enableDragging: { type: Boolean, default: true },
@@ -61,7 +63,13 @@ export const OrgChart = defineComponent({
     snapAlign: { type: Boolean, default: true },                   // snap-to-align (parent axis + siblings) while dragging
     settings: { type: Object, default: null },
     fitOnInit: { type: Boolean, default: true },
-    toolbar: { type: [Boolean, Object], default: true },   // false | true | { subtree, orient, actions, grid, mode, export }
+    targetAspect: { type: Number, default: 1.6 },
+    targetSize: { type: Object, default: null },
+    reflowOnResize: { type: Boolean, default: false },
+    layoutWorker: { type: Boolean, default: true },
+    layoutCache: { type: Boolean, default: true },
+    toolbar: { type: [Boolean, Object], default: true },   // subtree strategy buttons are opt-in via { subtree: true }
+    advancedLayoutControls: { type: Boolean, default: false },
     persist: { type: Boolean, default: false },
     storageKey: { type: String, default: 'local-org-chart.state' },
   },
@@ -117,8 +125,14 @@ export const OrgChart = defineComponent({
         snapAlign: props.snapAlign,
         settings: props.settings || undefined,
         fitOnInit: props.fitOnInit,
+        targetAspect: props.targetAspect,
+        targetSize: props.targetSize,
+        reflowOnResize: props.reflowOnResize,
+        layoutWorker: props.layoutWorker,
+        layoutCache: props.layoutCache,
         // a #toolbar slot replaces the built-in toolbar
         toolbar: slots.toolbar ? false : props.toolbar,
+        advancedLayoutControls: props.advancedLayoutControls,
         nodeSlots: !!slots.node,
         inspectorSlot: !!slots.inspector,
         settingsSlot: !!slots.settings,
@@ -158,6 +172,8 @@ export const OrgChart = defineComponent({
     watch(() => props.userSearch, (v) => chart && chart.setOption('userSearch', v || null));
     watch(() => props.userToFields, (v) => chart && chart.setOption('userToFields', v || null));
     watch(() => props.snapAlign, (v) => chart && chart.setOption('snapAlign', v));
+    watch(() => props.targetAspect, (v) => chart && chart.setOption('targetAspect', v));
+    watch(() => props.targetSize, (v) => chart && chart.setOption('targetSize', v), { deep: true });
 
     onBeforeUnmount(() => { if (chart) { chart.destroy(); chart = null; } });
 
@@ -165,6 +181,7 @@ export const OrgChart = defineComponent({
       // ---- view / layout ----
       fitToScreen: () => chart && chart.fitToScreen(),
       relayout: () => chart && chart.relayout(),
+      forceRelayout: () => chart && chart.forceRelayout(),
       resetView: () => chart && chart.resetView(),
       expandAll: () => chart && chart.expandAll(),
       collapseAll: () => chart && chart.collapseAll(),
@@ -217,6 +234,11 @@ export const OrgChart = defineComponent({
       setEdgeSelection: (ids) => chart && chart.setEdgeSelection(ids),
       clearEdgeSelection: () => chart && chart.clearEdgeSelection(),
       resetSelectedEdges: () => chart && chart.resetSelectedEdges(),
+      getFamilyRouteSelection: () => (chart ? chart.getFamilyRouteSelection() : null),
+      getFamilyNetworks: () => (chart ? chart.getFamilyNetworks() : []),
+      getFamilyRouteOverrides: () => (chart ? chart.getFamilyRouteOverrides() : {}),
+      setFamilyRouteOverride: (parentId, override) => chart && chart.setFamilyRouteOverride(parentId, override),
+      resetFamilyRoute: (parentId) => chart && chart.resetFamilyRoute(parentId),
 
       // ---- edit mode / inspector / settings ----
       setEditMode: (v) => chart && chart.setEditMode(v),
@@ -253,6 +275,9 @@ export const OrgChart = defineComponent({
       getState: () => chart && chart.getState(),
       getNodes: () => chart && chart.getNodes(),
       getPositioned: () => chart && chart.getPositioned(),
+      isLayoutBusy: () => !!(chart && chart.isLayoutBusy()),
+      whenLayoutSettled: () => chart ? chart.whenLayoutSettled() : Promise.resolve(false),
+      cancelLayout: () => !!(chart && chart.cancelLayout()),
 
       // ---- export ----
       exportJSON: (download) => chart && chart.exportJSON(download),

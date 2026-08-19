@@ -6,6 +6,7 @@ export const SNAKE_STUB = 26;   // horizontal gap between spine and a snake chil
 export const CANVAS_PAD = 80;   // padding around the normalized layout
 
 export const SUBTREE_MODES = [
+  'AutoSmart', 'GridSmart',
   'Balanced', 'Center', 'Left', 'Right',
   'Alternate', 'AlternateLeft', 'AlternateRight', 'Matrix',
 ];
@@ -13,7 +14,7 @@ export const ORIENTATIONS = ['TopToBottom', 'BottomToTop', 'LeftToRight', 'Right
 
 export const DEFAULTS = {
   orientation: 'TopToBottom',
-  subtreeMode: 'Balanced',
+  subtreeMode: 'AutoSmart',
   spacingX: 40,
   spacingY: 70,
   gridSize: 22,

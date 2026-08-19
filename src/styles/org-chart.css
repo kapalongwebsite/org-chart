@@ -80,6 +80,7 @@
 
 .loc-connectors { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
 .loc-connectors path { fill: none; stroke: var(--loc-connector); stroke-width: 2; }
+.loc-connectors .loc-logical-edge { stroke: transparent; }
 .loc-connectors path.loc-hl { stroke: #f59e0b; stroke-width: 2.5; }
 .loc-connectors path.loc-sel { stroke: var(--loc-accent); stroke-width: 3; }
 .loc-connectors path.loc-edge-selected { stroke: var(--loc-accent); stroke-width: 3; stroke-dasharray: 6 3; }
@@ -87,6 +88,16 @@
 .loc-edgehits path {
   fill: none; stroke: transparent; stroke-width: 16;
   pointer-events: stroke; cursor: pointer; vector-effect: non-scaling-stroke;
+}
+.loc-familyhits path {
+  fill: none; stroke: transparent; stroke-width: 20;
+  pointer-events: stroke; cursor: ew-resize; vector-effect: non-scaling-stroke;
+}
+.loc-root.loc-horizontal .loc-familyhits path { cursor: ns-resize; }
+.loc-connectors path.loc-family-member { stroke: var(--loc-accent); stroke-width: 2.5; }
+.loc-family-selection .loc-family-selected {
+  fill: none; stroke: var(--loc-accent); stroke-width: 4;
+  stroke-dasharray: 8 4; pointer-events: none; vector-effect: non-scaling-stroke;
 }
 
 .loc-overlay { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 5; }

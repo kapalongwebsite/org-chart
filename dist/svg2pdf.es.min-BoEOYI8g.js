@@ -2234,7 +2234,7 @@ var Re = function() {
 						h,
 						g
 					], v = Y(this.element, _, i, a, n, r, e), e.pdf.setCurrentTransformationMatrix(v), e.pdf.addImage(p, "", 0, 0, h, g), [3, 7];
-					case 6: return y = b.sent(), typeof console == "object" && console.warn && console.warn(`Could not load image ${this.imageUrl}.
+					case 6: return y = b.sent(), typeof console == "object" && console.warn && console.warn(`Could not load image ${this.imageUrl}. 
 ${y}`), [3, 7];
 					case 7: return [2];
 				}

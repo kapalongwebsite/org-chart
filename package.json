@@ -1,8 +1,8 @@
 {
   "name": "local-org-chart",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "private": true,
-  "description": "Dependency-free organizational chart engine with automatic subtree layout (Balanced / Alternate / Matrix), 4 orientations, pan/zoom/drag, search, expand-collapse, manual offsets, orthogonal connector waypoints, and SVG/PNG/PDF/JSON export. Ships a framework-independent core, a plain-JS renderer, and a Vue 3 wrapper.",
+  "description": "Organizational chart engine with deterministic adaptive-grid Auto Smart layout, legacy layout modes, 4 orientations, pan/zoom/drag, search, expand-collapse, manual offsets, orthogonal connector waypoints, and SVG/PNG/PDF/JSON export. Ships a framework-independent core, a plain-JS renderer, and a Vue 3 wrapper.",
   "type": "module",
   "license": "UNLICENSED",
   "main": "./dist/local-org-chart.cjs",
@@ -64,6 +64,7 @@
     "vue": "^3.4.0"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
     "jspdf": "^4.2.1",
     "svg2pdf.js": "^2.7.0"
   }
