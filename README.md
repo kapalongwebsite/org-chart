@@ -525,7 +525,7 @@ drawer (name + **Save**, a *positions* toggle for full vs pattern-only, and an A
 | `listLayoutPresets()` | `[{ name, full, savedAt }]` |
 | `getLayoutPresets()` | The raw preset map (to sync to your backend) |
 | `getLayout({ full })` | A portable layout object — **POST it to your backend** |
-| `applyLayout(obj)` | Apply a layout object fetched back from your backend |
+| `applyLayout(obj)` | Apply a layout object fetched back from your backend; returns a promise that settles after layout |
 
 Presets live under `localStorage` key `${storageKey}.presets`, independent of `persist`. Events:
 `presets-change` (`{ presets }`) and `preset-load` (`{ name, preset }`).

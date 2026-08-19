@@ -1815,7 +1815,7 @@ export function createOrgChart(host, userOpts = {}) {
   function getLayout(o) { return captureLayout(!(o && o.full === false)); }
   /* apply a layout object (from a preset or your backend) onto the current data */
   function applyLayout(obj) {
-    if (!obj) return;
+    if (!obj) return Promise.resolve(false);
     applyViewConfig(obj.view);
     if (obj.full && obj.layout) {
       manualOffsets = cloneData(obj.layout.manualOffsets) || Object.create(null);
@@ -1835,10 +1835,13 @@ export function createOrgChart(host, userOpts = {}) {
     for (const id in elById) { elById[id].remove(); delete elById[id]; }
     for (const id in pathById) { pathById[id].remove(); delete pathById[id]; }
     for (const id in hitById) { hitById[id].remove(); delete hitById[id]; }
-    applyGridOverlay(); syncToolbar(); refresh('preset');
+    applyGridOverlay(); syncToolbar();
+    const pending = refresh('preset');
     if (settingsPanel.classList.contains('loc-open')) renderSettings();
-    applyLayoutChangeView(); pushHistory();
+    pending.then((applied) => { if (applied) applyLayoutChangeView(); });
+    pushHistory();
     emit('settings-change', getSettings());
+    return pending;
   }
   function listLayoutPresets() {
     const m = readPresets();

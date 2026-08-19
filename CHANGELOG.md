@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.18.1
+
+- Saved layouts now wait for their asynchronous worker calculation before the
+  chart is reframed. `applyLayout()` returns the active layout promise so host
+  applications can restore persisted geometry and fit the final result without
+  racing the initial background layout.
+
 ## 1.18.0
 
 - Full Grid Smart calculations now run in a cancellable Web Worker by default,
