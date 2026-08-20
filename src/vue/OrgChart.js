@@ -14,6 +14,9 @@ import {
   onMounted, onBeforeUnmount, watch, Teleport,
 } from 'vue';
 import { createOrgChart } from '../vanilla/createOrgChart.js';
+import {
+  DEPT_SIZE, POS_SIZE, VIRTUAL_PHOTO_FRAME, RENDERED_PHOTO, PHOTO_BACKGROUND, PERSON_TEXT_HEIGHT,
+} from '../core/constants.js';
 
 const EVENTS = [
   'node-click', 'node-select', 'node-drag-start', 'node-drag', 'node-drag-end',
@@ -52,9 +55,15 @@ export const OrgChart = defineComponent({
     fullscreenControl: { type: Boolean, default: true },         // floating fullscreen button on the canvas
     fitOnLayoutChange: { type: [Boolean, String], default: true }, // re-frame after relayout: true|'fit' · 'recenter' · false|'none'
     showImages: { type: Boolean, default: true },                  // show person photos; off → user-silhouette icon
-    photoHeight: { type: Number, default: 104 },                   // person-photo height in px (uniform, larger = bigger image)
-    cardWidth: { type: Number, default: 180 },                     // person-card width in px (global; height = photoHeight + text block)
-    photoContain: { type: Boolean, default: true },                // fit the WHOLE photo inside the card (no crop); false = crop/cover
+    photoHeight: { type: Number, default: POS_SIZE.height - PERSON_TEXT_HEIGHT },
+    cardWidth: { type: Number, default: POS_SIZE.width },
+    textHeight: { type: Number, default: PERSON_TEXT_HEIGHT },
+    departmentWidth: { type: Number, default: DEPT_SIZE.width },
+    departmentHeight: { type: Number, default: DEPT_SIZE.height },
+    photoContain: { type: Boolean, default: RENDERED_PHOTO.fit === 'contain' },
+    virtualPhotoFrame: { type: Object, default: () => ({ ...VIRTUAL_PHOTO_FRAME }) },
+    renderedImage: { type: Object, default: () => ({ ...RENDERED_PHOTO }) },
+    photoBackground: { type: String, default: PHOTO_BACKGROUND },
     legend: { type: Boolean, default: false },                     // show the floating legend
     legendTarget: { type: [String, Object], default: null },       // mount the legend into an external element
     autoEdgeSide: { type: Boolean, default: false },               // (opt-in) endpoints follow waypoints onto any box side
@@ -115,7 +124,13 @@ export const OrgChart = defineComponent({
         showImages: props.showImages,
         photoHeight: props.photoHeight,
         cardWidth: props.cardWidth,
+        textHeight: props.textHeight,
+        departmentWidth: props.departmentWidth,
+        departmentHeight: props.departmentHeight,
         photoContain: props.photoContain,
+        virtualPhotoFrame: props.virtualPhotoFrame,
+        renderedImage: props.renderedImage,
+        photoBackground: props.photoBackground,
         legend: props.legend,
         legendTarget: props.legendTarget || null,
         legendSlot: !!slots.legend,
@@ -166,7 +181,13 @@ export const OrgChart = defineComponent({
     watch(() => props.showImages, (v) => chart && chart.setShowImages(v));
     watch(() => props.photoHeight, (v) => chart && chart.setPhotoHeight(v));
     watch(() => props.cardWidth, (v) => chart && chart.setCardWidth(v));
+    watch(() => props.textHeight, (v) => chart && chart.setCardSize({ textHeight: v }));
+    watch(() => props.departmentWidth, (v) => chart && chart.setCardSize({ departmentWidth: v }));
+    watch(() => props.departmentHeight, (v) => chart && chart.setCardSize({ departmentHeight: v }));
     watch(() => props.photoContain, (v) => chart && chart.setPhotoContain(v));
+    watch(() => props.virtualPhotoFrame, (v) => chart && chart.setPhotoRendering({ virtualPhotoFrame: v }), { deep: true });
+    watch(() => props.renderedImage, (v) => chart && chart.setPhotoRendering({ renderedImage: v }), { deep: true });
+    watch(() => props.photoBackground, (v) => chart && chart.setPhotoRendering({ photoBackground: v }));
     watch(() => props.legend, (v) => chart && chart.setShowLegend(v));
     watch(() => props.autoEdgeSide, (v) => chart && chart.setAutoEdgeSide(v));
     watch(() => props.userSearch, (v) => chart && chart.setOption('userSearch', v || null));
@@ -221,6 +242,7 @@ export const OrgChart = defineComponent({
       setPhotoHeight: (px) => chart && chart.setPhotoHeight(px),
       setCardWidth: (px) => chart && chart.setCardWidth(px),
       setCardSize: (o) => chart && chart.setCardSize(o),
+      setPhotoRendering: (o) => chart && chart.setPhotoRendering(o),
       setPhotoContain: (on) => chart && chart.setPhotoContain(on),
       setShowLegend: (on) => chart && chart.setShowLegend(on),
       toggleLegend: (force) => chart && chart.toggleLegend(force),

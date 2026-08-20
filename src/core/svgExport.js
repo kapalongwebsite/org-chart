@@ -4,6 +4,9 @@
 import { effCenter } from './connectors.js';
 import { calculateBounds } from './bounds.js';
 import { resolveConnectorGeometry } from './connectorGeometry.js';
+import {
+  VIRTUAL_PHOTO_FRAME, RENDERED_PHOTO, PHOTO_BACKGROUND, POS_SIZE, PERSON_TEXT_HEIGHT,
+} from './constants.js';
 
 const FONT = '"Segoe UI", system-ui, -apple-system, Arial, sans-serif';
 const BADGE = {
@@ -45,13 +48,12 @@ function deptSVG(n, x, y, fit, measure) {
   for (const ln of lines) { t += txt(ccx, ty, fs, 600, '#ffffff', ln, '0.4'); ty += lh; }
   return t;
 }
-function posSVG(n, x, y, fit, raster, measure, ex) {
+function posSVG(n, x, y, fit, raster, measure, ex, clipIndex) {
   ex = ex || {};
   const W = n.width, H = n.height, ccx = x + W / 2, maxW = W - 16;
-  const photoH = Math.max(20, Math.min(ex.photoH || 62, H - 20));
+  const photoH = Math.max(20, Math.min(ex.photoH || (POS_SIZE.height - PERSON_TEXT_HEIGHT), H - 20));
   let s = `<rect x="${x}" y="${y}" width="${W}" height="${H}" rx="8" fill="#ffffff" stroke="#d0d5dd"/>`;
-  s += `<path d="${roundTop(x, y, W, photoH, 8)}" fill="#e8edf4"/>`;
-  s += `<line x1="${x}" y1="${y + photoH}" x2="${x + W}" y2="${y + photoH}" stroke="#d0d5dd"/>`;
+  s += `<path d="${roundTop(x, y, W, photoH, 8)}" fill="${esc(ex.photoBackground || PHOTO_BACKGROUND)}"/>`;
   const url = n.data && n.data.photo_url;
   // prefer an embedded (base64) data URL so the photo travels inside the export and
   // works in SVG *and* raster (PNG/PDF) without tainting the canvas. Fall back to the
@@ -60,10 +62,20 @@ function posSVG(n, x, y, fit, raster, measure, ex) {
   const href = embedded || (url && !raster ? url : null);
   if (href) {
     const par = ex.contain ? 'xMidYMid meet' : 'xMidYMid slice';
-    s += `<image x="${x}" y="${y}" width="${W}" height="${photoH}" href="${esc(href)}" preserveAspectRatio="${par}"/>`;
+    const frameW = Math.max(1, ex.frameWidth || VIRTUAL_PHOTO_FRAME.width);
+    const frameH = Math.max(1, ex.frameHeight || VIRTUAL_PHOTO_FRAME.height);
+    const imageW = W * (Math.max(1, ex.imageWidth || RENDERED_PHOTO.width) / frameW);
+    const imageH = photoH * (Math.max(1, ex.imageHeight || RENDERED_PHOTO.height) / frameH);
+    const imageX = x + (W - imageW) / 2 + (ex.offsetX || 0) * W / frameW;
+    const imageY = y + (photoH - imageH) / 2 + (ex.offsetY || 0) * photoH / frameH;
+    const clipId = `loc-photo-clip-${clipIndex}`;
+    s += `<defs><clipPath id="${clipId}"><path d="${roundTop(x, y, W, photoH, 8)}"/></clipPath></defs>`;
+    s += `<image x="${imageX.toFixed(2)}" y="${imageY.toFixed(2)}" width="${imageW.toFixed(2)}" height="${imageH.toFixed(2)}" `
+      + `href="${esc(href)}" preserveAspectRatio="${par}" clip-path="url(#${clipId})"/>`;
   } else {
-    s += `<text x="${ccx.toFixed(1)}" y="${(y + photoH / 2 + 10).toFixed(1)}" font-family='${FONT}' font-size="30" fill="#9ca3af" text-anchor="middle">●</text>`;
+    s += `<text x="${ccx.toFixed(1)}" y="${(y + photoH / 2 + 10).toFixed(1)}" font-family='${FONT}' font-size="30" fill="#ffffff" fill-opacity="0.72" text-anchor="middle">●</text>`;
   }
+  s += `<line x1="${x}" y1="${y + photoH}" x2="${x + W}" y2="${y + photoH}" stroke="#d0d5dd"/>`;
   const areaY = y + photoH, areaH = H - photoH;
   const nameFs = 13.5 * fit, titleFs = 12 * fit, nlh = nameFs * 1.15, tlh = titleFs * 1.15;
   const nameLines = wrap((n.personName || '—').toUpperCase(), `700 ${nameFs}px ${FONT}`, maxW, measure);
@@ -91,7 +103,20 @@ export function buildChartSVG(positioned, paths, opts = {}) {
   const raster = !!opts.raster;
   const measure = opts.measureText || (() => 0);
   const fitOf = opts.fitOf || (() => 1);
-  const ex = { photoH: opts.photoHeight || 62, images: opts.images || null, contain: opts.photoContain !== false };
+  const frame = opts.virtualPhotoFrame || {};
+  const image = opts.renderedImage || {};
+  const ex = {
+    photoH: opts.photoHeight || (POS_SIZE.height - PERSON_TEXT_HEIGHT),
+    images: opts.images || null,
+    contain: opts.photoContain == null ? image.fit !== 'cover' : opts.photoContain !== false,
+    frameWidth: +frame.width || VIRTUAL_PHOTO_FRAME.width,
+    frameHeight: +frame.height || VIRTUAL_PHOTO_FRAME.height,
+    imageWidth: +image.width || RENDERED_PHOTO.width,
+    imageHeight: +image.height || RENDERED_PHOTO.height,
+    offsetX: Number.isFinite(+image.offsetX) ? +image.offsetX : RENDERED_PHOTO.offsetX,
+    offsetY: Number.isFinite(+image.offsetY) ? +image.offsetY : RENDERED_PHOTO.offsetY,
+    photoBackground: opts.photoBackground || PHOTO_BACKGROUND,
+  };
   const b = opts.bounds || calculateBounds(positioned, manualOffsets, 40);
 
   let pathStr = '';
@@ -103,12 +128,13 @@ export function buildChartSVG(positioned, paths, opts = {}) {
   }
 
   let cards = '';
+  let cardIndex = 0;
   for (const p of positioned) {
     const n = p.node, c = effCenter(p, manualOffsets);
     const x = c.x - n.width / 2 - b.x, y = c.y - n.height / 2 - b.y;
     cards += (n.type === 'department')
       ? deptSVG(n, x, y, fitOf(n), measure)
-      : posSVG(n, x, y, fitOf(n), raster, measure, ex);
+      : posSVG(n, x, y, fitOf(n), raster, measure, ex, cardIndex++);
   }
 
   const W = b.w.toFixed(0), H = b.h.toFixed(0);

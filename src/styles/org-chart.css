@@ -164,13 +164,18 @@
   display: flex; flex-direction: column; padding: 0; text-align: center;
 }
 .loc-node.loc-position .loc-photo {
-  flex: 0 0 auto; width: 100%; height: var(--loc-photo-h, 104px); background: #e8edf4;
+  position: relative; flex: 0 0 auto; width: 100%; height: var(--loc-photo-h, 240px);
+  background: var(--loc-photo-bg, #004264);
   border-bottom: 1px solid var(--loc-border);
   display: flex; align-items: center; justify-content: center;
   color: var(--loc-muted); font-size: 30px; overflow: hidden;
 }
 .loc-node.loc-position .loc-photo img {
-  width: 100%; height: 100%; object-fit: var(--loc-photo-fit, cover); display: block;
+  position: absolute; left: calc(50% + var(--loc-photo-offset-x, 0%));
+  top: calc(50% + var(--loc-photo-offset-y, 0%));
+  width: var(--loc-photo-image-w, 105%); height: var(--loc-photo-image-h, 105%);
+  max-width: none; max-height: none; transform: translate(-50%, -50%);
+  object-fit: var(--loc-photo-fit, contain); object-position: center; display: block;
   -webkit-user-drag: none; user-select: none; pointer-events: none;
 }
 .loc-node.loc-position .loc-ptext {
