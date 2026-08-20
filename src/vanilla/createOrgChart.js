@@ -7,7 +7,8 @@ import {
   routeConnector, edgeEndpoints, edgeControlPoints, edgeEditingWaypoints, orthoThrough, effCenter,
   searchNodes as coreSearch, calculateBounds, fitBounds,
   childCount, computeDepths, normalizeImported, exportLayout, buildChartSVG,
-  resolveNodeStyle, normalizeRule, POS_SIZE,
+  resolveNodeStyle, normalizeRule, DEPT_SIZE, POS_SIZE,
+  VIRTUAL_PHOTO_FRAME, RENDERED_PHOTO, PHOTO_BACKGROUND, PERSON_TEXT_HEIGHT,
 } from '../core/index.js';
 import { resolveInteractiveLayoutTarget } from './layoutTarget.js';
 import { resolveConnectorGeometry } from '../core/connectorGeometry.js';
@@ -16,7 +17,7 @@ import { cloneLayoutValue } from './cloneLayoutValue.js';
 
 // person-card height = photo height + this fixed text block, so the image always
 // "tops" the card at its full size and the name/title area stays consistent.
-const CARD_TEXT_BLOCK = 116;
+const CARD_TEXT_BLOCK = PERSON_TEXT_HEIGHT;
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 // Floor for the per-card text auto-fit. 0.5 let labels shrink to half size —
@@ -71,9 +72,15 @@ const DEFAULT_OPTS = {
   legend: false,           // show a floating legend (type / status / active theme rules); toggle via toolbar
   legendTarget: null,      // mount the legend into an external element instead of the canvas corner
   legendSlot: false,       // leave the legend body empty for an external (Vue #legend) slot
-  photoHeight: 104,        // person-photo height in px (uniform across cards; bigger = larger profile image)
+  photoHeight: POS_SIZE.height - PERSON_TEXT_HEIGHT, // person-photo viewport height in px
   cardWidth: POS_SIZE.width, // person-card width in px (global; card height = photoHeight + text block)
-  photoContain: true,      // fit the WHOLE profile image inside the photo area (no crop); false = cover/crop
+  textHeight: PERSON_TEXT_HEIGHT,
+  departmentWidth: DEPT_SIZE.width,
+  departmentHeight: DEPT_SIZE.height,
+  photoContain: RENDERED_PHOTO.fit === 'contain',
+  virtualPhotoFrame: VIRTUAL_PHOTO_FRAME,
+  renderedImage: RENDERED_PHOTO,
+  photoBackground: PHOTO_BACKGROUND,
   showImages: true,        // show person photos; when off (or no photo) a user-silhouette icon is drawn
   // optional async person lookup for the inspector's "Person name" field. A function
   //   (query, node) => Promise<Array<user>> | Array<user>
@@ -114,9 +121,21 @@ export function createOrgChart(host, userOpts = {}) {
     showImages: opts.showImages !== false,
     showLegend: !!opts.legend,
     autoEdgeSide: !!opts.autoEdgeSide,
-    photoHeight: +opts.photoHeight || 104,
-    cardWidth: +opts.cardWidth || POS_SIZE.width,
-    photoContain: opts.photoContain !== false,
+    photoHeight: +userOpts.photoHeight || +(userOpts.node && userOpts.node.photoHeight) || (POS_SIZE.height - PERSON_TEXT_HEIGHT),
+    cardWidth: +userOpts.cardWidth || +(userOpts.node && userOpts.node.width) || POS_SIZE.width,
+    textHeight: +userOpts.textHeight || +(userOpts.node && userOpts.node.textHeight) || PERSON_TEXT_HEIGHT,
+    departmentWidth: +userOpts.departmentWidth || +(userOpts.departmentNode && userOpts.departmentNode.width) || DEPT_SIZE.width,
+    departmentHeight: +userOpts.departmentHeight || +(userOpts.departmentNode && userOpts.departmentNode.height) || DEPT_SIZE.height,
+    photoContain: userOpts.photoContain == null
+      ? !((userOpts.renderedImage && userOpts.renderedImage.fit) && userOpts.renderedImage.fit !== 'contain')
+      : userOpts.photoContain !== false,
+    photoFrameWidth: +(userOpts.virtualPhotoFrame && userOpts.virtualPhotoFrame.width) || VIRTUAL_PHOTO_FRAME.width,
+    photoFrameHeight: +(userOpts.virtualPhotoFrame && userOpts.virtualPhotoFrame.height) || VIRTUAL_PHOTO_FRAME.height,
+    photoImageWidth: +(userOpts.renderedImage && userOpts.renderedImage.width) || RENDERED_PHOTO.width,
+    photoImageHeight: +(userOpts.renderedImage && userOpts.renderedImage.height) || RENDERED_PHOTO.height,
+    photoOffsetX: Number.isFinite(+(userOpts.renderedImage && userOpts.renderedImage.offsetX)) ? +(userOpts.renderedImage && userOpts.renderedImage.offsetX) : RENDERED_PHOTO.offsetX,
+    photoOffsetY: Number.isFinite(+(userOpts.renderedImage && userOpts.renderedImage.offsetY)) ? +(userOpts.renderedImage && userOpts.renderedImage.offsetY) : RENDERED_PHOTO.offsetY,
+    photoBackground: userOpts.photoBackground || PHOTO_BACKGROUND,
   };
   let NODES = (opts.nodes || []).map(makeNode);
   let nodeById = indexNodes(NODES);
@@ -126,11 +145,19 @@ export function createOrgChart(host, userOpts = {}) {
   let familyRouteOverrides = Object.assign(Object.create(null), opts.familyRouteOverrides || {}); // parentId -> stable family bus constraints
   let nodeOverrides = Object.create(null);   // id -> {field: value} manual node edits (persisted overlay)
   let selectedIds = new Set();               // multi-select set; state.selectedNodeId is the "primary" member
+  if (opts.settings) applyCardState(opts.settings);
   let themeRules = ((opts.settings && opts.settings.themeRules) || opts.themeRules || []).map(normalizeRule);
   // snapshot of the as-configured settings — the target that resetSettings() restores to
   const INITIAL_SETTINGS = {
     spacingX: opts.spacingX, spacingY: opts.spacingY, gridSize: opts.gridSize,
     showGrid: !!opts.showGrid, snapGrid: !!opts.snapGrid, alignGrid: initialAlignGrid,
+    cardWidth: state.cardWidth, photoHeight: state.photoHeight, textHeight: state.textHeight,
+    departmentWidth: state.departmentWidth, departmentHeight: state.departmentHeight,
+    photoContain: state.photoContain,
+    photoFrameWidth: state.photoFrameWidth, photoFrameHeight: state.photoFrameHeight,
+    photoImageWidth: state.photoImageWidth, photoImageHeight: state.photoImageHeight,
+    photoOffsetX: state.photoOffsetX, photoOffsetY: state.photoOffsetY,
+    photoBackground: state.photoBackground,
     themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
   };
   let idCounter = 0;
@@ -498,30 +525,80 @@ export function createOrgChart(host, userOpts = {}) {
     for (const id in elById) if (!seen[id]) { elById[id].remove(); delete elById[id]; }
     emit('nodes-rendered', { ids: positioned.map((p) => p.node.id) });
   }
-  // ---- global card sizing (photo height + card width + image fit) ----
+  // ---- global card sizing + centred portrait overscan ----
   function applyCardSizeVars() {
-    root.style.setProperty('--loc-photo-h', (state.photoHeight || 104) + 'px');
+    const frameW = Math.max(1, state.photoFrameWidth || VIRTUAL_PHOTO_FRAME.width);
+    const frameH = Math.max(1, state.photoFrameHeight || VIRTUAL_PHOTO_FRAME.height);
+    root.style.setProperty('--loc-photo-h', (state.photoHeight || (POS_SIZE.height - PERSON_TEXT_HEIGHT)) + 'px');
     root.style.setProperty('--loc-photo-fit', state.photoContain ? 'contain' : 'cover');
+    root.style.setProperty('--loc-photo-image-w', ((state.photoImageWidth / frameW) * 100).toFixed(4) + '%');
+    root.style.setProperty('--loc-photo-image-h', ((state.photoImageHeight / frameH) * 100).toFixed(4) + '%');
+    root.style.setProperty('--loc-photo-offset-x', ((state.photoOffsetX / frameW) * 100).toFixed(4) + '%');
+    root.style.setProperty('--loc-photo-offset-y', ((state.photoOffsetY / frameH) * 100).toFixed(4) + '%');
+    root.style.setProperty('--loc-photo-bg', state.photoBackground || PHOTO_BACKGROUND);
   }
-  /* push the global size onto every person card (departments keep their own size) */
+  /* push the approved global dimensions onto both card types */
   function applyCardSizeToNodes() {
     const w = Math.max(100, state.cardWidth || POS_SIZE.width);
-    const h = Math.max(60, (state.photoHeight || 104) + CARD_TEXT_BLOCK);
-    for (const n of NODES) if (n.type !== 'department') { n.width = w; n.height = h; }
+    const h = Math.max(60, (state.photoHeight || (POS_SIZE.height - PERSON_TEXT_HEIGHT)) + (state.textHeight || CARD_TEXT_BLOCK));
+    const deptW = Math.max(100, state.departmentWidth || DEPT_SIZE.width);
+    const deptH = Math.max(50, state.departmentHeight || DEPT_SIZE.height);
+    for (const n of NODES) {
+      if (n.type === 'department') { n.width = deptW; n.height = deptH; }
+      else { n.width = w; n.height = h; }
+    }
   }
-  /* change global card size / photo height / image fit, refit text + relayout */
-  function setCardSize(o) {
+  function applyCardState(o) {
     o = o || {};
-    const previousWidth = state.cardWidth, previousPhotoHeight = state.photoHeight;
-    if (typeof o.width === 'number') state.cardWidth = Math.max(100, o.width);
-    if (typeof o.photoHeight === 'number') state.photoHeight = Math.max(40, o.photoHeight);
-    const sizeChanged = state.cardWidth !== previousWidth || state.photoHeight !== previousPhotoHeight;
+    const beforeSize = [state.cardWidth, state.photoHeight, state.textHeight, state.departmentWidth, state.departmentHeight].join('|');
+    const beforeRender = [state.photoContain, state.photoFrameWidth, state.photoFrameHeight,
+      state.photoImageWidth, state.photoImageHeight, state.photoOffsetX, state.photoOffsetY, state.photoBackground].join('|');
+    const node = o.node || {};
+    const department = o.departmentNode || {};
+    const frame = o.virtualPhotoFrame || {};
+    const image = o.renderedImage || {};
+    const width = typeof o.width === 'number' ? o.width : (typeof o.cardWidth === 'number' ? o.cardWidth : node.width);
+    const photoHeight = typeof o.photoHeight === 'number' ? o.photoHeight : node.photoHeight;
+    let textHeight = typeof o.textHeight === 'number' ? o.textHeight : node.textHeight;
+    if (typeof textHeight !== 'number' && typeof node.totalHeight === 'number' && typeof photoHeight === 'number') {
+      textHeight = node.totalHeight - photoHeight;
+    }
+    if (typeof width === 'number') state.cardWidth = Math.max(100, width);
+    if (typeof photoHeight === 'number') state.photoHeight = Math.max(40, photoHeight);
+    if (typeof textHeight === 'number') state.textHeight = Math.max(40, textHeight);
+    const departmentWidth = typeof o.departmentWidth === 'number' ? o.departmentWidth : department.width;
+    const departmentHeight = typeof o.departmentHeight === 'number' ? o.departmentHeight : department.height;
+    if (typeof departmentWidth === 'number') state.departmentWidth = Math.max(100, departmentWidth);
+    if (typeof departmentHeight === 'number') state.departmentHeight = Math.max(50, departmentHeight);
+    const frameWidth = typeof o.photoFrameWidth === 'number' ? o.photoFrameWidth : frame.width;
+    const frameHeight = typeof o.photoFrameHeight === 'number' ? o.photoFrameHeight : frame.height;
+    const imageWidth = typeof o.photoImageWidth === 'number' ? o.photoImageWidth : image.width;
+    const imageHeight = typeof o.photoImageHeight === 'number' ? o.photoImageHeight : image.height;
+    const offsetX = typeof o.photoOffsetX === 'number' ? o.photoOffsetX : image.offsetX;
+    const offsetY = typeof o.photoOffsetY === 'number' ? o.photoOffsetY : image.offsetY;
+    if (typeof frameWidth === 'number') state.photoFrameWidth = Math.max(1, frameWidth);
+    if (typeof frameHeight === 'number') state.photoFrameHeight = Math.max(1, frameHeight);
+    if (typeof imageWidth === 'number') state.photoImageWidth = Math.max(1, imageWidth);
+    if (typeof imageHeight === 'number') state.photoImageHeight = Math.max(1, imageHeight);
+    if (typeof offsetX === 'number') state.photoOffsetX = offsetX;
+    if (typeof offsetY === 'number') state.photoOffsetY = offsetY;
     if ('contain' in o) state.photoContain = !!o.contain;
-    applyCardSizeVars();   // photo-fit (contain/cover) + photo-height are pure CSS vars
+    else if ('photoContain' in o) state.photoContain = !!o.photoContain;
+    else if (image.fit) state.photoContain = image.fit === 'contain';
+    if (typeof o.photoBackground === 'string' && o.photoBackground.trim()) state.photoBackground = o.photoBackground.trim();
+    return {
+      sizeChanged: beforeSize !== [state.cardWidth, state.photoHeight, state.textHeight, state.departmentWidth, state.departmentHeight].join('|'),
+      renderChanged: beforeRender !== [state.photoContain, state.photoFrameWidth, state.photoFrameHeight,
+        state.photoImageWidth, state.photoImageHeight, state.photoOffsetX, state.photoOffsetY, state.photoBackground].join('|'),
+    };
+  }
+  /* change global card dimensions / portrait rendering, then relayout only when geometry changed */
+  function setCardSize(o) {
+    const changed = applyCardState(o);
+    applyCardSizeVars();
     // Only a card-DIMENSION change needs a relayout + text re-fit. Toggling
-    // "show whole photo" (photoContain) is image object-fit only — re-fitting
-    // there reset every node's font to base size until the next refresh.
-    if (sizeChanged) {
+    // portrait rendering is CSS/export geometry only.
+    if (changed.sizeChanged) {
       applyCardSizeToNodes();
       for (const id in elById) delete elById[id].dataset.fitted;   // re-fit text at the new size
       drawNodes();
@@ -1561,7 +1638,21 @@ export function createOrgChart(host, userOpts = {}) {
       orientation: state.orientation, subtreeMode: state.subtreeMode,
       showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid,
       showImages: state.showImages, autoEdgeSide: state.autoEdgeSide,
-      cardWidth: state.cardWidth, photoHeight: state.photoHeight, photoContain: state.photoContain,
+      cardWidth: state.cardWidth, photoHeight: state.photoHeight, textHeight: state.textHeight,
+      departmentWidth: state.departmentWidth, departmentHeight: state.departmentHeight,
+      photoContain: state.photoContain,
+      virtualPhotoFrame: { width: state.photoFrameWidth, height: state.photoFrameHeight },
+      renderedImage: {
+        width: state.photoImageWidth, height: state.photoImageHeight,
+        fit: state.photoContain ? 'contain' : 'cover', align: 'center',
+        offsetX: state.photoOffsetX, offsetY: state.photoOffsetY,
+      },
+      node: {
+        width: state.cardWidth, photoHeight: state.photoHeight, textHeight: state.textHeight,
+        totalHeight: state.photoHeight + state.textHeight,
+      },
+      departmentNode: { width: state.departmentWidth, height: state.departmentHeight },
+      photoBackground: state.photoBackground,
       themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
     };
   }
@@ -1580,11 +1671,12 @@ export function createOrgChart(host, userOpts = {}) {
       for (const id in elById) { elById[id].remove(); delete elById[id]; }   // rebuild cards on image toggle
     }
     if ('autoEdgeSide' in s) state.autoEdgeSide = !!s.autoEdgeSide;
-    let sized = false;
-    if (typeof s.cardWidth === 'number') { state.cardWidth = Math.max(100, s.cardWidth); sized = true; }
-    if (typeof s.photoHeight === 'number') { state.photoHeight = Math.max(40, s.photoHeight); sized = true; }
-    if ('photoContain' in s) { state.photoContain = !!s.photoContain; sized = true; }
-    if (sized) { applyCardSizeVars(); applyCardSizeToNodes(); for (const id in elById) delete elById[id].dataset.fitted; }
+    const cardChanged = applyCardState(s);
+    if (cardChanged.sizeChanged || cardChanged.renderChanged) applyCardSizeVars();
+    if (cardChanged.sizeChanged) {
+      applyCardSizeToNodes();
+      for (const id in elById) delete elById[id].dataset.fitted;
+    }
     if (Array.isArray(s.themeRules)) themeRules = s.themeRules.map(normalizeRule);
     applyGridOverlay(); syncToolbar(); refresh('settings');
     if (settingsPanel.classList.contains('loc-open')) renderSettings();
@@ -1604,6 +1696,16 @@ export function createOrgChart(host, userOpts = {}) {
     setSettings({
       spacingX: INITIAL_SETTINGS.spacingX, spacingY: INITIAL_SETTINGS.spacingY, gridSize: INITIAL_SETTINGS.gridSize,
       showGrid: INITIAL_SETTINGS.showGrid, snapGrid: INITIAL_SETTINGS.snapGrid, alignGrid: INITIAL_SETTINGS.alignGrid,
+      cardWidth: INITIAL_SETTINGS.cardWidth, photoHeight: INITIAL_SETTINGS.photoHeight, textHeight: INITIAL_SETTINGS.textHeight,
+      departmentWidth: INITIAL_SETTINGS.departmentWidth, departmentHeight: INITIAL_SETTINGS.departmentHeight,
+      photoContain: INITIAL_SETTINGS.photoContain,
+      virtualPhotoFrame: { width: INITIAL_SETTINGS.photoFrameWidth, height: INITIAL_SETTINGS.photoFrameHeight },
+      renderedImage: {
+        width: INITIAL_SETTINGS.photoImageWidth, height: INITIAL_SETTINGS.photoImageHeight,
+        fit: INITIAL_SETTINGS.photoContain ? 'contain' : 'cover', align: 'center',
+        offsetX: INITIAL_SETTINGS.photoOffsetX, offsetY: INITIAL_SETTINGS.photoOffsetY,
+      },
+      photoBackground: INITIAL_SETTINGS.photoBackground,
       themeRules: INITIAL_SETTINGS.themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
     });
     applyThemeAll();
@@ -1656,7 +1758,7 @@ export function createOrgChart(host, userOpts = {}) {
       + '<div class="loc-set-hint">Applies to every person card. The photo tops the card at its full size; the name/title sit below.</div>'
       + setRange('cardWidth', 'Card width', state.cardWidth, 120, 320)
       + setRange('photoHeight', 'Photo height', state.photoHeight, 60, 240)
-      + `<label class="loc-color"><input type="checkbox" data-set-toggle="photoContain"${state.photoContain ? ' checked' : ''}/><span>Show whole photo (no crop)</span></label>`
+      + `<label class="loc-color"><input type="checkbox" data-set-toggle="photoContain"${state.photoContain ? ' checked' : ''}/><span>Preserve photo proportions (contain)</span></label>`
       + '</div>';
     h += '<div class="loc-set-section"><div class="loc-set-title">Theme rules</div>'
       + '<div class="loc-set-hint">Recolor nodes that match a field = value. Later rules win.</div>';
@@ -1683,7 +1785,16 @@ export function createOrgChart(host, userOpts = {}) {
       spacingX: state.spacingX, spacingY: state.spacingY, gridSize: state.gridSize,
       showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid,
       showImages: state.showImages, autoEdgeSide: state.autoEdgeSide,
-      cardWidth: state.cardWidth, photoHeight: state.photoHeight, photoContain: state.photoContain,
+      cardWidth: state.cardWidth, photoHeight: state.photoHeight, textHeight: state.textHeight,
+      departmentWidth: state.departmentWidth, departmentHeight: state.departmentHeight,
+      photoContain: state.photoContain,
+      virtualPhotoFrame: { width: state.photoFrameWidth, height: state.photoFrameHeight },
+      renderedImage: {
+        width: state.photoImageWidth, height: state.photoImageHeight,
+        fit: state.photoContain ? 'contain' : 'cover', align: 'center',
+        offsetX: state.photoOffsetX, offsetY: state.photoOffsetY,
+      },
+      photoBackground: state.photoBackground,
       themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
     };
   }
@@ -1697,9 +1808,7 @@ export function createOrgChart(host, userOpts = {}) {
     if ('alignGrid' in v) state.alignGrid = !!v.alignGrid;
     if ('showImages' in v) state.showImages = !!v.showImages;
     if ('autoEdgeSide' in v) state.autoEdgeSide = !!v.autoEdgeSide;
-    if (typeof v.cardWidth === 'number') state.cardWidth = Math.max(100, v.cardWidth);
-    if (typeof v.photoHeight === 'number') state.photoHeight = Math.max(40, v.photoHeight);
-    if ('photoContain' in v) state.photoContain = !!v.photoContain;
+    applyCardState(v);
     applyCardSizeVars(); applyCardSizeToNodes();
     if (Array.isArray(v.themeRules)) themeRules = v.themeRules.map(normalizeRule);
   }
@@ -1766,7 +1875,16 @@ export function createOrgChart(host, userOpts = {}) {
         showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid, gridSize: state.gridSize,
         editMode: state.editMode, showImages: state.showImages, showLegend: state.showLegend,
         autoEdgeSide: state.autoEdgeSide,
-        cardWidth: state.cardWidth, photoHeight: state.photoHeight, photoContain: state.photoContain,
+        cardWidth: state.cardWidth, photoHeight: state.photoHeight, textHeight: state.textHeight,
+        departmentWidth: state.departmentWidth, departmentHeight: state.departmentHeight,
+        photoContain: state.photoContain,
+        virtualPhotoFrame: { width: state.photoFrameWidth, height: state.photoFrameHeight },
+        renderedImage: {
+          width: state.photoImageWidth, height: state.photoImageHeight,
+          fit: state.photoContain ? 'contain' : 'cover', align: 'center',
+          offsetX: state.photoOffsetX, offsetY: state.photoOffsetY,
+        },
+        photoBackground: state.photoBackground,
         manualOffsets, edgeWaypoints, edgeAnchors, familyRouteOverrides, nodeOverrides, themeRules,
         collapsed: NODES.filter((n) => n.collapsed).map((n) => n.id),
       }));
@@ -1784,9 +1902,7 @@ export function createOrgChart(host, userOpts = {}) {
     if ('showImages' in s) state.showImages = !!s.showImages;
     if ('showLegend' in s) state.showLegend = !!s.showLegend;
     if ('autoEdgeSide' in s) state.autoEdgeSide = !!s.autoEdgeSide;
-    if (typeof s.cardWidth === 'number') state.cardWidth = Math.max(100, s.cardWidth);
-    if (typeof s.photoHeight === 'number') state.photoHeight = Math.max(40, s.photoHeight);
-    if ('photoContain' in s) state.photoContain = !!s.photoContain;
+    applyCardState(s);
     applyCardSizeVars(); applyCardSizeToNodes();
     if (s.manualOffsets) manualOffsets = s.manualOffsets;
     if (s.edgeWaypoints) edgeWaypoints = s.edgeWaypoints;
@@ -1902,7 +2018,15 @@ export function createOrgChart(host, userOpts = {}) {
     const paths = []; for (const id in pathById) paths.push({ id, d: pathById[id].getAttribute('d') });
     return buildChartSVG(positioned, paths, {
       manualOffsets, raster: !!raster, measureText, fitOf,
-      photoHeight: state.photoHeight, photoContain: state.photoContain, images: images || null,
+      photoHeight: state.photoHeight, photoContain: state.photoContain,
+      virtualPhotoFrame: { width: state.photoFrameWidth, height: state.photoFrameHeight },
+      renderedImage: {
+        width: state.photoImageWidth, height: state.photoImageHeight,
+        fit: state.photoContain ? 'contain' : 'cover', align: 'center',
+        offsetX: state.photoOffsetX, offsetY: state.photoOffsetY,
+      },
+      photoBackground: state.photoBackground,
+      images: images || null,
       familyNetworks, rebuildFamilyIds: familyRebuildIds(),
       bounds: chartBounds(40),
     });
@@ -2064,8 +2188,13 @@ export function createOrgChart(host, userOpts = {}) {
       if (meta.familyRouteOverrides) familyRouteOverrides = meta.familyRouteOverrides;
       if (meta.nodeOverrides) { nodeOverrides = meta.nodeOverrides; }
       if (typeof meta.editMode === 'boolean') state.editMode = meta.editMode;
-      if (meta.settings && Array.isArray(meta.settings.themeRules)) themeRules = meta.settings.themeRules.map(normalizeRule);
+      if (meta.settings) {
+        applyCardState(meta.settings);
+        if (Array.isArray(meta.settings.themeRules)) themeRules = meta.settings.themeRules.map(normalizeRule);
+      }
     }
+    applyCardSizeVars();
+    applyCardSizeToNodes();
     if (keepEdits) applyOverrides();   // re-layer persisted node edits onto the new data
     applyEditModeUI(); syncToolbar();
     const pending = refresh('set-nodes');
@@ -2599,7 +2728,8 @@ export function createOrgChart(host, userOpts = {}) {
     // global card sizing
     setPhotoHeight: (px) => setCardSize({ photoHeight: px }),
     setCardWidth: (px) => setCardSize({ width: px }),
-    setCardSize, setPhotoContain: (on) => setCardSize({ contain: on !== false }),
+    setCardSize, setPhotoRendering: setCardSize,
+    setPhotoContain: (on) => setCardSize({ contain: on !== false }),
     // multi-select (nodes)
     getSelection: () => [...selectedIds],
     setSelection: (ids) => setSelectionSet(Array.isArray(ids) ? ids : (ids ? [ids] : [])),

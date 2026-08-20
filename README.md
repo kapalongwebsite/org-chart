@@ -231,9 +231,15 @@ you render a chart.
 | `fullscreenControl` | `Boolean` | `true` | show the floating fullscreen button on the canvas |
 | `fitOnLayoutChange` | `Boolean \| String` | `true` | re-frame after a mode/orientation/re-layout change: `true`/`'fit'`, `'recenter'` (keep zoom), `false`/`'none'` |
 | `showImages` | `Boolean` | `true` | show person photos; off (or a missing/broken photo) → a user-silhouette icon |
-| `photoHeight` | `Number` | `104` | person-photo height in px — uniform across cards; larger = bigger profile image |
-| `cardWidth` | `Number` | `180` | person-card width in px (global; card height = `photoHeight` + a fixed text block) |
-| `photoContain` | `Boolean` | `true` | fit the **whole** profile image inside the photo area (no crop); `false` = cover/crop |
+| `photoHeight` | `Number` | `240` | person-photo viewport height in px |
+| `cardWidth` | `Number` | `240` | person-card width in px (global; card height = `photoHeight + textHeight`) |
+| `textHeight` | `Number` | `140` | fixed person name/title/status area height |
+| `departmentWidth` | `Number` | `240` | uniform department-card width |
+| `departmentHeight` | `Number` | `100` | uniform department-card height |
+| `photoContain` | `Boolean` | `true` | preserve image proportions inside the configured render box; `false` = cover/crop |
+| `virtualPhotoFrame` | `Object` | `{ width: 400, height: 400 }` | logical portrait frame used to calculate crop-independent scaling |
+| `renderedImage` | `Object` | `{ width: 420, height: 420, fit: 'contain', align: 'center', offsetX: 0, offsetY: 0 }` | centred 5% portrait overscan and optional logical offsets |
+| `photoBackground` | `String` | `'#004264'` | colour visible behind transparent portrait pixels |
 | `autoEdgeSide` | `Boolean` | `false` | opt-in "smart edges": connector endpoints follow waypoints onto any box side (left/right/top/bottom) |
 | `legend` | `Boolean` | `false` | show the floating legend (type / status / active theme rules) |
 | `legendTarget` | `String \| Element` | `null` | mount the legend into an element outside the canvas |
@@ -370,12 +376,31 @@ API). The photo "tops" the card at its full height and the card height tracks it
 
 | Method | Description |
 |--------|-------------|
-| `setCardWidth(px)` | Person-card width (default 180) |
-| `setPhotoHeight(px)` | Photo height (default 104) — bigger = larger profile image |
-| `setPhotoContain(on?)` | Show the **whole** photo (no crop, default) vs. crop/cover |
-| `setCardSize({ width, photoHeight, contain })` | Set any/all in one call |
+| `setCardWidth(px)` | Person-card width (default 240) |
+| `setPhotoHeight(px)` | Photo viewport height (default 240) |
+| `setPhotoContain(on?)` | Preserve image proportions (`contain`, default) vs. cover/crop |
+| `setCardSize(options)` | Set card dimensions and/or portrait rendering in one call |
+| `setPhotoRendering(options)` | Update portrait frame/image geometry without relaying out unchanged cards |
 
-> Long names and titles **don't stretch the card** — the name clamps to 2 lines, the title to 3,
+The default geometry can also be round-tripped through `getSettings()` / `setSettings()`:
+
+```js
+chart.setSettings({
+  virtualPhotoFrame: { width: 400, height: 400 },
+  renderedImage: {
+    width: 420, height: 420, fit: 'contain', align: 'center', offsetX: 0, offsetY: 0,
+  },
+  node: { width: 240, photoHeight: 240, textHeight: 140, totalHeight: 380 },
+  departmentNode: { width: 240, height: 100 },
+  photoBackground: '#004264',
+});
+```
+
+The 420×420 image is centred inside the logical 400×400 frame, producing a 5% overscan that
+clips outer transparent or rounded source-image edges without stretching the portrait. Screen and
+SVG/PNG/PDF exports use the same geometry.
+
+> Long names and titles **don't stretch the card** — the name clamps to 3 lines, the title to 4,
 > both auto-shrink to fit and show the full text on hover. Set **`photoContain: false`** if you'd
 > rather crop photos to fill the area edge-to-edge.
 

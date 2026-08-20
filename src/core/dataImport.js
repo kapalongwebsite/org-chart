@@ -3,15 +3,17 @@ import { DEPT_SIZE, POS_SIZE } from './constants.js';
 
 /* normalize a loose node record into a full internal node */
 export function makeNode(src) {
+  const type = src.type || 'position';
+  const defaultSize = type === 'department' ? DEPT_SIZE : POS_SIZE;
   return {
     id: src.id,
     parentId: src.parentId || '',
-    type: src.type || 'position',
+    type,
     label: src.label || '',
     personName: src.personName || '',
     status: src.status || '',
-    width: src.width || POS_SIZE.width,
-    height: src.height || POS_SIZE.height,
+    width: src.width || defaultSize.width,
+    height: src.height || defaultSize.height,
     collapsed: !!src.collapsed,
     layoutMode: src.layoutMode || null,   // per-node subtree override
     data: src.data || {},

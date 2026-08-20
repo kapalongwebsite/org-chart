@@ -20,6 +20,48 @@ export interface OrgNode {
   data?: Record<string, any>;
 }
 
+export interface VirtualPhotoFrame {
+  width: number;
+  height: number;
+}
+
+export interface RenderedImageConfig {
+  width?: number;
+  height?: number;
+  fit?: 'contain' | 'cover';
+  align?: 'center';
+  offsetX?: number;
+  offsetY?: number;
+}
+
+export interface PersonNodeGeometry {
+  width?: number;
+  photoHeight?: number;
+  textHeight?: number;
+  totalHeight?: number;
+}
+
+export interface DepartmentNodeGeometry {
+  width?: number;
+  height?: number;
+}
+
+export interface CardGeometryOptions {
+  width?: number;
+  cardWidth?: number;
+  photoHeight?: number;
+  textHeight?: number;
+  departmentWidth?: number;
+  departmentHeight?: number;
+  photoContain?: boolean;
+  contain?: boolean;
+  virtualPhotoFrame?: Partial<VirtualPhotoFrame>;
+  renderedImage?: RenderedImageConfig;
+  node?: PersonNodeGeometry;
+  departmentNode?: DepartmentNodeGeometry;
+  photoBackground?: string;
+}
+
 export interface LayoutOptions {
   orientation?: OrientationInput;
   subtreeMode?: SubtreeMode;
@@ -99,13 +141,33 @@ export function fitBounds(bounds: Bounds, viewportW: number, viewportH: number, 
 export function normalizeImported(data: any): { nodes: OrgNode[]; meta: any };
 export function makeNode(src: OrgNode): OrgNode;
 export function exportLayout(state: any, nodes: OrgNode[], manualOffsets?: any, edgeWaypoints?: any): any;
-export function buildChartSVG(positioned: PositionedNode[], paths: Array<string | ConnectorPath>, opts?: { manualOffsets?: any; raster?: boolean; measureText?: (t: string, font: string) => number; fitOf?: (n: OrgNode) => number; familyNetworks?: FamilyNetwork[]; rebuildFamilyIds?: Iterable<string>; bounds?: Bounds }): string;
+export function buildChartSVG(positioned: PositionedNode[], paths: Array<string | ConnectorPath>, opts?: {
+  manualOffsets?: any;
+  raster?: boolean;
+  measureText?: (t: string, font: string) => number;
+  fitOf?: (n: OrgNode) => number;
+  familyNetworks?: FamilyNetwork[];
+  rebuildFamilyIds?: Iterable<string>;
+  bounds?: Bounds;
+  photoHeight?: number;
+  photoContain?: boolean;
+  virtualPhotoFrame?: Partial<VirtualPhotoFrame>;
+  renderedImage?: RenderedImageConfig;
+  photoBackground?: string;
+  images?: Record<string, string> | null;
+}): string;
 export function buildVisibleConnectorSegments(paths: Array<string | ConnectorPath>, options?: { sharedStyle?: any; preserveMembership?: boolean }): Array<FamilyRouteSegment & { memberIds: string[]; shared: boolean; style?: any }>;
 export function buildFamilyConnectorNetwork(parentId: string, childPaths: Array<ConnectorPath | { id: string; points: Array<{ x: number; y: number }>; style?: any }>, options?: { horizontalFlow?: boolean }): FamilyNetwork | null;
 export function resolveConnectorGeometry(paths: Array<string | ConnectorPath>, familyNetworks?: FamilyNetwork[], options?: { sharedStyle?: any; rebuildFamilyIds?: Iterable<string> }): { segments: Array<FamilyRouteSegment & { memberIds: string[]; shared: boolean; style?: any }>; familyNetworks: FamilyNetwork[]; standaloneIds: string[] };
 
 export const SUBTREE_MODES: SubtreeMode[];
 export const ORIENTATIONS: Orientation[];
+export const DEPT_SIZE: Readonly<{ width: number; height: number }>;
+export const POS_SIZE: Readonly<{ width: number; height: number }>;
+export const VIRTUAL_PHOTO_FRAME: Readonly<VirtualPhotoFrame>;
+export const RENDERED_PHOTO: Readonly<Required<RenderedImageConfig>>;
+export const PHOTO_BACKGROUND: string;
+export const PERSON_TEXT_HEIGHT: number;
 
 // ---- deterministic physical-canvas print engine ----
 export type PrintLayoutFamily = 'portrait-sectioned' | 'wide-row' | 'portrait-spine' | 'custom';
@@ -150,14 +212,14 @@ export interface ThemeRule {
   value: string;
   style: { bg?: string; text?: string; border?: string };
 }
-export interface ChartSettings {
+export interface ChartSettings extends CardGeometryOptions {
   spacingX?: number; spacingY?: number; gridSize?: number;
   orientation?: OrientationInput; subtreeMode?: SubtreeMode;
   showGrid?: boolean; snapGrid?: boolean; alignGrid?: boolean;
   themeRules?: ThemeRule[];
 }
 
-export interface CreateOptions extends LayoutOptions {
+export interface CreateOptions extends LayoutOptions, CardGeometryOptions {
   nodes?: OrgNode[];
   showGrid?: boolean;
   snapGrid?: boolean;
@@ -235,6 +297,13 @@ export interface OrgChartInstance {
   exportPNG(scale?: number): void;
   exportPDF(): void;
   buildSVG(raster?: boolean): string;
+  setShowImages(on: boolean): boolean;
+  isShowingImages(): boolean;
+  setPhotoHeight(px: number): void;
+  setCardWidth(px: number): void;
+  setCardSize(options: CardGeometryOptions): void;
+  setPhotoRendering(options: CardGeometryOptions): void;
+  setPhotoContain(on: boolean): void;
   setEditMode(on: boolean): void;
   isEditMode(): boolean;
   updateNode(id: string, patch: Partial<OrgNode>): void;
@@ -305,6 +374,15 @@ export interface OrgChartVueInstance {
   exitFullscreen(): void;
   toggleFullscreen(force?: boolean): boolean;
   isFullscreen(): boolean;
+
+  // images / card geometry
+  setShowImages(on: boolean): boolean;
+  isShowingImages(): boolean;
+  setPhotoHeight(px: number): void;
+  setCardWidth(px: number): void;
+  setCardSize(options: CardGeometryOptions): void;
+  setPhotoRendering(options: CardGeometryOptions): void;
+  setPhotoContain(on: boolean): void;
 
   // edit mode / inspector / settings
   setEditMode(on: boolean): void;

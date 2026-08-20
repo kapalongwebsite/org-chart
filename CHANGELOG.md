@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.18.6
+
+- Centralized the approved chart-card geometry: 240×380 person cards with a
+  240px portrait viewport and 140px text area, plus 240×100 department cards.
+- Added a shared 400×400 logical portrait frame and centred 420×420 image
+  rendering (5% overscan) on `#004264`. DOM rendering and SVG/PNG/PDF exports
+  now use the same clipping, fit, alignment, offset, and background values.
+- Added structured card/portrait settings, Vue props, public types, persistence,
+  and regression coverage for the geometry and export crop.
+
 ## 1.18.5
 
 - Grid Smart reuses each placement's bounded coordinate lists and performs
