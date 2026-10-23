@@ -1,6 +1,6 @@
-import { C as e, D as t, E as n, I as r, L as i, N as a, R as o, S as s, V as c, c as l, d as u, f as ee, h as te, i as ne, k as re, n as ie, o as d, r as ae, s as oe, t as se, v as ce } from "./bounds-PDieHcY6.js";
-import { a as le, i as ue, n as de, o as fe, s as pe } from "./core-ihvennbB.js";
-//#region src/vanilla/layoutTarget.js
+import { C as e, D as t, E as n, I as r, L as i, N as a, R as o, S as s, V as c, c as l, d as u, f as ee, h as te, i as ne, k as re, n as ie, o as d, r as ae, s as oe, t as se, v as ce } from "./bounds-BAybmE0D.js";
+import { a as le, i as ue, n as de, o as fe, s as pe } from "./core-B6hVZeAO.js";
+// src/vanilla/layoutTarget.js
 function f(e) {
 	let t = Number(e?.clientWidth), n = Number(e?.clientHeight);
 	return t > 0 && n > 0 ? {
@@ -14,21 +14,18 @@ function me(e = {}, t = null) {
 		targetSize: e.targetSize || (e.reflowOnResize ? f(t) : null)
 	};
 }
-//#endregion
-//#region src/core/layout.worker.js?worker
+// src/core/layout.worker.js?worker
 function he(e) {
-	return new Worker("" + new URL("assets/layout.worker-cm6aFvCy.js", import.meta.url).href, { name: e?.name });
+	return new Worker("" + new URL("assets/layout.worker-COkTxKjG.js", import.meta.url).href, { name: e?.name });
 }
-//#endregion
-//#region src/vanilla/cloneLayoutValue.js
+// src/vanilla/cloneLayoutValue.js
 function ge(e) {
 	if (typeof structuredClone == "function") try {
 		return structuredClone(e);
 	} catch {}
 	return JSON.parse(JSON.stringify(e));
 }
-//#endregion
-//#region src/vanilla/createOrgChart.js
+// src/vanilla/createOrgChart.js
 var _e = 140, ve = "http://www.w3.org/2000/svg", ye = .72, p = 12, be = /* @__PURE__ */ new Map();
 function xe(e, t) {
 	for (be.has(e) && be.delete(e), be.set(e, ge(t)); be.size > p;) be.delete(be.keys().next().value);
@@ -324,7 +321,7 @@ function Te(r, f = {}) {
 		}), e.resolve(!0), !0);
 	}
 	function Et(e, t) {
-		!M || M.id !== e.id || (M = null, Ct(!1), N("layout-error", {
+		M && M.id === e.id && (M = null, Ct(!1), N("layout-error", {
 			id: e.id,
 			reason: e.reason,
 			error: t instanceof Error ? t : Error(t?.message || String(t))
@@ -372,15 +369,9 @@ function Te(r, f = {}) {
 			let e = new he();
 			c.worker = e, e.addEventListener("message", (t) => {
 				let n = t.data || {};
-				if (!(n.id !== c.id || !M || M.id !== c.id)) {
-					if (e.terminate(), c.worker = null, !n.ok) {
-						Et(c, Error(n.error?.message || "Layout worker failed."));
-						return;
-					}
-					p.layoutCache !== !1 && xe(i, n.result), Tt(c, n.result, n.durationMs, !1);
-				}
+				n.id === c.id && M && M.id === c.id && (e.terminate(), c.worker = null, n.ok ? (p.layoutCache !== !1 && xe(i, n.result), Tt(c, n.result, n.durationMs, !1)) : Et(c, Error(n.error?.message || "Layout worker failed.")));
 			}), e.addEventListener("error", (t) => {
-				!M || M.id !== c.id || (e.terminate(), c.worker = null, Dt(c, u, Error(t.message || "Layout worker failed to load.")));
+				M && M.id === c.id && (e.terminate(), c.worker = null, Dt(c, u, Error(t.message || "Layout worker failed to load.")));
 			}, { once: !0 }), e.postMessage({
 				id: n,
 				nodes: u.nodes,
@@ -630,11 +621,8 @@ function Te(r, f = {}) {
 	}
 	function nn() {
 		let e = tn();
-		if (e === "fit") {
-			$t();
-			return;
-		}
-		if (e === "recenter") {
+		if (e === "fit") $t();
+		else if (e === "recenter") {
 			let e = h.find((e) => !e.parentId), t = m.selectedNodeId && E[m.selectedNodeId] ? m.selectedNodeId : e && e.id;
 			t && en(t);
 		}
@@ -1131,9 +1119,7 @@ function Te(r, f = {}) {
 		if (A = null, Q("pointermove", or), Q("pointerup", sr), e && e.which === "parent" && ir) {
 			let t = ir;
 			ar(null), cr(e.id, t);
-			return;
-		}
-		ar(null), X(), e && e.changed && Y();
+		} else ar(null), X(), e && e.changed && Y();
 	}
 	function cr(e, t) {
 		let n = g[e];
@@ -1248,14 +1234,10 @@ function Te(r, f = {}) {
 		}, 220);
 	}
 	function Er(e, t) {
-		if (!t.length) {
-			e.hidden = !0, e.innerHTML = "";
-			return;
-		}
-		e.innerHTML = t.slice(0, 8).map((e, t) => {
+		t.length ? (e.innerHTML = t.slice(0, 8).map((e, t) => {
 			let n = G(e.name || e.personName || e.label || ""), r = G(e.title || e.label || e.email || "");
 			return `<button type="button" class="loc-usersearch-item" data-uidx="${t}"><b>${n}</b>${r ? `<small>${r}</small>` : ""}</button>`;
-		}).join(""), e.hidden = !1, e._users = t;
+		}).join(""), e.hidden = !1, e._users = t) : (e.hidden = !0, e.innerHTML = "");
 	}
 	function Dr(e) {
 		let t = m.selectedNodeId, n = t && g[t];
@@ -1345,7 +1327,7 @@ function Te(r, f = {}) {
 		e.size && (h = h.filter((t) => !e.has(t.id))), g = re(h);
 		for (let e in x) {
 			let t = x[e];
-			if (!(!t || t.__deleted)) {
+			if (t && !t.__deleted) {
 				if (t.__new) {
 					if (!g[e]) {
 						let n = Object.assign({}, t);
@@ -1983,7 +1965,7 @@ function Te(r, f = {}) {
 			"snapGrid",
 			"alignGrid",
 			"gridSize"
-		].includes(e) && N("settings-change", K())) : (p[e] = t, (e === "targetAspect" || e === "targetSize") && (m.subtreeMode === "AutoSmart" || m.subtreeMode === "GridSmart" || m.subtreeMode === "Auto") && U("target-size").then((e) => {
+		].includes(e) && N("settings-change", K())) : (p[e] = t, e !== "targetAspect" && e !== "targetSize" || m.subtreeMode !== "AutoSmart" && m.subtreeMode !== "GridSmart" && m.subtreeMode !== "Auto" || U("target-size").then((e) => {
 			e && nn();
 		}));
 	}
@@ -2081,16 +2063,10 @@ function Te(r, f = {}) {
 			return;
 		}
 		let n = e.target.closest(".loc-node");
-		if (n) {
-			if (Pe === String(n.dataset.id)) {
-				un(), e.preventDefault(), e.stopPropagation();
-				return;
-			}
-			N("node-click", {
-				id: n.dataset.id,
-				node: g[n.dataset.id]
-			});
-		}
+		n && (Pe === String(n.dataset.id) ? (un(), e.preventDefault(), e.stopPropagation()) : N("node-click", {
+			id: n.dataset.id,
+			node: g[n.dataset.id]
+		}));
 	}), P(Qe, "pointerdown", (e) => {
 		let t = e.target.closest("path");
 		t && (e.stopPropagation(), Gn(t.dataset.edge));
@@ -2187,7 +2163,6 @@ function Te(r, f = {}) {
 		if (t) {
 			let e = t.closest("[data-role=\"user-results\"]"), n = e && e._users && e._users[+t.dataset.uidx];
 			n && Dr(n);
-			return;
 		}
 	}), P(st, "input", (e) => {
 		if (!m.editMode) return;
@@ -2196,21 +2171,12 @@ function Te(r, f = {}) {
 		let n = m.selectedNodeId;
 		if (!n) return;
 		let r = t.dataset.field, i = t.value;
-		if (r === "type") {
-			kr(n, { type: i }), Sr();
-			return;
-		}
-		if (r !== "width" && r !== "height") {
+		if (r === "type") kr(n, { type: i }), Sr();
+		else if (r !== "width" && r !== "height") {
 			if (r === "photo_url") {
 				let e = g[n];
 				kr(n, { data: Object.assign({}, e.data, { photo_url: i || null }) });
-				return;
-			}
-			if (r === "layoutMode") {
-				kr(n, { layoutMode: i || null });
-				return;
-			}
-			kr(n, { [r]: i }), r === "personName" && Tr(i);
+			} else r === "layoutMode" ? kr(n, { layoutMode: i || null }) : (kr(n, { [r]: i }), r === "personName" && Tr(i));
 		}
 	});
 	function ua(e) {
@@ -2272,21 +2238,10 @@ function Te(r, f = {}) {
 		if (t.dataset.set != null) {
 			let e = t.dataset.set, n = parseFloat(t.value), r = dt.querySelector(`[data-rangelabel="${e}"]`);
 			r && (r.textContent = n);
-			return;
-		}
-		if (t.dataset.setToggle === "showImages") {
-			Xi(t.checked);
-			return;
-		}
-		if (t.dataset.setToggle === "autoEdgeSide") {
-			Yi(t.checked);
-			return;
-		}
-		if (t.dataset.setToggle === "photoContain") {
-			Pt({ contain: t.checked });
-			return;
-		}
-		if (t.dataset.rule != null) {
+		} else if (t.dataset.setToggle === "showImages") Xi(t.checked);
+		else if (t.dataset.setToggle === "autoEdgeSide") Yi(t.checked);
+		else if (t.dataset.setToggle === "photoContain") Pt({ contain: t.checked });
+		else if (t.dataset.rule != null) {
 			let e = +t.dataset.rule, n = t.dataset.rk, r = C[e];
 			if (!r) return;
 			if (n === "enabled") r.enabled = t.checked;
@@ -2303,17 +2258,7 @@ function Te(r, f = {}) {
 		let t = e.target;
 		if (t.dataset.set == null) return;
 		let n = t.dataset.set, r = parseFloat(t.value);
-		if (Number.isFinite(r)) {
-			if (n === "cardWidth") {
-				Pt({ width: r });
-				return;
-			}
-			if (n === "photoHeight") {
-				Pt({ photoHeight: r });
-				return;
-			}
-			Number(m[n]) !== r && (m[n] = r, U("settings-" + n), N("settings-change", K()), X());
-		}
+		Number.isFinite(r) && (n === "cardWidth" ? Pt({ width: r }) : n === "photoHeight" ? Pt({ photoHeight: r }) : Number(m[n]) !== r && (m[n] = r, U("settings-" + n), N("settings-change", K()), X()));
 	}), P(L, "pointerdown", (e) => {
 		if (e.target.closest(".loc-node") || e.target.closest(".loc-edgehits path") || e.target.closest(".loc-edgehandles *") || e.target.closest(".loc-panel") || e.target.closest(".loc-settings") || e.target.closest(".loc-fsbtn") || e.target.closest(".loc-legend")) return;
 		da();
@@ -2365,7 +2310,8 @@ function Te(r, f = {}) {
 		let t = e.target;
 		if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
 		let n = (e.key || "").toLowerCase();
-		if (!(e.ctrlKey || e.metaKey)) {
+		if (e.ctrlKey || e.metaKey) n === "z" && !e.shiftKey ? (e.preventDefault(), di()) : (n === "z" && e.shiftKey || n === "y") && (e.preventDefault(), fi());
+		else {
 			if (m.selectedFamilyId && (n === "delete" || n === "backspace")) {
 				e.preventDefault(), Yn();
 				return;
@@ -2382,9 +2328,7 @@ function Te(r, f = {}) {
 				e.preventDefault(), jn();
 				return;
 			}
-			return;
 		}
-		n === "z" && !e.shiftKey ? (e.preventDefault(), di()) : (n === "z" && e.shiftKey || n === "y") && (e.preventDefault(), fi());
 	});
 	function fa() {
 		let e = p.toolbar && typeof p.toolbar == "object" ? p.toolbar : {}, t = (t) => t === "subtree" ? e[t] === !0 : e[t] !== !1, n = H("div", "loc-toolbar"), r = "";
@@ -2454,9 +2398,7 @@ function Te(r, f = {}) {
 					case "pdf":
 						Li();
 						break;
-					case "json":
-						Ei(!0);
-						break;
+					case "json": Ei(!0);
 				}
 			}
 		}), n.addEventListener("input", (e) => {
@@ -2609,5 +2551,4 @@ function Te(r, f = {}) {
 	};
 	return ha;
 }
-//#endregion
 export { Te as t };

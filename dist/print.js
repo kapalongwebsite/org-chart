@@ -1,5 +1,5 @@
-import { c as e, f as t, o as n, t as r, v as i } from "./bounds-PDieHcY6.js";
-//#region src/print/index.js
+import { c as e, f as t, o as n, t as r, v as i } from "./bounds-BAybmE0D.js";
+// src/print/index.js
 var a = Object.freeze([
 	"portrait-sectioned",
 	"wide-row",
@@ -289,7 +289,7 @@ async function D(e, t = {}) {
 	if (!e || String(e.tagName).toLowerCase() !== "svg") throw Error("An SVG element is required.");
 	let n = d(t.widthMm, 0), r = d(t.heightMm, 0);
 	if (n <= 0 || r <= 0) throw Error("PDF width and height are required.");
-	let [{ jsPDF: i }, { svg2pdf: a }] = await Promise.all([import("./jspdf.es.min-Ce93Cekf.js"), import("./svg2pdf.es.min-BoEOYI8g.js")]), o = new i({
+	let [{ jsPDF: i }, { svg2pdf: a }] = await Promise.all([import("jspdf"), import("svg2pdf.js")]), o = new i({
 		orientation: n > r ? "landscape" : "portrait",
 		unit: "mm",
 		format: [n, r],
@@ -302,5 +302,4 @@ async function D(e, t = {}) {
 		scale: 1
 	}), o.output("blob");
 }
-//#endregion
 export { a as PRINT_LAYOUT_FAMILIES, x as layoutPrintChart, v as normalizePrintProfile, _ as recommendPrintLayout, T as renderPrintChartFragment, E as renderPrintChartSvg, D as svgElementToPdfBlob };
