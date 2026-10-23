@@ -31,8 +31,8 @@ export default defineConfig({
       fileName: (format, name) => `${name}.${format === 'es' ? 'js' : 'cjs'}`,
     },
     rollupOptions: {
-      // Vue is a peer dependency — never bundle it into the output.
-      external: ['vue'],
+      // Consumers resolve PDF dependencies through their own audited lockfile.
+      external: ['vue', 'jspdf', 'svg2pdf.js'],
       output: {
         globals: { vue: 'Vue' },
         assetFileNames: (asset) =>

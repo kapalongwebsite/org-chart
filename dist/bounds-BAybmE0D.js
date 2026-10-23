@@ -1,4 +1,4 @@
-//#region src/core/constants.js
+// src/core/constants.js
 var e = "__virtual_root__", t = 26, n = 80, r = [
 	"AutoSmart",
 	"GridSmart",
@@ -39,8 +39,7 @@ var e = "__virtual_root__", t = 26, n = 80, r = [
 	width: 240,
 	height: 380
 };
-//#endregion
-//#region src/core/tree.js
+// src/core/tree.js
 function f(e) {
 	let t = Object.create(null);
 	for (let n of e) t[n.id] = n;
@@ -101,8 +100,7 @@ function _(e, t) {
 	for (let r of e) r.parentId === t && n++;
 	return n;
 }
-//#endregion
-//#region node_modules/@dagrejs/dagre/dist/dagre.esm.js
+// node_modules/@dagrejs/dagre/dist/dagre.esm.js
 var v = Object.defineProperty;
 ((e, t) => {
 	for (var n in t) v(e, n, {
@@ -841,8 +839,7 @@ function Ue(e, t, n) {
 function We(e, t, n) {
 	return n.low <= t.lim && t.lim <= n.lim;
 }
-//#endregion
-//#region src/core/dataImport.js
+// src/core/dataImport.js
 function Ge(e) {
 	let t = e.type || "position", n = t === "department" ? u : d;
 	return {
@@ -954,8 +951,7 @@ function Xe(e) {
 		meta: n
 	};
 }
-//#endregion
-//#region src/core/connectorGeometry.js
+// src/core/connectorGeometry.js
 var R = .001;
 function z(e) {
 	return Math.round(Number(e) * 1e3) / 1e3;
@@ -1001,11 +997,7 @@ function nt(e) {
 	}).sort((e, t) => Number(e.horizontal) - Number(t.horizontal) || e.fixed - t.fixed || e.styleKey.localeCompare(t.styleKey) || e.start - t.start || e.end - t.end), n = [];
 	for (let e of t) {
 		let t = n.at(-1);
-		if (t && t.horizontal === e.horizontal && Math.abs(t.fixed - e.fixed) < R && t.styleKey === e.styleKey && e.start <= t.end + R) {
-			t.end = Math.max(t.end, e.end), t.memberIds = [.../* @__PURE__ */ new Set([...t.memberIds, ...e.memberIds])], t.shared = t.shared || e.shared;
-			continue;
-		}
-		n.push({
+		t && t.horizontal === e.horizontal && Math.abs(t.fixed - e.fixed) < R && t.styleKey === e.styleKey && e.start <= t.end + R ? (t.end = Math.max(t.end, e.end), t.memberIds = [.../* @__PURE__ */ new Set([...t.memberIds, ...e.memberIds])], t.shared = t.shared || e.shared) : n.push({
 			...e,
 			memberIds: [...e.memberIds]
 		});
@@ -1086,11 +1078,7 @@ function rt(e, t = {}) {
 	let o = [];
 	for (let e of a) {
 		let n = o.at(-1);
-		if (n && n.horizontal === e.horizontal && Math.abs(n.fixed - e.fixed) < R && Math.abs(n.end - e.start) < R && n.styleKey === e.styleKey && (!t.preserveMembership || $e(n.memberIds) === $e(e.memberIds))) {
-			n.end = e.end, n.shared = n.shared || e.shared, n.memberIds = [.../* @__PURE__ */ new Set([...n.memberIds, ...e.memberIds])];
-			continue;
-		}
-		o.push({ ...e });
+		n && n.horizontal === e.horizontal && Math.abs(n.fixed - e.fixed) < R && Math.abs(n.end - e.start) < R && n.styleKey === e.styleKey && (!t.preserveMembership || $e(n.memberIds) === $e(e.memberIds)) ? (n.end = e.end, n.shared = n.shared || e.shared, n.memberIds = [.../* @__PURE__ */ new Set([...n.memberIds, ...e.memberIds])]) : o.push({ ...e });
 	}
 	return o.map((e) => {
 		let t = e.horizontal ? {
@@ -1143,7 +1131,7 @@ function it(e, t, n = {}) {
 		for (let e of l) {
 			if (u.includes(e)) continue;
 			let t = V(e.a), n = V(e.b);
-			!d.has(t) && !d.has(n) || (u.push(e), d.add(t), d.add(n), f = !0);
+			(d.has(t) || d.has(n)) && (u.push(e), d.add(t), d.add(n), f = !0);
 		}
 	}
 	let p = !!n.horizontalFlow, m = u.filter((e) => Math.abs(e.a.y - e.b.y) < R === p), h = [...m.length ? m : u].sort((e, t) => et(t) - et(e))[0] || null, g = new Set(u.map((e) => e.id)), _ = new Set(u.flatMap((e) => [V(e.a), V(e.b)])), v = s.map((e) => {
@@ -1158,11 +1146,7 @@ function it(e, t, n = {}) {
 	}).filter((e) => e.horizontal !== p).sort((e, t) => Number(e.horizontal) - Number(t.horizontal) || e.fixed - t.fixed || e.start - t.start || e.end - t.end), y = [];
 	for (let e of v) {
 		let t = y.at(-1);
-		if (t && t.horizontal === e.horizontal && Math.abs(t.fixed - e.fixed) < R && e.start <= t.end + R) {
-			t.end = Math.max(t.end, e.end), t.segmentIds.push(e.segment.id), t.childIds = [.../* @__PURE__ */ new Set([...t.childIds, ...e.segment.childIds])].sort();
-			continue;
-		}
-		y.push({
+		t && t.horizontal === e.horizontal && Math.abs(t.fixed - e.fixed) < R && e.start <= t.end + R ? (t.end = Math.max(t.end, e.end), t.segmentIds.push(e.segment.id), t.childIds = [.../* @__PURE__ */ new Set([...t.childIds, ...e.segment.childIds])].sort()) : y.push({
 			horizontal: e.horizontal,
 			fixed: e.fixed,
 			start: e.start,
@@ -1283,8 +1267,7 @@ function at(e, t = [], n = {}) {
 		standaloneIds: l.map((e) => e.id)
 	};
 }
-//#endregion
-//#region src/core/layout.js
+// src/core/layout.js
 function H(e) {
 	return e.orientation === "LeftToRight" || e.orientation === "RightToLeft";
 }
@@ -2167,7 +2150,7 @@ function Z(e) {
 		n = !1;
 		for (let e = 1; e < t.length - 1; e += 1) {
 			let r = t[e - 1], i = t[e], a = t[e + 1], o = Math.abs(r.x - i.x) < .01 && Math.abs(i.x - a.x) < .01, s = Math.abs(r.y - i.y) < .01 && Math.abs(i.y - a.y) < .01;
-			if (!(!o && !s)) {
+			if (o || s) {
 				t.splice(e, 1), n = !0;
 				break;
 			}
@@ -3172,8 +3155,7 @@ function Sn(e, t, n) {
 		w: _ * 2
 	};
 }
-//#endregion
-//#region src/core/connectors.js
+// src/core/connectors.js
 function $(e, t) {
 	let n = t && t[e.node.id];
 	return {
@@ -3304,7 +3286,7 @@ function An(e, t) {
 		r = !1;
 		for (let e = 1; e < n.length - 1; e += 1) {
 			let t = n[e - 1], i = n[e], a = n[e + 1], o = Math.abs(t.x - i.x) < .01 && Math.abs(i.x - a.x) < .01, s = Math.abs(t.y - i.y) < .01 && Math.abs(i.y - a.y) < .01;
-			if (!(!o && !s)) {
+			if (o || s) {
 				n.splice(e, 1), r = !0;
 				break;
 			}
@@ -3315,8 +3297,7 @@ function An(e, t) {
 function jn(e, t, n, r, i, a) {
 	return "M " + An(Dn(e, t, n, r, i, a), H(r)).map((e) => e.x.toFixed(1) + " " + e.y.toFixed(1)).join(" L ");
 }
-//#endregion
-//#region src/core/bounds.js
+// src/core/bounds.js
 function Mn(e, t, n) {
 	n ??= 0;
 	let r = Infinity, i = Infinity, a = -Infinity, o = -Infinity;
@@ -3344,5 +3325,4 @@ function Nn(e, t, n, r = {}) {
 		panY: (n - s * c) / 2 - e.y * c
 	};
 }
-//#endregion
 export { h as A, r as B, Xe as C, g as D, _ as E, l as F, e as H, c as I, d as L, a as M, u as N, m as O, i as P, s as R, Ge as S, p as T, o as V, rt as _, En as a, qe as b, Tn as c, H as d, bn as f, it as g, yn as h, On as i, n as j, f as k, jn as l, U as m, Nn as n, $ as o, W as p, Dn as r, An as s, Mn as t, vn as u, at as v, Ke as w, Ye as x, Je as y, t as z };

@@ -1,8 +1,8 @@
-import { I as e, L as t, N as n, R as r, V as i } from "./bounds-PDieHcY6.js";
-import { t as a } from "./createOrgChart-C7rp7p6G.js";
+import { I as e, L as t, N as n, R as r, V as i } from "./bounds-BAybmE0D.js";
+import { t as a } from "./createOrgChart-BebWhTsH.js";
 /* empty css                   */
 import { Teleport as o, computed as s, defineComponent as c, h as l, markRaw as u, onBeforeUnmount as d, onMounted as f, ref as p, shallowRef as m, watch as h } from "vue";
-//#region src/vue/OrgChart.js
+// src/vue/OrgChart.js
 var g = /* @__PURE__ */ "node-click.node-select.node-drag-start.node-drag.node-drag-end.layout-change.orientation-change.subtree-mode-change.relayout.layout-start.layout-complete.layout-cancel.layout-error.edit-mode-change.node-change.settings-change.inspector-open.inspector-close.settings-open.settings-close.fullscreen-change.history-change.attach-start.attach-cancel.user-select.presets-change.preset-load.selection-change.legend-change.edges-select.edges-reset.family-route-select.family-route-change.family-route-reset".split(".");
 function _(e) {
 	let t = {};
@@ -187,11 +187,7 @@ var v = c({
 			c && (y.value = c.getState());
 		}
 		function E() {
-			if (!c || !r.node) {
-				b.value = [];
-				return;
-			}
-			b.value = c.getPositioned().map((e) => {
+			!c || !r.node ? b.value = [] : b.value = c.getPositioned().map((e) => {
 				let t = c.getNodeSlotEl(e.node.id);
 				return t ? {
 					id: e.node.id,
@@ -425,5 +421,4 @@ var v = c({
 }), y = { install(e, t = {}) {
 	e.component(t.name || "OrgChart", v);
 } };
-//#endregion
 export { v as OrgChart, y as default };

@@ -1,5 +1,5 @@
-import { L as e, R as t, V as n, o as r, t as i, v as a } from "./bounds-PDieHcY6.js";
-//#region src/core/search.js
+import { L as e, R as t, V as n, o as r, t as i, v as a } from "./bounds-BAybmE0D.js";
+// src/core/search.js
 function o(e, t) {
 	let n = (t || "").trim().toLowerCase(), r = /* @__PURE__ */ new Set();
 	if (!n) return r;
@@ -12,8 +12,7 @@ function o(e, t) {
 	].filter(Boolean).join(" ").toLowerCase().includes(n) && r.add(t.id);
 	return r;
 }
-//#endregion
-//#region src/core/exportLayout.js
+// src/core/exportLayout.js
 function s(e, t, n, r) {
 	return {
 		orientation: e.orientation,
@@ -40,8 +39,7 @@ function s(e, t, n, r) {
 		}))
 	};
 }
-//#endregion
-//#region src/core/svgExport.js
+// src/core/svgExport.js
 var c = "\"Segoe UI\", system-ui, -apple-system, Arial, sans-serif", l = {
 	FILLED: {
 		bg: "#e6f4ea",
@@ -130,8 +128,7 @@ function g(o, s, c = {}) {
 	let C = v.w.toFixed(0), w = v.h.toFixed(0);
 	return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${C}" height="${w}" viewBox="0 0 ${C} ${w}"><defs><linearGradient id="loc-teal" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1a6e5c"/><stop offset="1" stop-color="#2a9d8f"/></linearGradient></defs><rect x="0" y="0" width="${C}" height="${w}" fill="#ffffff"/><g transform="translate(${(-v.x).toFixed(1)},${(-v.y).toFixed(1)})">${y}</g>` + x + "</svg>";
 }
-//#endregion
-//#region src/core/theme.js
+// src/core/theme.js
 var _ = {
 	spacingX: 40,
 	spacingY: 70,
@@ -173,5 +170,4 @@ function x(e, t) {
 	}
 	return n;
 }
-//#endregion
 export { g as a, x as i, y as n, s as o, v as r, o as s, _ as t };

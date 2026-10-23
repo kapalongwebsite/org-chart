@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.18.7
+
+- Keep PDF dependencies external to the library bundle so each application's
+  audited lockfile controls jsPDF, svg2pdf.js and DOMPurify versions. The library
+  development lock uses DOMPurify 3.4.17. No layout or interaction behavior changes.
+- Add a built-package check rejecting embedded PDF libraries and sanitizers.
+
 ## 1.18.6
 
 - Centralized the approved chart-card geometry: 240×380 person cards with a

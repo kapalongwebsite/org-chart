@@ -780,6 +780,12 @@ deliberate belt-and-suspenders:
 
 So the package is robust whether or not the build runs on install.
 
+PDF exports keep `jspdf` and `svg2pdf.js` as external package imports. The
+consumer's lockfile therefore controls those dependencies and jsPDF's optional
+DOMPurify sanitizer. Run `npm run test:package` after building to check that no
+prebundled sanitizer or PDF library bypasses that boundary. Consumers must audit
+their own installed dependency tree before release.
+
 ---
 
 ## 12. Notes before uploading to GitHub
