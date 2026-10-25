@@ -64,14 +64,17 @@
 .loc-toolbar button.loc-active {
   background: var(--loc-teal-2); color: #fff; border-color: var(--loc-teal-1);
 }
-/* Small screens: tighter spacing and no group labels so the wrapped toolbar
-   stays a compact strip and never widens the page. */
+/* Small screens: one compact row that scrolls sideways inside itself, so the
+   toolbar neither eats the chart's height nor widens the page. */
 @media (max-width: 640px) {
-  .loc-toolbar { gap: 4px; padding: 6px 8px; }
+  .loc-toolbar {
+    flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+    gap: 4px; padding: 6px 8px; scrollbar-width: thin;
+  }
   .loc-toolbar .loc-label { display: none; }
-  .loc-toolbar .loc-group { flex-wrap: wrap; padding-right: 4px; margin-right: 0; border-right: none; }
+  .loc-toolbar .loc-group { flex: 0 0 auto; padding-right: 4px; margin-right: 0; }
   .loc-toolbar button { padding: 6px 8px; }
-  .loc-toolbar .loc-search-input { min-width: 0; width: 100%; }
+  .loc-toolbar .loc-search-input { width: 9rem; }
 }
 
 /* ---------- Canvas / content ---------- */
