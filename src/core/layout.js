@@ -549,6 +549,41 @@ function boundedGridCoordinates(values, limit = 18) {
 }
 
 /*
+ * Candidate lattice coordinates for the next item: every coordinate where one
+ * of the item's footprint edges would sit a gap past a placed edge, plus the
+ * given base steps, as boundedGridCoordinates() would choose them. Every
+ * candidate is a whole number of lattice steps (gridCeil), so the steps are
+ * collected in a bitmap instead of a set of floats that then has to be sorted.
+ */
+function latticeCandidates(baseSteps, placedEdges, itemEdges, gap, lattice, limit = 18) {
+  let maxStep = 0;
+  for (const step of baseSteps) if (step > maxStep) maxStep = step;
+  let maxPlaced = -Infinity, minItem = Infinity;
+  for (const edge of placedEdges) if (edge > maxPlaced) maxPlaced = edge;
+  for (const edge of itemEdges) if (edge < minItem) minItem = edge;
+  if (placedEdges.size && itemEdges.length) {
+    maxStep = Math.max(maxStep, Math.ceil((maxPlaced + gap - minItem) / lattice));
+  }
+  const seen = new Uint8Array(maxStep + 2);
+  for (const step of baseSteps) if (step >= 0) seen[step] = 1;
+  for (const edge of placedEdges) {
+    for (const itemEdge of itemEdges) {
+      const step = Math.ceil((edge + gap - itemEdge) / lattice);
+      if (step >= 0) seen[step] = 1;
+    }
+  }
+  const steps = [];
+  for (let step = 0; step < seen.length; step += 1) if (seen[step]) steps.push(step);
+  if (steps.length <= limit) return steps.map((step) => step * lattice);
+  const bounded = [];
+  for (let index = 0; index < limit; index += 1) {
+    const step = steps[Math.round(index * (steps.length - 1) / (limit - 1))];
+    if (step !== bounded[bounded.length - 1]) bounded.push(step);
+  }
+  return bounded.map((step) => step * lattice);
+}
+
+/*
  * Place measured subtree rectangles into an invisible occupancy mould. Unlike
  * row and column packing, every exposed card edge creates another legal grid
  * coordinate. A later, shorter block can therefore occupy the space beneath a
@@ -594,12 +629,17 @@ function packOccupancyGrid(items, targetAspect, gapX, gapY, gridSize) {
     const rects = itemFootprintRects(item);
     return {
       rects,
-      lefts: new Set(rects.map((rect) => rect.left)),
-      tops: new Set(rects.map((rect) => rect.top)),
+      lefts: [...new Set(rects.map((rect) => rect.left))],
+      tops: [...new Set(rects.map((rect) => rect.top))],
     };
   });
   const indexCellSize = Math.max(64, gridGapX * 2, gridGapY * 1.2);
   const totalRects = footprints.reduce((count, footprint) => count + footprint.rects.length, 0);
+  // Mould widths share placement prefixes: the placed state after the same
+  // sequence of placements is identical whatever the width, so its candidate
+  // coordinates and every collision probe result are too. A trie of
+  // prefixes, shared by all widths, computes each of them once.
+  const prefixRoot = { next: new Map() };
 
   let best = null;
   for (const mouldWidth of [...mouldWidths].sort((a, b) => a - b)) {
@@ -609,53 +649,50 @@ function packOccupancyGrid(items, targetAspect, gapX, gapY, gridSize) {
     const placedIndex = createFootprintSpatialIndex(indexCellSize, totalRects);
     const placedRights = new Set();
     const placedBottoms = new Set();
-    const placedXs = new Set([0]);
-    const placedYs = new Set([0]);
+    const placedXSteps = [0];
+    const placedYSteps = [0];
     let placedMaxBottom = -Infinity;
+    let prefix = prefixRoot;
     // Whether this mould width ever ruled out a candidate. If it never did, a
     // wider mould examines the same candidates in the same order, reproduces
     // these placements, and only scores worse for its unused width.
     let widthBound = false;
     items.forEach((item, itemIndex) => {
-      const { rects: currentRects, lefts: currentLefts, tops: currentTops } = footprints[itemIndex];
-      // Footprint pairs frequently resolve to the same lattice coordinate.
-      // Deduplicate while generating candidates so a large subtree does not
-      // allocate and sort hundreds of thousands of repeated values.
-      const xs = new Set(placedXs);
-      const ys = new Set(placedYs);
-      for (const right of placedRights) {
-        for (const left of currentLefts) {
-          xs.add(gridCeil(right + gridGapX - left, latticeSize));
-        }
+      const footprint = footprints[itemIndex];
+      if (!prefix.candidateXs) {
+        prefix.candidateXs = latticeCandidates(placedXSteps, placedRights, footprint.lefts, gridGapX, latticeSize);
+        prefix.candidateYs = latticeCandidates(placedYSteps, placedBottoms, footprint.tops, gridGapY, latticeSize);
+        // 0 = not probed yet, 1 = clear, -1 = collides.
+        prefix.probes = new Int8Array(prefix.candidateXs.length * prefix.candidateYs.length);
       }
-      for (const bottom of placedBottoms) {
-        for (const top of currentTops) {
-          ys.add(gridCeil(bottom + gridGapY - top, latticeSize));
-        }
-      }
-      let selected = null;
-      const candidateXs = boundedGridCoordinates(xs);
-      const candidateYs = boundedGridCoordinates(ys);
-      for (const y of candidateYs) {
-        for (const x of candidateXs) {
+      const { candidateXs, candidateYs, probes } = prefix;
+      let selected = null, selectedProbe = -1;
+      for (let yi = 0; yi < candidateYs.length && !selected; yi += 1) {
+        const y = candidateYs[yi];
+        for (let xi = 0; xi < candidateXs.length; xi += 1) {
+          const x = candidateXs[xi];
           if (x + item.w > mouldWidth + 0.01) {
             widthBound = true;
             continue;
           }
-          if (translatedFootprintsClear(
-            currentRects,
-            x,
-            y,
-            placedIndex,
-            gridGapX,
-            gridGapY,
-            latticeSize,
-          )) {
+          const probe = yi * candidateXs.length + xi;
+          if (probes[probe] === 0) {
+            probes[probe] = translatedFootprintsClear(
+              footprint.rects,
+              x,
+              y,
+              placedIndex,
+              gridGapX,
+              gridGapY,
+              latticeSize,
+            ) ? 1 : -1;
+          }
+          if (probes[probe] === 1) {
             selected = { item, x, y };
+            selectedProbe = probe;
             break;
           }
         }
-        if (selected) break;
       }
       // x=0 below the existing mould is always legal, so this is only a
       // defensive fallback for malformed dimensions.
@@ -664,10 +701,16 @@ function packOccupancyGrid(items, targetAspect, gapX, gapY, gridSize) {
         : 0;
       const placement = selected || { item, x: 0, y: fallbackY };
       placements.push(placement);
+      let next = prefix.next.get(selectedProbe);
+      if (!next) {
+        next = { next: new Map() };
+        prefix.next.set(selectedProbe, next);
+      }
+      prefix = next;
       placedMaxBottom = Math.max(placedMaxBottom, placement.y + item.h);
-      placedXs.add(gridCeil(placement.x + item.w + gridGapX, latticeSize));
-      placedYs.add(gridCeil(placement.y + item.h + gridGapY, latticeSize));
-      for (const rect of currentRects) {
+      placedXSteps.push(Math.ceil((placement.x + item.w + gridGapX) / latticeSize));
+      placedYSteps.push(Math.ceil((placement.y + item.h + gridGapY) / latticeSize));
+      for (const rect of footprint.rects) {
         const placed = {
           ...rect,
           left: rect.left + placement.x,
