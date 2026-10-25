@@ -2,9 +2,9 @@
    scoped under `.loc-root` to avoid clashing with host-app CSS.
    The host container should have a height (the chart fills it). */
 
-.loc-root {
+.loc-root, .loc-panel, .loc-settings, .loc-legend {
   --loc-teal-1: #1a6e5c;
-  --loc-teal-2: #2a9d8f;
+  --loc-teal-2: #1f7f74;
   --loc-text-dark: #1a1a2e;
   --loc-text-gray: #4a5568;
   --loc-muted: #9ca3af;
@@ -12,7 +12,8 @@
   --loc-connector: #4a5568;
   --loc-bg: #f5f7fb;
   --loc-accent: #2563eb;
-
+}
+.loc-root {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -23,7 +24,16 @@
   color: var(--loc-text-dark);
   background: var(--loc-bg);
 }
-.loc-root *, .loc-root *::before, .loc-root *::after { box-sizing: border-box; }
+.loc-root *, .loc-root *::before, .loc-root *::after,
+.loc-panel, .loc-panel *, .loc-panel *::before, .loc-panel *::after,
+.loc-settings, .loc-settings *, .loc-settings *::before, .loc-settings *::after,
+.loc-legend, .loc-legend *, .loc-legend *::before, .loc-legend *::after { box-sizing: border-box; }
+/* Drawers and the legend can be mounted outside .loc-root (inspectorTarget,
+   settingsTarget, legendTarget); they carry the chart font themselves. */
+.loc-panel, .loc-settings, .loc-legend {
+  font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  color: var(--loc-text-dark);
+}
 
 /* ---------- Toolbar ---------- */
 .loc-toolbar {
@@ -54,6 +64,18 @@
 .loc-toolbar button.loc-active {
   background: var(--loc-teal-2); color: #fff; border-color: var(--loc-teal-1);
 }
+/* Small screens: one compact row that scrolls sideways inside itself, so the
+   toolbar neither eats the chart's height nor widens the page. */
+@media (max-width: 640px) {
+  .loc-toolbar {
+    flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+    gap: 4px; padding: 6px 8px; scrollbar-width: thin;
+  }
+  .loc-toolbar .loc-label { display: none; }
+  .loc-toolbar .loc-group { flex: 0 0 auto; padding-right: 4px; margin-right: 0; }
+  .loc-toolbar button { padding: 6px 8px; }
+  .loc-toolbar .loc-search-input { width: 9rem; }
+}
 
 /* ---------- Canvas / content ---------- */
 .loc-canvas {
@@ -61,14 +83,18 @@
   background-color: var(--loc-bg);
   background-image: radial-gradient(circle, #d3d9e6 1px, transparent 1px);
   background-size: 22px 22px;
+  /* Pan, pinch and card drags run on pointer events; the chart owns touch
+     gestures so the browser does not cancel them for page scrolling. */
+  touch-action: none;
 }
 .loc-canvas.loc-panning { cursor: grabbing; }
 .loc-canvas.loc-gridon { background-image: none; }
-/* No `will-change: transform` here: promoting the zoom layer makes the browser
-   rasterize text ONCE at 1x and bitmap-scale it, so labels blur when zoomed in
-   (while SVG export stays crisp). Without it the browser re-rasterizes text at
-   the zoomed size → sharp at any zoom. */
-.loc-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+/* The zoom layer is composited only while a pan, pinch or wheel gesture is in
+   progress (.loc-gesturing), so moving it does not repaint every card and
+   connector each frame. At rest it is not promoted: the browser re-rasterizes
+   text at the zoomed size, so labels stay sharp at any zoom. */
+.loc-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; user-select: none; -webkit-user-select: none; }
+.loc-canvas.loc-gesturing .loc-content { will-change: transform; }
 
 .loc-grid {
   position: absolute; left: 0; top: 0; z-index: 0; display: none; pointer-events: none;
@@ -136,14 +162,21 @@
 @keyframes loc-layout-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .loc-layout-spinner { animation: none; }
+  .loc-panel, .loc-settings, .loc-toolbar button { transition: none; }
 }
 
 /* ---------- Node cards ---------- */
 .loc-node {
   position: absolute; left: 0; top: 0; transform-origin: 0 0;
   user-select: none; cursor: grab; border-radius: 8px;
-  box-shadow: 0 1px 4px rgba(16,24,40,.12); overflow: hidden;   /* no will-change: keep card text crisp when zoomed (see .loc-content) */
+  box-shadow: 0 1px 4px rgba(16,24,40,.12);
+  /* Visible overflow lets the +/- toggle straddle the bottom edge; the photo,
+     the text block and the department label clip their own content. */
+  overflow: visible;
+  touch-action: none;
 }
+.loc-node:focus { outline: none; }
+.loc-node:focus-visible { outline: 3px solid var(--loc-accent); outline-offset: 2px; }
 .loc-node.loc-dragging { cursor: grabbing; z-index: 50; box-shadow: 0 6px 18px rgba(16,24,40,.28); }
 .loc-node.loc-selected { outline: 2px solid var(--loc-accent); outline-offset: 1px; }
 .loc-node.loc-highlight { outline: 2px solid #f59e0b; outline-offset: 1px; }
@@ -169,6 +202,7 @@
   border-bottom: 1px solid var(--loc-border);
   display: flex; align-items: center; justify-content: center;
   color: var(--loc-muted); font-size: 30px; overflow: hidden;
+  border-radius: 7px 7px 0 0;
 }
 .loc-node.loc-position .loc-photo img {
   position: absolute; left: calc(50% + var(--loc-photo-offset-x, 0%));
@@ -181,6 +215,7 @@
 .loc-node.loc-position .loc-ptext {
   flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 1px; padding: 6px 8px;
+  overflow: hidden;
 }
 .loc-node.loc-position .loc-pname {
   font-weight: 700; font-size: calc(13.5px * var(--loc-fit, 1)); text-transform: uppercase;
@@ -197,7 +232,7 @@
   padding: 1px 7px; border-radius: 999px; text-transform: uppercase;
 }
 .loc-badge.loc-FILLED { background: #e6f4ea; color: #137a3e; }
-.loc-badge.loc-VACANT { background: #fdf0e6; color: #b25a14; }
+.loc-badge.loc-VACANT { background: #fdf0e6; color: #a3520f; }
 .loc-badge.loc-UNFUNDED { background: #fbe7e7; color: #b42318; }
 
 .loc-node.loc-status-VACANT { border-style: dashed; opacity: .8; }
@@ -211,7 +246,10 @@
   box-shadow: 0 1px 3px rgba(15,23,42,.18);
   display: flex; align-items: center; justify-content: center;
   font-size: 15px; line-height: 1; cursor: pointer; font-weight: 700; pointer-events: auto; z-index: 3;
+  padding: 0; margin: 0; font-family: inherit; -webkit-appearance: none; appearance: none;
 }
+.loc-node .loc-toggle:focus { outline: none; }
+.loc-node .loc-toggle:focus-visible { outline: 2px solid var(--loc-accent); outline-offset: 1px; }
 .loc-node .loc-toggle:hover { background: var(--loc-teal-2, #0f766e); color: #fff; border-color: var(--loc-teal-2, #0f766e); }
 
 /* ---------- Node host mode (Vue #node slot teleports here) ---------- */
@@ -221,7 +259,7 @@
 .loc-node.loc-node-host .loc-node-slot { width: 100%; height: 100%; }
 
 /* ---------- Vue wrapper helpers ---------- */
-.loc-vue-wrap { display: flex; flex-direction: column; width: 100%; height: 100%; }
+.loc-vue-wrap { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; }
 .loc-vue-host { flex: 1 1 auto; min-height: 0; position: relative; }
 .loc-vue-toolbar { flex: 0 0 auto; }
 .loc-vue-empty {

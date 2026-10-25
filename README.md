@@ -222,9 +222,10 @@ you render a chart.
 | `spacingY` | `Number` | `70` | vertical gap |
 | `enableDragging` | `Boolean` | `true` | allow node drag |
 | `enablePan` | `Boolean` | `true` | allow canvas pan |
-| `enableZoom` | `Boolean` | `true` | allow wheel zoom |
-| `maxZoom` | `Number` | `4` | how far the wheel can zoom in |
-| `readonly` | `Boolean` | `false` | disable drag / waypoint edit / collapse |
+| `enableZoom` | `Boolean` | `true` | allow wheel and pinch zoom |
+| `maxZoom` | `Number` | `4` | how far wheel, pinch and `zoomBy()` can zoom in |
+| `ariaLabel` | `String` | `'Organization chart'` | accessible name of the chart tree (init-only) |
+| `readonly` | `Boolean` | `false` | disable drag / waypoint edit / collapse; edit methods (`setEditMode(true)`, `updateNode`, `addChild`, `deleteNode`, `reparentNode`, family-route edits) are refused with one console warning |
 | `inspector` | `Boolean` | `true` | open the built-in drawer on node click; `false` = headless (emit `node-select` only) |
 | `inspectorTarget` | `String \| Element` | `null` | mount the inspector drawer into an element outside the canvas |
 | `settingsTarget` | `String \| Element` | `null` | mount the settings drawer into an element outside the canvas |
@@ -248,6 +249,7 @@ you render a chart.
 | `snapAlign` | `Boolean` | `true` | while dragging, snap to the parent's connector axis + sibling centers (with guide lines) |
 | `fitOnInit` | `Boolean` | `true` | frame the chart on mount |
 | `layoutWorker` | `Boolean` | `true` | calculate full structural layouts off the UI thread; set `false` only for synchronous first-paint compatibility |
+| `layoutTimeout` | `Number` | `60000` | milliseconds a worker layout may run before the request fails with `layout-error`; the chart keeps one worker alive between layouts and replaces it after a timeout |
 | `layoutCache` | `Boolean` | `true` | reuse exact completed layouts from a bounded in-memory cache |
 | `toolbar` | `Boolean \| Object` | `true` | show the built-in toolbar; legacy subtree-strategy buttons are opt-in with `{ subtree: true }` |
 | `advancedLayoutControls` | `Boolean` | `false` | show legacy per-node layout-strategy overrides in the inspector |
@@ -256,7 +258,15 @@ you render a chart.
 
 Props are watched — changing `nodes`, `orientation`, `subtreeMode`, spacing, or the
 feature flags updates the chart automatically (no manual re-init). When changing
-`nodes`, replace the array reference (don't mutate it in place).
+`nodes`, replace the array reference (don't mutate it in place). `settings` is
+applied only when it differs from the chart's current settings, so a two-way
+binding (`:settings="s" @settings-change="s = $event"`) or an inline object is safe.
+
+These props are read once at mount; change them by re-mounting the component
+(for example with a `:key`): `inspector`, `inspectorTarget`, `settingsTarget`,
+`legendTarget`, `fullscreenControl`, `toolbar`, `advancedLayoutControls`,
+`fitOnInit`, `reflowOnResize`, `layoutWorker`, `layoutCache`, `persist`,
+`storageKey`, `ariaLabel` — and which slots are provided.
 
 ## 9. Vue events
 
@@ -268,9 +278,20 @@ feature flags updates the chart automatically (no manual re-init). When changing
 `fullscreen-change`, `history-change` (`{ canUndo, canRedo }`), `attach-start`/`attach-cancel`,
 `user-select` (`{ id, user, node }` — a typeahead pick), `presets-change`, `preset-load`,
 `selection-change` (`{ ids, primary }` — node multi-select), `legend-change`,
-`edges-select` (`{ ids }` — connector-line marquee), `edges-reset` (`{ ids }` — lines straightened).
+`edges-select` (`{ ids }` — connector-line marquee), `edges-reset` (`{ ids }` — lines straightened),
+`input-warning` (`{ context, problems }` — entries dropped from a saved layout, import, settings
+object or node patch).
 
 Each payload includes the relevant `{ id, node, ... }`.
+
+- `layout-change` also fires for manual geometry edits that need no relayout — a card drag, a
+  waypoint added/moved/removed, an endpoint moved, lines reset. Those payloads carry `edit: true`
+  and a `reason` (`node-drag`, `waypoint-add`, `waypoint-move`, `waypoint-remove`, `edge-anchor`,
+  `edges-reset`), so one `layout-change` listener is enough to autosave.
+- Node data with duplicate ids, a node that is its own parent, or a parent cycle is not drawn at
+  all: the chart empties, `layout-error` fires with `error.code === 'INVALID_DATA'` and
+  `error.details = { duplicateIds, cycleIds }`, and `whenLayoutSettled()` resolves `false`. A
+  `parentId` that names no node is not an error — that node becomes a root.
 
 ## 10. Methods (Vue ref / vanilla instance)
 
@@ -282,7 +303,8 @@ All methods are available on:
 
 | Method | Description |
 |--------|-------------|
-| `fitToScreen()` | Zoom & pan to frame all visible nodes |
+| `fitToScreen(options?)` | Zoom & pan to frame all visible nodes. `{ minZoom }`: when framing everything would zoom below `minZoom` (an unreadable overview on a phone), show the chart at `minZoom` anchored at its root edge instead (`anchor: 'top'`, default — the leading edge for the orientation — or `'center'`). Returns `false` when there is nothing to frame; a fit requested while the canvas is hidden runs once it gets a size |
+| `zoomBy(factor, point?)` | Zoom by a factor (e.g. `1.25` / `0.8`) around a client point `{ x, y }` (default: canvas centre); returns the new zoom |
 | `relayout()` | Recalculate automatic geometry while preserving manual card and connector adjustments |
 | `forceRelayout()` | Clear manual geometry and rebuild every card and connector from the chart data |
 | `resetView()` | Clear search + force re-layout + fit (one-stop full reset) |
@@ -300,6 +322,24 @@ so desktop, tablet, mobile, and fullscreen keep the same nodes and connectors
 while `fitToScreen()` adjusts zoom and pan. Set `reflowOnResize: true` only for
 an intentionally responsive screen layout. Exact tarp and print dimensions
 belong to the physical-canvas print API rather than ordinary viewport resizing.
+
+### Pointer, touch and keyboard
+
+- **Pan** by dragging the empty canvas. When cards can't be dragged (`readonly`,
+  view mode, or `enableDragging: false`) pressing a card pans too; releasing
+  without moving (≤ 4 px) is a click, which selects the card and fires
+  `node-select`. In edit mode a press on a card drags it (≤ 4 px of jitter never
+  moves it) and `node-select` fires on press. The middle mouse button pans from
+  anywhere, including over cards in edit mode.
+- **Zoom** with the vertical wheel (proportional to the scroll distance, so
+  trackpads zoom smoothly), Ctrl+wheel / trackpad pinch, or a two-finger pinch on
+  touch screens. A horizontal wheel or Shift+wheel pans sideways. Zooming out
+  stops at 15 % or the fitted zoom, whichever is smaller.
+- **Keyboard**: the cards form an ARIA tree (`role="tree"` / `treeitem`) with one
+  tab stop. Arrow Up/Down go to the parent / first child, Left/Right to the
+  previous / next sibling, Home to the root; Enter or Space select the card (as a
+  click: `node-select` and `node-click`); `+` / `-` expand or collapse it. The
+  focused card is panned into view.
 
 Full structural calculations are asynchronous by default. The current chart
 stays visible while the worker calculates, and only the newest request may
@@ -552,7 +592,7 @@ drawer (name + **Save**, a *positions* toggle for full vs pattern-only, and an A
 | `listLayoutPresets()` | `[{ name, full, savedAt }]` |
 | `getLayoutPresets()` | The raw preset map (to sync to your backend) |
 | `getLayout({ full })` | A portable layout object — **POST it to your backend** |
-| `applyLayout(obj)` | Apply a layout object fetched back from your backend; returns a promise that settles after layout |
+| `applyLayout(obj)` | Apply a layout object fetched back from your backend; returns a promise that settles after layout. Entries with non-finite numbers, unknown enums or non-colour values are dropped and reported once (`input-warning`); empty maps stored as `[]` are accepted |
 
 Presets live under `localStorage` key `${storageKey}.presets`, independent of `persist`. Events:
 `presets-change` (`{ presets }`) and `preset-load` (`{ name, preset }`).
@@ -594,12 +634,13 @@ Presets live under `localStorage` key `${storageKey}.presets`, independent of `p
 
 | Method | Description |
 |--------|-------------|
-| `setEditMode(on)` | Enable/disable edit mode (drag nodes, edit fields) |
+| `setEditMode(on)` | Enable/disable edit mode (drag nodes, edit fields); `false` when refused (readonly) |
 | `isEditMode()` | Returns current edit-mode state |
-| `updateNode(id, patch)` | Merge `patch` into a node's data |
+| `isReadonly()` | Whether the chart was created `readonly` |
+| `updateNode(id, patch)` | Merge `patch` into a node (fields are type-checked like a saved layout); `true` when something changed |
 | `addChild(parentId)` | Create a new child node (edit mode only) |
-| `deleteNode(id)` | Delete a node + its descendants (edit mode only) |
-| `reparentNode(id, newParentId)` | Re-wire a node's parent — **connection only, no relayout** (positions are kept) |
+| `deleteNode(id)` | Delete a node + its descendants and their manual geometry (edit mode only); returns `true` when deleted |
+| `reparentNode(id, newParentId)` | Re-wire a node's parent — **connection only, no relayout** (positions are kept); `false` for no change, a cycle or readonly |
 | `detachNode(id)` | Detach from parent (remove the connection); nothing moves |
 | `getFamilyRouteSelection()` | Return the selected shared family connector |
 | `setFamilyRouteOverride(parentId, override)` | Move/pin a shared family trunk without changing relationships |
@@ -610,7 +651,7 @@ Presets live under `localStorage` key `${storageKey}.presets`, independent of `p
 | `closeInspector()` | Close the inspector panel |
 | `nodeScreenRect(id)` | The node's on-screen rectangle (viewport coords), or `null` |
 | `getSettings()` | Get current settings (spacing, grid, theme rules) |
-| `setSettings(s)` | Apply settings (merges; fires `settings-change`) |
+| `setSettings(s)` | Apply settings (merges; fires `settings-change`). Returns `false` — with no relayout and no event — when nothing changed, so a host can mirror `settings-change` back without looping |
 | `toggleSettings(force?)` | Toggle the left settings panel |
 | `resetSettings()` | Restore spacing / grid / theme rules to the as-configured defaults |
 
@@ -618,8 +659,8 @@ Presets live under `localStorage` key `${storageKey}.presets`, independent of `p
 
 | Method | Description |
 |--------|-------------|
-| `setNodes(nodes, meta?)` | Replace node data programmatically |
-| `loadJSON(data)` | Import from export format; returns node count |
+| `setNodes(nodes, meta?)` | Replace node data programmatically. Edits for ids no longer present are dropped; a new `parentId` in the data wins over an older manual reparent |
+| `loadJSON(data)` | Import from export format; returns node count. Replaces the current manual geometry with the file's (missing maps → empty) and applies its settings |
 | `getState()` | Snapshot of internal state (zoom, pan, mode, etc.) |
 | `getNodes()` | Get a copy of the current node array |
 | `getPositioned()` | Get the positioned layout result |
@@ -631,15 +672,17 @@ Presets live under `localStorage` key `${storageKey}.presets`, independent of `p
 | `exportPNG(scale?)` | Download a high-DPI PNG (default scale = 3). **async** → `Promise<boolean>` |
 | `exportSVG()` | Download an SVG. **async** → `Promise<string>` |
 | `exportWebP(options?)` | **Render a WebP and return it** (Blob or data-URL) — for upload/API, no download. **async** |
-| `exportPDF()` | Open a print-ready SVG in a new tab. **async** → `Promise<boolean>` |
-| `exportJSON(download?)` | Export full layout state as JSON; returns the object |
+| `exportPDF()` | Open a print window with the chart as an image and print it. Call it **from a click handler** — the window opens synchronously so pop-up blockers allow it. **async** → `Promise<boolean>` (`false` if the window was blocked) |
+| `exportJSON(download?)` | Export full layout state as JSON (`version: 2`); returns the object |
 | `buildSVG(raster?)` | Build the raw SVG string synchronously (no photo embedding) |
 
 > **Photos are embedded** in exports as base64 data URLs, so they show up in the SVG/PNG/PDF even
 > when the file is opened offline. The three download methods are **async** because they load the
 > photos first — `await chart.exportPNG()`. For this to work the image host must allow cross-origin
-> reads (send `Access-Control-Allow-Origin`); a photo that blocks CORS falls back to the placeholder
-> dot. `buildSVG()` stays synchronous and just references the external photo URLs.
+> reads (send `Access-Control-Allow-Origin`); a photo that blocks CORS, fails, or takes longer than
+> the `exportPhotoTimeout` option (default `8000` ms) falls back to the placeholder dot, and one
+> console warning lists those photos. `buildSVG()` stays synchronous and just references the
+> external photo URLs.
 
 #### `exportWebP()` — for the website (no buttons)
 
@@ -820,7 +863,7 @@ background / text / border colors. Example via the API:
 chart.setSettings({
   themeRules: [
     { field: 'type',   value: 'department', style: { bg: '#e0524d', text: '#ffffff' } }, // all departments red
-    { field: 'status', value: 'VACANT',     style: { text: '#b25a14', border: '#b25a14' } },
+    { field: 'status', value: 'VACANT',     style: { text: '#a3520f', border: '#a3520f' } },
     { field: 'level',  value: 'division',    style: { bg: '#e0524d' } },                  // matches node.data.level
   ],
 });

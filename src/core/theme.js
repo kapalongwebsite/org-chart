@@ -31,15 +31,36 @@ export function normalizeSettings(partial = {}) {
   return s;
 }
 
+// Colours end up in CSS custom properties, inline legend styles and the
+// settings drawer, so only plain colour literals are accepted: #rgb, #rgba,
+// #rrggbb, #rrggbbaa and rgb()/rgba()/hsl()/hsla() with numeric arguments.
+const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+const NUM = '[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:%|deg)?';
+const FUNC_COLOR = new RegExp(`^(?:rgba?|hsla?)\\(\\s*${NUM}(?:\\s*[,\\s/]\\s*${NUM}){2,3}\\s*\\)$`, 'i');
+
+export function isSafeColor(value) {
+  if (typeof value !== 'string') return false;
+  const v = value.trim();
+  return HEX_COLOR.test(v) || FUNC_COLOR.test(v);
+}
+
+/* style keys whose colour value normalizeRule will drop */
+export function invalidRuleColors(r = {}) {
+  const style = (r && r.style) || {};
+  return ['bg', 'text', 'border'].filter((k) => style[k] != null && style[k] !== '' && !isSafeColor(style[k]));
+}
+
 export function normalizeRule(r = {}) {
+  const style = (r && r.style) || {};
+  const color = (v) => (isSafeColor(v) ? v.trim() : '');
   return {
     enabled: r.enabled !== false,
-    field: r.field || 'type',
+    field: r.field ? String(r.field) : 'type',
     value: r.value != null ? String(r.value) : '',
     style: {
-      bg: (r.style && r.style.bg) || '',
-      text: (r.style && r.style.text) || '',
-      border: (r.style && r.style.border) || '',
+      bg: color(style.bg),
+      text: color(style.text),
+      border: color(style.border),
     },
   };
 }

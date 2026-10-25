@@ -1,23 +1,62 @@
 // Data normalization & multi-format import — pure (no DOM, no sample data).
-import { DEPT_SIZE, POS_SIZE } from './constants.js';
+import { DEPT_SIZE, POS_SIZE, SUBTREE_MODES } from './constants.js';
 
-/* normalize a loose node record into a full internal node */
+// Per-node subtree overrides the layout engine understands ('Auto' is the
+// legacy alias of AutoSmart).
+const LAYOUT_MODES = new Set([...SUBTREE_MODES, 'Auto']);
+// A node type becomes a CSS class token (`loc-<type>`), so only plain word
+// characters are kept; anything else renders as a position card.
+const TYPE_TOKEN = /^[A-Za-z][\w-]*$/;
+
+function positiveNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+function textField(value) {
+  return value == null ? '' : String(value);
+}
+/* '' marks a root. 0 is a real id, so only null/undefined/false/'' mean "no parent". */
+export function normalizeParentId(value) {
+  return value === undefined || value === null || value === false ? '' : value;
+}
+/* `collapsed` is a strict flag: the string "false" (or any other truthy junk)
+   must not collapse a branch. */
+export function isCollapsedFlag(value) {
+  return value === true || value === 'true';
+}
+
+/* normalize a loose node record into a full internal node (idempotent) */
 export function makeNode(src) {
-  const type = src.type || 'position';
+  const type = src.type == null ? 'position' : (TYPE_TOKEN.test(String(src.type)) ? String(src.type) : 'position');
   const defaultSize = type === 'department' ? DEPT_SIZE : POS_SIZE;
   return {
     id: src.id,
-    parentId: src.parentId || '',
+    parentId: normalizeParentId(src.parentId),
     type,
-    label: src.label || '',
-    personName: src.personName || '',
-    status: src.status || '',
-    width: src.width || defaultSize.width,
-    height: src.height || defaultSize.height,
-    collapsed: !!src.collapsed,
-    layoutMode: src.layoutMode || null,   // per-node subtree override
-    data: src.data || {},
+    label: textField(src.label),
+    personName: textField(src.personName),
+    status: textField(src.status),
+    width: positiveNumber(src.width) || defaultSize.width,
+    height: positiveNumber(src.height) || defaultSize.height,
+    collapsed: isCollapsedFlag(src.collapsed),
+    layoutMode: LAYOUT_MODES.has(src.layoutMode) ? src.layoutMode : null,   // per-node subtree override
+    data: src.data && typeof src.data === 'object' && !Array.isArray(src.data) ? src.data : {},
   };
+}
+
+/* Fields of a loose node record that makeNode cannot honour. Returned as
+   human-readable entries so the renderer can report them once. */
+export function nodeInputProblems(src) {
+  const out = [];
+  if (!src || typeof src !== 'object') return ['not an object'];
+  if (src.width != null && !positiveNumber(src.width)) out.push(`width ${JSON.stringify(src.width)}`);
+  if (src.height != null && !positiveNumber(src.height)) out.push(`height ${JSON.stringify(src.height)}`);
+  if (src.collapsed != null && typeof src.collapsed !== 'boolean' && src.collapsed !== 'true' && src.collapsed !== 'false') {
+    out.push(`collapsed ${JSON.stringify(src.collapsed)}`);
+  }
+  if (src.layoutMode != null && src.layoutMode !== '' && !LAYOUT_MODES.has(src.layoutMode)) out.push(`layoutMode ${JSON.stringify(src.layoutMode)}`);
+  if (src.type != null && !TYPE_TOKEN.test(String(src.type))) out.push(`type ${JSON.stringify(src.type)}`);
+  if (src.data != null && (typeof src.data !== 'object' || Array.isArray(src.data))) out.push('data');
+  return out;
 }
 
 export function personNameFromPos(p) {
@@ -33,12 +72,12 @@ export function convertNestedTree(roots) {
   function walk(org, parentId) {
     const orgId = 'org-' + (org.org_id != null ? org.org_id : org.id);
     out.push({ id: orgId, parentId, type: 'department', label: org.name || org.label || 'UNIT',
-               width: DEPT_SIZE.width, height: DEPT_SIZE.height, data: { level: org.level } });
+               data: { level: org.level } });
     const positions = (org.positions || []).slice().sort((a, b) => (a.org_order || 0) - (b.org_order || 0));
     for (const p of positions) {
       out.push({ id: 'pos-' + p.id, parentId: orgId, type: 'position',
                  label: p.position_title || 'POSITION', personName: personNameFromPos(p),
-                 status: p.status || '', width: POS_SIZE.width, height: POS_SIZE.height,
+                 status: p.status || '',
                  data: { photo_url: p.photo_url || p.photo || null } });
     }
     const kids = (org.children || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
@@ -56,13 +95,12 @@ export function convertMoTree(roots) {
     const myId = 'mo-' + (seq++);
     if (n.type === 'organization') {
       out.push({ id: myId, parentId, type: 'department', label: n.name || 'UNIT',
-                 width: DEPT_SIZE.width, height: DEPT_SIZE.height,
                  data: { is_head: Boolean(n.is_head), level: n.meta && n.meta.level, srcId: n.id } });
     } else {
       const vacant = n.type === 'vacant';
       out.push({ id: myId, parentId, type: 'position', label: n.position || 'POSITION',
                  personName: vacant ? '— VACANT —' : (n.name || '—'),
-                 status: vacant ? 'VACANT' : 'FILLED', width: POS_SIZE.width, height: POS_SIZE.height,
+                 status: vacant ? 'VACANT' : 'FILLED',
                  data: { is_head: Boolean(n.is_head), photo_url: n.photo_url || null, srcId: n.id } });
     }
     const kids = (n.children || []).slice()

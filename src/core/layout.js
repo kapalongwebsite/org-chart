@@ -12,7 +12,6 @@
 //   Matrix                                 — uniform per-depth rows
 // Orientation is a pure transform applied after a logical TopToBottom layout.
 
-import dagre from '@dagrejs/dagre';
 import { SNAKE_STUB, CANVAS_PAD } from './constants.js';
 import { buildTree, getVisibleTree, visibleDepths } from './tree.js';
 import { makeNode } from './dataImport.js';
@@ -332,13 +331,6 @@ function gridCeil(value, gridSize) {
   return Math.ceil(value / gridSize) * gridSize;
 }
 
-function rectanglesHaveClearance(a, b, gapX, gapY) {
-  return a.x + a.item.w + gapX <= b.x + 0.01
-    || b.x + b.item.w + gapX <= a.x + 0.01
-    || a.y + a.item.h + gapY <= b.y + 0.01
-    || b.y + b.item.h + gapY <= a.y + 0.01;
-}
-
 function pushFootprintSegment(rects, from, to, thickness, width, height) {
   const half = thickness / 2;
   const left = clamp(Math.min(from.x, to.x) - half, 0, width);
@@ -455,6 +447,48 @@ function buildFootprintSpatialIndex(rects, cellSize) {
   };
 }
 
+/* An empty spatial index that grows as placements are made. Adding rects in
+   placement order yields exactly the buckets buildFootprintSpatialIndex()
+   would build from the same list. */
+function createFootprintSpatialIndex(cellSize, capacity) {
+  return {
+    rects: [],
+    buckets: new Map(),
+    cellSize,
+    seen: new Uint32Array(Math.max(1, capacity)),
+    queryStamp: 0,
+  };
+}
+
+function addToFootprintSpatialIndex(index, rect) {
+  const rectIndex = index.rects.length;
+  index.rects.push(rect);
+  if (rectIndex >= index.seen.length) {
+    const grown = new Uint32Array(index.seen.length * 2);
+    grown.set(index.seen);
+    index.seen = grown;
+  }
+  const minX = Math.floor(rect.left / index.cellSize);
+  const maxX = Math.floor(rect.right / index.cellSize);
+  const minY = Math.floor(rect.top / index.cellSize);
+  const maxY = Math.floor(rect.bottom / index.cellSize);
+  for (let bx = minX; bx <= maxX; bx += 1) {
+    let column = index.buckets.get(bx);
+    if (!column) {
+      column = new Map();
+      index.buckets.set(bx, column);
+    }
+    for (let by = minY; by <= maxY; by += 1) {
+      let bucket = column.get(by);
+      if (!bucket) {
+        bucket = [];
+        column.set(by, bucket);
+      }
+      bucket.push(rectIndex);
+    }
+  }
+}
+
 function translatedFootprintsClear(currentRects, x, y, placedIndex, gapX, gapY, gridSize) {
   const padding = Math.max(gapX, gapY);
   for (const current of currentRects) {
@@ -507,6 +541,41 @@ function boundedGridCoordinates(values, limit = 18) {
 }
 
 /*
+ * Candidate lattice coordinates for the next item: every coordinate where one
+ * of the item's footprint edges would sit a gap past a placed edge, plus the
+ * given base steps, as boundedGridCoordinates() would choose them. Every
+ * candidate is a whole number of lattice steps (gridCeil), so the steps are
+ * collected in a bitmap instead of a set of floats that then has to be sorted.
+ */
+function latticeCandidates(baseSteps, placedEdges, itemEdges, gap, lattice, limit = 18) {
+  let maxStep = 0;
+  for (const step of baseSteps) if (step > maxStep) maxStep = step;
+  let maxPlaced = -Infinity, minItem = Infinity;
+  for (const edge of placedEdges) if (edge > maxPlaced) maxPlaced = edge;
+  for (const edge of itemEdges) if (edge < minItem) minItem = edge;
+  if (placedEdges.size && itemEdges.length) {
+    maxStep = Math.max(maxStep, Math.ceil((maxPlaced + gap - minItem) / lattice));
+  }
+  const seen = new Uint8Array(maxStep + 2);
+  for (const step of baseSteps) if (step >= 0) seen[step] = 1;
+  for (const edge of placedEdges) {
+    for (const itemEdge of itemEdges) {
+      const step = Math.ceil((edge + gap - itemEdge) / lattice);
+      if (step >= 0) seen[step] = 1;
+    }
+  }
+  const steps = [];
+  for (let step = 0; step < seen.length; step += 1) if (seen[step]) steps.push(step);
+  if (steps.length <= limit) return steps.map((step) => step * lattice);
+  const bounded = [];
+  for (let index = 0; index < limit; index += 1) {
+    const step = steps[Math.round(index * (steps.length - 1) / (limit - 1))];
+    if (step !== bounded[bounded.length - 1]) bounded.push(step);
+  }
+  return bounded.map((step) => step * lattice);
+}
+
+/*
  * Place measured subtree rectangles into an invisible occupancy mould. Unlike
  * row and column packing, every exposed card edge creates another legal grid
  * coordinate. A later, shorter block can therefore occupy the space beneath a
@@ -547,73 +616,105 @@ function packOccupancyGrid(items, targetAspect, gapX, gapY, gridSize) {
     mouldWidths.add(gridCeil(Math.max(widest, prefixWidth), latticeSize));
   });
 
+  // Placement only reads footprints, never mutates them; resolve them once.
+  const footprints = items.map((item) => {
+    const rects = itemFootprintRects(item);
+    return {
+      rects,
+      lefts: [...new Set(rects.map((rect) => rect.left))],
+      tops: [...new Set(rects.map((rect) => rect.top))],
+    };
+  });
+  const indexCellSize = Math.max(64, gridGapX * 2, gridGapY * 1.2);
+  const totalRects = footprints.reduce((count, footprint) => count + footprint.rects.length, 0);
+  // Mould widths share placement prefixes: the placed state after the same
+  // sequence of placements is identical whatever the width, so its candidate
+  // coordinates and every collision probe result are too. A trie of
+  // prefixes, shared by all widths, computes each of them once.
+  const prefixRoot = { next: new Map() };
+
   let best = null;
   for (const mouldWidth of [...mouldWidths].sort((a, b) => a - b)) {
     const placements = [];
-    for (const item of items) {
-      const currentRects = itemFootprintRects(item);
-      const placedRects = placements.flatMap((placement) => itemFootprintRects(placement.item).map((rect) => ({
-        ...rect,
-        left: rect.left + placement.x,
-        right: rect.right + placement.x,
-        top: rect.top + placement.y,
-        bottom: rect.bottom + placement.y,
-      })));
-      const placedIndex = buildFootprintSpatialIndex(
-        placedRects,
-        Math.max(64, gridGapX * 2, gridGapY * 1.2),
-      );
-      // Footprint pairs frequently resolve to the same lattice coordinate.
-      // Deduplicate while generating candidates so a large subtree does not
-      // allocate and sort hundreds of thousands of repeated values.
-      const xs = new Set([0]);
-      const ys = new Set([0]);
-      for (const placed of placements) {
-        xs.add(gridCeil(placed.x + placed.item.w + gridGapX, latticeSize));
-        ys.add(gridCeil(placed.y + placed.item.h + gridGapY, latticeSize));
+    // Everything below grows incrementally as items are placed, in placement
+    // order, so each item sees exactly the placed state a full rebuild gives.
+    const placedIndex = createFootprintSpatialIndex(indexCellSize, totalRects);
+    const placedRights = new Set();
+    const placedBottoms = new Set();
+    const placedXSteps = [0];
+    const placedYSteps = [0];
+    let placedMaxBottom = -Infinity;
+    let prefix = prefixRoot;
+    // Whether this mould width ever ruled out a candidate. If it never did, a
+    // wider mould examines the same candidates in the same order, reproduces
+    // these placements, and only scores worse for its unused width.
+    let widthBound = false;
+    items.forEach((item, itemIndex) => {
+      const footprint = footprints[itemIndex];
+      if (!prefix.candidateXs) {
+        prefix.candidateXs = latticeCandidates(placedXSteps, placedRights, footprint.lefts, gridGapX, latticeSize);
+        prefix.candidateYs = latticeCandidates(placedYSteps, placedBottoms, footprint.tops, gridGapY, latticeSize);
+        // 0 = not probed yet, 1 = clear, -1 = collides.
+        prefix.probes = new Int8Array(prefix.candidateXs.length * prefix.candidateYs.length);
       }
-      const placedRights = new Set(placedRects.map((rect) => rect.right));
-      const placedBottoms = new Set(placedRects.map((rect) => rect.bottom));
-      const currentLefts = new Set(currentRects.map((rect) => rect.left));
-      const currentTops = new Set(currentRects.map((rect) => rect.top));
-      for (const right of placedRights) {
-        for (const left of currentLefts) {
-          xs.add(gridCeil(right + gridGapX - left, latticeSize));
-        }
-      }
-      for (const bottom of placedBottoms) {
-        for (const top of currentTops) {
-          ys.add(gridCeil(bottom + gridGapY - top, latticeSize));
-        }
-      }
-      let selected = null;
-      const candidateXs = boundedGridCoordinates(xs);
-      const candidateYs = boundedGridCoordinates(ys);
-      for (const y of candidateYs) {
-        for (const x of candidateXs) {
-          if (x + item.w > mouldWidth + 0.01) continue;
-          if (translatedFootprintsClear(
-            currentRects,
-            x,
-            y,
-            placedIndex,
-            gridGapX,
-            gridGapY,
-            latticeSize,
-          )) {
+      const { candidateXs, candidateYs, probes } = prefix;
+      let selected = null, selectedProbe = -1;
+      for (let yi = 0; yi < candidateYs.length && !selected; yi += 1) {
+        const y = candidateYs[yi];
+        for (let xi = 0; xi < candidateXs.length; xi += 1) {
+          const x = candidateXs[xi];
+          if (x + item.w > mouldWidth + 0.01) {
+            widthBound = true;
+            continue;
+          }
+          const probe = yi * candidateXs.length + xi;
+          if (probes[probe] === 0) {
+            probes[probe] = translatedFootprintsClear(
+              footprint.rects,
+              x,
+              y,
+              placedIndex,
+              gridGapX,
+              gridGapY,
+              latticeSize,
+            ) ? 1 : -1;
+          }
+          if (probes[probe] === 1) {
             selected = { item, x, y };
+            selectedProbe = probe;
             break;
           }
         }
-        if (selected) break;
       }
       // x=0 below the existing mould is always legal, so this is only a
       // defensive fallback for malformed dimensions.
       const fallbackY = placements.length
-        ? gridCeil(Math.max(...placements.map((placed) => placed.y + placed.item.h)) + gridGapY, latticeSize)
+        ? gridCeil(placedMaxBottom + gridGapY, latticeSize)
         : 0;
-      placements.push(selected || { item, x: 0, y: fallbackY });
-    }
+      const placement = selected || { item, x: 0, y: fallbackY };
+      placements.push(placement);
+      let next = prefix.next.get(selectedProbe);
+      if (!next) {
+        next = { next: new Map() };
+        prefix.next.set(selectedProbe, next);
+      }
+      prefix = next;
+      placedMaxBottom = Math.max(placedMaxBottom, placement.y + item.h);
+      placedXSteps.push(Math.ceil((placement.x + item.w + gridGapX) / latticeSize));
+      placedYSteps.push(Math.ceil((placement.y + item.h + gridGapY) / latticeSize));
+      for (const rect of footprint.rects) {
+        const placed = {
+          ...rect,
+          left: rect.left + placement.x,
+          right: rect.right + placement.x,
+          top: rect.top + placement.y,
+          bottom: rect.bottom + placement.y,
+        };
+        addToFootprintSpatialIndex(placedIndex, placed);
+        placedRights.add(placed.right);
+        placedBottoms.add(placed.bottom);
+      }
+    });
 
     const w = Math.max(...placements.map((placement) => placement.x + placement.item.w));
     const h = Math.max(...placements.map((placement) => placement.y + placement.item.h));
@@ -663,6 +764,7 @@ function packOccupancyGrid(items, targetAspect, gapX, gapY, gridSize) {
       || (Math.abs(score - best.score) < 1e-9 && Math.abs(h - best.h) < 0.01 && w < best.w)) {
       best = candidate;
     }
+    if (!widthBound) break;
   }
   return best;
 }
@@ -734,11 +836,61 @@ function appendRoutePoint(points, point) {
   if (!last || Math.abs(last.x - point.x) > 0.01 || Math.abs(last.y - point.y) > 0.01) points.push(point);
 }
 
-function isFeatured(entry) {
-  const data = entry?.node?.data || {};
-  const label = String(entry?.node?.label || '');
+// A card whose title names the office head is featured beside its parent
+// instead of joining the sibling grid. This is the only use of label text.
+const HEAD_LABEL = /\b(municipal (vice )?mayor|office head|department head|head of office)\b/i;
+
+function isHeadNode(node) {
+  const data = node?.data || {};
   return data.printRole === 'head' || data.is_head === true || data.isHead === true
-    || /\b(municipal (vice )?mayor|office head|department head|head of office)\b/i.test(label);
+    || HEAD_LABEL.test(String(node?.label || ''));
+}
+
+function isFeatured(entry) {
+  return isHeadNode(entry?.node);
+}
+
+/* The part of a chart node layoutOrgChart() reads. Callers that ship nodes
+   to a worker or key a layout cache use this so card text, photos and host
+   data (which never move a card) neither travel nor invalidate the cache.
+   A label survives only when it decides head placement. */
+export function layoutInputNode(node) {
+  const data = node.data || {};
+  const roles = {};
+  for (const key of ['printRole', 'is_head', 'isHead']) if (data[key] !== undefined) roles[key] = data[key];
+  const label = String(node.label || '');
+  return {
+    id: node.id,
+    parentId: node.parentId,
+    type: node.type,
+    label: HEAD_LABEL.test(label) ? label : '',
+    width: node.width,
+    height: node.height,
+    collapsed: node.collapsed,
+    layoutMode: node.layoutMode,
+    data: roles,
+  };
+}
+
+/* Whether the 'band' leaf strategy can lay out any family differently from
+   'inline'. It only matters for a family with both plain leaf children and
+   children with their own subtrees, and not for a top-level GridSmart family
+   that measureAuto() already bands as cohesive branches. Mirrors the
+   separateLeafBand rule there; depth counts from the virtual root as
+   measureSubtree() does. */
+function bandCanChangeLayout(entry, cfg, depth = 0) {
+  let leaves = 0, branches = 0;
+  for (const child of entry.children) {
+    if (isFeatured(child)) continue;
+    if (child.children.length === 0) leaves += 1;
+    else branches += 1;
+  }
+  const alreadyBanded = cfg.subtreeMode === 'GridSmart'
+    && depth <= 1
+    && !entry.node.isVirtual
+    && (branches >= 4 || usesCenteredThreeBranchRank(entry, cfg, depth));
+  if (leaves && branches && !alreadyBanded) return true;
+  return entry.children.some((child) => bandCanChangeLayout(child, cfg, depth + 1));
 }
 
 function countBoundedOneRankFamilies(entry) {
@@ -1224,23 +1376,6 @@ function measureSnake(entry, cms, mode, cfg) {
   };
 }
 
-function entryIsStructural(entry) {
-  return entry.children.length > 0 || entry.node.type === 'department' || isFeatured(entry);
-}
-
-function collectEntries(rootEntry) {
-  const entries = [];
-  (function visit(entry) {
-    if (!entry.node.isVirtual) entries.push(entry);
-    for (const child of entry.children) visit(child);
-  })(rootEntry);
-  return entries;
-}
-
-function supportsLayeredSmart(rootEntry) {
-  return collectEntries(rootEntry).every((entry) => !entry.node.layoutMode || isAuto(entry.node.layoutMode));
-}
-
 function uniquePoints(points) {
   const result = [];
   for (const point of points || []) {
@@ -1250,11 +1385,6 @@ function uniquePoints(points) {
     if (!previous || Math.abs(previous.x - next.x) > 0.01 || Math.abs(previous.y - next.y) > 0.01) result.push(next);
   }
   return result;
-}
-
-function internalEdgePoints(edge) {
-  const points = uniquePoints(edge?.points);
-  return points.length > 2 ? points.slice(1, -1) : [];
 }
 
 function edgePorts(parent, child, cfg) {
@@ -1414,21 +1544,28 @@ function obstacleRoute(parent, child, positioned, cfg, ports = null) {
   ])].sort((a, b) => a - b);
   const startX = xs.indexOf(searchStart.x), startY = ys.indexOf(searchStart.y);
   const endX = xs.indexOf(searchEnd.x), endY = ys.indexOf(searchEnd.y);
-  const keyOf = (x, y, direction) => `${x}:${y}:${direction}`;
+  // Search states are (column, row, arrival direction) on the xs/ys lattice,
+  // indexed numerically. Whether a single grid move is open depends only on
+  // its two end points, so each directed move is tested against the cards and
+  // reserved paths once and remembered.
+  const columns = xs.length;
+  const stateOf = (x, y, direction) => (y * columns + x) * 3 + direction;
+  const stateCount = columns * ys.length * 3;
+  const distances = new Float64Array(stateCount).fill(Infinity);
+  const previous = new Int32Array(stateCount).fill(-1);
+  const moveOpen = new Int8Array(columns * ys.length * 4);   // 0 unknown, 1 open, -1 blocked
   const heap = new MinHeap();
-  const distances = new Map();
-  const previous = new Map();
-  const startKey = keyOf(startX, startY, 0);
-  distances.set(startKey, 0);
+  const startState = stateOf(startX, startY, 0);
+  distances[startState] = 0;
   heap.push({ x: startX, y: startY, direction: 0, cost: 0, priority: 0 });
-  let finalKey = null;
+  let finalState = -1;
   const bendPenalty = Math.max(20, Math.min(cfg.spacingX, cfg.spacingY) * 0.6);
 
   while (heap.items.length) {
     const current = heap.pop();
-    const currentKey = keyOf(current.x, current.y, current.direction);
-    if (current.cost !== distances.get(currentKey)) continue;
-    if (current.x === endX && current.y === endY) { finalKey = currentKey; break; }
+    const currentState = stateOf(current.x, current.y, current.direction);
+    if (current.cost !== distances[currentState]) continue;
+    if (current.x === endX && current.y === endY) { finalState = currentState; break; }
     const candidates = [
       { x: current.x - 1, y: current.y, direction: 1 },
       { x: current.x + 1, y: current.y, direction: 1 },
@@ -1436,37 +1573,40 @@ function obstacleRoute(parent, child, positioned, cfg, ports = null) {
       { x: current.x, y: current.y + 1, direction: 2 },
     ];
     const from = { x: xs[current.x], y: ys[current.y] };
-    for (const candidate of candidates) {
+    for (let move = 0; move < candidates.length; move += 1) {
+      const candidate = candidates[move];
       if (candidate.x < 0 || candidate.x >= xs.length || candidate.y < 0 || candidate.y >= ys.length) continue;
       const to = { x: xs[candidate.x], y: ys[candidate.y] };
-      if (rects.some((rect) => pointInsideRect(to, rect) || segmentCrossesRect(from, to, rect))) continue;
-      const conflictsWithReserved = reservedPaths.some((path) => {
-        for (let index = 1; index < path.length; index += 1) {
-          if (segmentsCrossOpen(from, to, path[index - 1], path[index])
-            || segmentsOverlapOpen(from, to, path[index - 1], path[index])) return true;
-        }
-        return false;
-      });
-      if (conflictsWithReserved) continue;
+      const moveKey = (current.y * columns + current.x) * 4 + move;
+      if (moveOpen[moveKey] === 0) {
+        const blocked = rects.some((rect) => pointInsideRect(to, rect) || segmentCrossesRect(from, to, rect))
+          || reservedPaths.some((path) => {
+            for (let index = 1; index < path.length; index += 1) {
+              if (segmentsCrossOpen(from, to, path[index - 1], path[index])
+                || segmentsOverlapOpen(from, to, path[index - 1], path[index])) return true;
+            }
+            return false;
+          });
+        moveOpen[moveKey] = blocked ? -1 : 1;
+      }
+      if (moveOpen[moveKey] === -1) continue;
       const distance = Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
       const turn = current.direction && current.direction !== candidate.direction ? bendPenalty : 0;
       const cost = current.cost + distance + turn;
-      const nextKey = keyOf(candidate.x, candidate.y, candidate.direction);
-      if (cost >= (distances.get(nextKey) ?? Infinity)) continue;
-      distances.set(nextKey, cost);
-      previous.set(nextKey, currentKey);
+      const nextState = stateOf(candidate.x, candidate.y, candidate.direction);
+      if (cost >= distances[nextState]) continue;
+      distances[nextState] = cost;
+      previous[nextState] = currentState;
       const heuristic = Math.abs(searchEnd.x - to.x) + Math.abs(searchEnd.y - to.y);
       heap.push({ ...candidate, cost, priority: cost + heuristic });
     }
   }
-  if (!finalKey) return null;
+  if (finalState < 0) return null;
 
   const points = [];
-  let cursor = finalKey;
-  while (cursor) {
-    const [x, y] = cursor.split(':').map(Number);
-    points.push({ x: xs[x], y: ys[y] });
-    cursor = previous.get(cursor);
+  for (let state = finalState; state >= 0; state = previous[state]) {
+    const cell = Math.floor(state / 3);
+    points.push({ x: xs[cell % columns], y: ys[Math.floor(cell / columns)] });
   }
   points.reverse();
   const compressed = [];
@@ -1686,6 +1826,7 @@ function routeOccupancyGrid(positioned, cfg) {
         uniquePoints([ports.start, ...prefix, ...routed.slice(1)]),
         isHorizontal(cfg),
       ));
+      if (complete.length < 2) continue;
       const crossesReservedChannel = positioned.some((other) => {
         if (!other.parentId || String(other.parentId) === parentId || other.node.id === child.node.id) return false;
         const otherPath = pathsByChild.get(String(other.node.id));
@@ -1758,16 +1899,46 @@ function repairReservedChannelConflicts(positioned, cfg) {
     }
     return depth;
   };
-  const pathOf = (edge) => positionedEdgePath(edge.parent, edge.child, cfg);
-  const conflicts = (first, second) => first.parentId !== second.parentId
-    && (pathsCrossOpen(pathOf(first), pathOf(second)) || pathsOverlapOpen(pathOf(first), pathOf(second)));
+  // Card positions are fixed here; only a repaired edge's route changes. Paths
+  // and pairwise conflict results are therefore cached and invalidated only
+  // for the edge that was just rerouted.
+  const pathCache = new Map();
+  const pathOf = (edge) => {
+    let path = pathCache.get(edge);
+    if (!path) {
+      path = positionedEdgePath(edge.parent, edge.child, cfg);
+      pathCache.set(edge, path);
+    }
+    return path;
+  };
+  const edgeIndex = new Map(edges.map((edge, index) => [edge, index]));
+  // 0 = unknown, 1 = conflict, -1 = clear; indexed first * edges + second.
+  const pairState = new Int8Array(edges.length * edges.length);
+  const conflicts = (firstIndex, secondIndex) => {
+    const first = edges[firstIndex], second = edges[secondIndex];
+    if (first.parentId === second.parentId) return false;
+    const key = firstIndex * edges.length + secondIndex;
+    if (pairState[key] === 0) {
+      const a = pathOf(first), b = pathOf(second);
+      pairState[key] = pathsCrossOpen(a, b) || pathsOverlapOpen(a, b) ? 1 : -1;
+    }
+    return pairState[key] === 1;
+  };
+  const rerouted = (edge) => {
+    pathCache.delete(edge);
+    const changed = edgeIndex.get(edge);
+    for (let other = 0; other < edges.length; other += 1) {
+      pairState[changed * edges.length + other] = 0;
+      pairState[other * edges.length + changed] = 0;
+    }
+  };
 
   const maxAttempts = Math.max(1, edges.length * 2);
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     let pair = null;
     for (let firstIndex = 0; firstIndex < edges.length && !pair; firstIndex += 1) {
       for (let secondIndex = firstIndex + 1; secondIndex < edges.length; secondIndex += 1) {
-        if (conflicts(edges[firstIndex], edges[secondIndex])) {
+        if (conflicts(firstIndex, secondIndex)) {
           pair = [edges[firstIndex], edges[secondIndex]];
           break;
         }
@@ -1793,11 +1964,13 @@ function repairReservedChannelConflicts(positioned, cfg) {
       });
       if (!routed || routed.length < 2) continue;
       const complete = simplifyOrthogonalPoints(routed);
+      if (complete.length < 2) continue;
       if (reservedPaths.some((path) => pathsCrossOpen(complete, path) || pathsOverlapOpen(complete, path))) continue;
       edge.child.routeType = 'packed';
       edge.child.routePoints = complete.length > 2
         ? complete.slice(1, -1)
         : [midpoint(complete[0], complete[1])];
+      rerouted(edge);
       repaired = true;
       break;
     }
@@ -1898,6 +2071,9 @@ function compactAutomaticRouteTails(positioned, cfg) {
           ? [anchor, end]
           : [anchor, { x: end.x, y: anchor.y }, end]);
       const candidate = simplifyOrthogonalPoints([...current.slice(0, anchorIndex), ...tail]);
+      // Coarse grid snapping can land both ends on one point; a route that
+      // collapses to a single point has no segments to compare.
+      if (candidate.length < 2) continue;
       const candidateLength = orthogonalPathLength(candidate);
       const candidateBends = orthogonalPathBends(candidate);
       const firstSegmentHorizontal = Math.abs(candidate[0].y - candidate[1].y) < 0.01;
@@ -2178,23 +2354,32 @@ function routeFamilyConnectorNetworks(positioned, cfg) {
     const ingress = Math.max(10, Math.min(cfg.spacingX, cfg.spacingY) * 0.22);
     const gateFlow = startAxis.flow + flowSign * ingress;
     const override = cfg.familyRouteOverrides?.[parentId];
+    // Neither the cards a child's line must avoid nor the routes of other
+    // families change while this family's channels are compared.
+    const unrelatedRectsByChild = children.map((child) => positioned
+      .filter((item) => item.node.id !== parent.node.id && item.node.id !== child.node.id)
+      .map((item) => ({
+        left: item.cx - item.node.width / 2,
+        right: item.cx + item.node.width / 2,
+        top: item.cy - item.node.height / 2,
+        bottom: item.cy + item.node.height / 2,
+      })));
+    const otherFamilyPaths = [...pathByChild]
+      .filter(([childId]) => {
+        const other = byId.get(childId);
+        return other && String(other.parentId) !== parentId;
+      })
+      .map(([, otherPath]) => otherPath);
 
     for (const trunkCross of candidateFamilyChannels(parent, children, positioned, cfg)) {
       const candidates = [];
       let valid = true;
-      for (const child of children) {
+      for (const [childIndex, child] of children.entries()) {
         const ports = edgePorts(parent, child, cfg);
         const start = pointAxes(ports.start, horizontal);
         const end = pointAxes(ports.end, horizontal);
         const direct = [ports.start, ports.end];
-        const unrelatedRects = positioned
-          .filter((item) => item.node.id !== parent.node.id && item.node.id !== child.node.id)
-          .map((item) => ({
-            left: item.cx - item.node.width / 2,
-            right: item.cx + item.node.width / 2,
-            top: item.cy - item.node.height / 2,
-            bottom: item.cy + item.node.height / 2,
-          }));
+        const unrelatedRects = unrelatedRectsByChild[childIndex];
         if (Math.abs(start.cross - end.cross) < 0.01 && !pathCrossesRects(direct, unrelatedRects)) {
           candidates.push(direct);
           continue;
@@ -2212,11 +2397,9 @@ function routeFamilyConnectorNetworks(positioned, cfg) {
         candidates.push(path);
       }
       if (!valid) continue;
-      const collidesWithOtherFamily = candidates.some((candidate) => [...pathByChild].some(([childId, otherPath]) => {
-        const other = byId.get(childId);
-        return other && String(other.parentId) !== parentId
-          && (pathsCrossOpen(candidate, otherPath) || pathsOverlapOpen(candidate, otherPath));
-      }));
+      const collidesWithOtherFamily = candidates.some((candidate) => otherFamilyPaths.some((otherPath) => (
+        pathsCrossOpen(candidate, otherPath) || pathsOverlapOpen(candidate, otherPath)
+      )));
       if (collidesWithOtherFamily) continue;
       // A mathematically short median rail can still create a conspicuous
       // ceiling-shaped detour immediately below the parent. Prefer a channel
@@ -2252,6 +2435,7 @@ function routeFamilyConnectorNetworks(positioned, cfg) {
     if (best.generated || best.repaired) {
       children.forEach((child, index) => {
         const path = best.paths[index];
+        if (!path || path.length < 2) return;
         child.routeType = 'packed';
         child.routePoints = path.length > 2 ? path.slice(1, -1) : [midpoint(path[0], path[1])];
         pathByChild.set(String(child.node.id), path);
@@ -2292,212 +2476,6 @@ function buildFamilyNetworks(positioned, cfg) {
     if (network) result.push(network);
   }
   return result;
-}
-
-function layoutGraphToTarget(graph, targetAspect, baseRankSep) {
-  const multipliers = [0.25, 0.4, 0.6, 0.8, 1, 1.35, 1.75, 2.25, 3, 4, 5.5];
-  const baseOptions = graph.graph();
-  let best = null;
-
-  for (const multiplier of multipliers) {
-    const ranksep = Math.max(8, baseRankSep * multiplier);
-    graph.setGraph({ ...baseOptions, ranksep });
-    dagre.layout(graph);
-    const dimensions = graph.graph();
-    const aspect = Number(dimensions.width) / Math.max(1, Number(dimensions.height));
-    const shapeError = Math.abs(Math.log(Math.max(0.01, aspect) / targetAspect));
-    if (!best || shapeError < best.shapeError - 1e-9
-      || (Math.abs(shapeError - best.shapeError) < 1e-9 && ranksep < best.ranksep)) {
-      best = { ranksep, shapeError };
-    }
-  }
-
-  graph.setGraph({ ...baseOptions, ranksep: best.ranksep });
-  dagre.layout(graph);
-  return best.ranksep;
-}
-
-/*
- * Mermaid's default flowchart layout is layered rather than recursively boxed.
- * AutoSmart uses the same class of rank/order solver for structural nodes, but
- * represents direct personnel as compact synthetic blocks. This keeps section
- * headings on unambiguous ranks while avoiding a single enormous personnel row.
- * The synthetic blocks never escape this function; callers still receive only
- * their real nodes and the original data model remains unchanged.
- */
-function layoutLayeredSmart(rootEntry, cfg) {
-  const entries = collectEntries(rootEntry);
-  const structural = entries.filter(entryIsStructural);
-  const structuralById = new Map(structural.map((entry) => [String(entry.node.id), entry]));
-  const structuralIds = new Set(structural.map((entry) => String(entry.node.id)));
-  const nodeSep = Math.max(8, cfg.spacingX * 0.25);
-  const baseRankSep = Math.max(24, cfg.spacingY * 0.8);
-  const edgeSep = Math.max(6, cfg.spacingX * 0.18);
-  const graph = new dagre.graphlib.Graph({ multigraph: false, compound: false })
-    .setGraph({
-      rankdir: 'TB',
-      ranker: 'network-simplex',
-      nodesep: nodeSep,
-      ranksep: baseRankSep,
-      edgesep: edgeSep,
-      marginx: 0,
-      marginy: 0,
-    })
-    .setDefaultEdgeLabel(() => ({}));
-
-  const leafGapX = Math.max(12, cfg.spacingX * 0.5);
-  const leafGapY = Math.max(12, cfg.spacingY * 0.42);
-  // Direct-personnel groups must be allowed to become genuinely portrait on a
-  // narrow host. The previous 0.9 floor forced large offices to remain nearly
-  // square/landscape even when the requested mobile aspect was below 0.5.
-  const leafTarget = clamp(cfg.targetAspect * Math.sqrt(8 / Math.max(1, structural.length)), 0.3, 2.6);
-  const groups = [];
-
-  for (const entry of structural) {
-    graph.setNode(String(entry.node.id), {
-      width: lw(entry.node, cfg),
-      height: lh(entry.node, cfg),
-      kind: 'real',
-    });
-  }
-
-  for (const entry of structural) {
-    const parentId = String(entry.node.id);
-    const structuralChildren = entry.children.filter(entryIsStructural);
-    const leafChildren = entry.children.filter((child) => !entryIsStructural(child));
-    const hasFeaturedChild = structuralChildren.some(isFeatured);
-
-    for (const child of structuralChildren) {
-      graph.setEdge(parentId, String(child.node.id), {
-        minlen: isFeatured(child) ? 1 : hasFeaturedChild ? 2 : 1,
-        weight: isFeatured(child) ? 100 : 1,
-      });
-    }
-
-    if (!leafChildren.length) continue;
-    const items = leafChildren.map((child) => {
-      const m = measureSubtree(child, cfg, leafTarget);
-      return { entry: child, m, w: m.w, h: m.h };
-    });
-    const pack = packRows(items, leafTarget, leafGapX, leafGapY);
-    const id = `\u0000leaf-group:${parentId}`;
-    const railMargin = Math.max(6, nodeSep * 0.6);
-    // Exterior fallbacks are part of the synthetic block's measured width, so
-    // Dagre reserves a real corridor instead of letting a neighboring block's
-    // card occupy the connector lane.
-    graph.setNode(id, { width: pack.w + railMargin * 2, height: pack.h, kind: 'leaf-group' });
-    graph.setEdge(parentId, id, { minlen: hasFeaturedChild ? 2 : 1 });
-    groups.push({ id, parent: entry, items, pack, railMargin });
-  }
-
-  // Forest roots are intentionally left as separate components; Dagre packs
-  // them deterministically without introducing a fake visible parent.
-  // Rank spacing is a layout variable, not a universal constant. Evaluate a
-  // bounded deterministic set and choose the spacing whose graph shape best
-  // matches the real screen/print content box. This lets shallow and deep
-  // offices use the same engine without leaving a large unused strip.
-  const rankSep = layoutGraphToTarget(graph, cfg.targetAspect, baseRankSep);
-
-  const centeredHeadByParent = new Map();
-  for (const entry of structural) {
-    if (!isFeatured(entry) || entry.children.length > 0 || !entry.node.parentId) continue;
-    const parentId = String(entry.node.parentId);
-    if (structuralIds.has(parentId) && !centeredHeadByParent.has(parentId)) centeredHeadByParent.set(parentId, entry);
-  }
-
-  function routedEdgePoints(parentId, targetId, targetX) {
-    const base = internalEdgePoints(graph.edge(parentId, targetId));
-    const head = centeredHeadByParent.get(parentId);
-    if (!head || targetId === String(head.node.id)) return base;
-    const parentPoint = graph.node(parentId);
-    const headPoint = graph.node(String(head.node.id));
-    const parentEntry = structuralById.get(parentId);
-    if (!parentPoint || !headPoint || !parentEntry) return base;
-
-    const parentBottom = parentPoint.y + lh(parentEntry.node, cfg) / 2;
-    const headTop = headPoint.y - lh(head.node, cfg) / 2;
-    const headBottom = headPoint.y + lh(head.node, cfg) / 2;
-    const aboveY = (parentBottom + headTop) / 2;
-    const belowY = headBottom + Math.max(8, rankSep * 0.2);
-    const side = targetX < parentPoint.x ? -1 : 1;
-    const laneX = parentPoint.x + side * (lw(head.node, cfg) / 2 + Math.max(10, edgeSep * 1.5));
-    const remainder = base.filter((point) => point.y > belowY + 0.01);
-    return uniquePoints([
-      { x: parentPoint.x, y: aboveY },
-      { x: laneX, y: aboveY },
-      { x: laneX, y: belowY },
-      { x: targetX, y: belowY },
-      ...remainder,
-    ]);
-  }
-
-  const positionedById = new Map();
-  for (const entry of structural) {
-    const id = String(entry.node.id);
-    const point = graph.node(id);
-    if (!point) continue;
-    const parentId = entry.node.parentId ? String(entry.node.parentId) : '';
-    const parentPoint = parentId ? graph.node(parentId) : null;
-    // A leaf office head owns the otherwise empty rank immediately below the
-    // office container. Center it exactly under that container; Dagre is still
-    // free to order and route the wider structural rank below it.
-    const alignFeatured = isFeatured(entry) && entry.children.length === 0 && parentPoint;
-    positionedById.set(id, {
-      node: entry.node,
-      lx: alignFeatured ? parentPoint.x : point.x,
-      ly: point.y,
-      w: lw(entry.node, cfg),
-      h: lh(entry.node, cfg),
-      parentId: entry.node.parentId,
-      routeType: 'bus',
-      routePoints: alignFeatured || !parentId || !structuralIds.has(parentId)
-        ? [] : routedEdgePoints(parentId, id, point.x),
-      resolvedLayoutMode: 'AutoSmart',
-    });
-  }
-
-  for (const group of groups) {
-    const box = graph.node(group.id);
-    const parentId = String(group.parent.node.id);
-    const edgePoints = routedEdgePoints(parentId, group.id, box.x);
-    const left = box.x - group.pack.w / 2;
-    const top = box.y - group.pack.h / 2;
-    const safeRail = safeInteriorRail(group.pack, Math.max(8, leafGapX * 0.28));
-    const leftRail = left - group.railMargin * 0.5;
-    const rightRail = left + group.pack.w + group.railMargin * 0.5;
-    const centerX = box.x;
-    const topLaneY = top - Math.max(9, leafGapY * 0.34);
-
-    for (const placement of group.pack.placements) {
-      const item = placement.item;
-      const childCenterX = left + placement.x + item.m.nodeCenterX;
-      const childCenterY = top + placement.y + item.m.nodeCenterY;
-      const rowBusY = top + placement.y - Math.max(9, leafGapY * 0.34);
-      const railX = safeRail == null
-        ? (childCenterX <= centerX ? leftRail : rightRail)
-        : left + safeRail;
-      const routePoints = uniquePoints([
-        ...edgePoints,
-        { x: centerX, y: topLaneY },
-        { x: railX, y: topLaneY },
-        { x: railX, y: rowBusY },
-        { x: childCenterX, y: rowBusY },
-      ]);
-      positionedById.set(String(item.entry.node.id), {
-        node: item.entry.node,
-        lx: childCenterX,
-        ly: childCenterY,
-        w: lw(item.entry.node, cfg),
-        h: lh(item.entry.node, cfg),
-        parentId: item.entry.node.parentId,
-        routeType: 'packed',
-        routePoints,
-        resolvedLayoutMode: 'AutoSmart',
-      });
-    }
-  }
-
-  return entries.map((entry) => positionedById.get(String(entry.node.id))).filter(Boolean);
 }
 
 /* assign absolute LOGICAL centers; returns flat positioned records */
@@ -2580,12 +2558,7 @@ function automaticClarityMetrics(positioned) {
   for (const children of childIds.values()) {
     const structural = children.filter((child) => childIds.has(String(child.node.id))
       || child.node.type === 'department');
-    const directLeaves = children.filter((child) => {
-      if (structural.includes(child)) return false;
-      const data = child.node.data || {};
-      return data.printRole !== 'head' && data.is_head !== true && data.isHead !== true
-        && !/\b(municipal (vice )?mayor|office head|department head|head of office)\b/i.test(String(child.node.label || ''));
-    });
+    const directLeaves = children.filter((child) => !structural.includes(child) && !isHeadNode(child.node));
     if (structural.length && directLeaves.length) {
       const lastLeafBottom = Math.max(...directLeaves.map((child) => child.ly + child.h / 2));
       const firstBranchTop = Math.min(...structural.map((child) => child.ly - child.h / 2));
@@ -2620,7 +2593,7 @@ function layoutTreeAutoGrid(rootEntry, cfg) {
     ? [1, 1.8]
     : [0.72, 0.84, 0.92, 1, 1.08, 1.18, 1.32, 1.55, 1.8];
   const verticalSpacingScales = [0.78, 1, 1.22];
-  const packingStrategies = cfg.subtreeMode === 'GridSmart'
+  const allPackingStrategies = cfg.subtreeMode === 'GridSmart'
     ? [
       { blockFlow: 'occupancy', leafFlow: 'inline', flexibleRows: false, preferShortFirst: false },
       { blockFlow: 'occupancy', leafFlow: 'band', flexibleRows: false, preferShortFirst: false },
@@ -2637,6 +2610,11 @@ function layoutTreeAutoGrid(rootEntry, cfg) {
       { blockFlow: 'rows', leafFlow: 'band', flexibleRows: true, preferShortFirst: false },
       { blockFlow: 'adaptive', leafFlow: 'band', flexibleRows: true, preferShortFirst: false },
     ];
+  // A 'band' pass that cannot differ from its 'inline' twin would only tie
+  // with it, and the earlier inline candidate wins every tie; skip it.
+  const packingStrategies = bandCanChangeLayout(rootEntry, cfg)
+    ? allPackingStrategies
+    : allPackingStrategies.filter((strategy) => strategy.leafFlow !== 'band');
   const candidates = [];
   const evaluateMultipliers = (multipliers) => {
     for (const targetMultiplier of multipliers) {
@@ -2765,7 +2743,15 @@ export function normalizeConfig(options = {}) {
   const sizeAspect = size && Number(size.width) > 0 && Number(size.height) > 0
     ? Number(size.width) / Number(size.height)
     : null;
-  const visualTargetAspect = sizeAspect || Number(options.targetAspect) || 1.6;
+  // A config this function already produced carries the caller's visual
+  // aspect next to the orientation-adjusted logical one. Reading it back keeps
+  // normalisation idempotent: the renderer and the layout worker pass a
+  // normalised config in again, and re-inverting targetAspect would turn a
+  // wide LeftToRight/RightToLeft request into a tall chart.
+  const priorVisual = Number(options.visualTargetAspect);
+  const visualTargetAspect = sizeAspect
+    || (Number.isFinite(priorVisual) && priorVisual > 0 ? priorVisual : 0)
+    || Number(options.targetAspect) || 1.6;
   const horizontal = orientation === 'LeftToRight' || orientation === 'RightToLeft';
   const targetAspect = horizontal ? 1 / visualTargetAspect : visualTargetAspect;
   return {
@@ -2796,9 +2782,7 @@ export function layoutOrgChart(nodes, options = {}) {
   const visible = getVisibleTree(tree);
 
   // Auto Smart uses measured subtree blocks so shorter branches can share rows
-  // with deeper branches and occupy otherwise empty regions. The layered
-  // solver remains available internally while the compact grid becomes the
-  // default placement strategy requested by screen and export consumers.
+  // with deeper branches and occupy otherwise empty regions.
   const logical = isAuto(cfg.subtreeMode)
     ? layoutTreeAutoGrid(visible, cfg)
     : layoutTree(visible, cfg);
