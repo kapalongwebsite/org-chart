@@ -577,6 +577,7 @@ export function createOrgChart(host, userOpts = {}) {
   // ================= nodes =================
   function drawNodes() {
     const seen = Object.create(null);
+    const unfitted = [];
     for (const p of positioned) {
       const n = p.node; seen[n.id] = true;
       let elNode = elById[n.id];
@@ -586,7 +587,7 @@ export function createOrgChart(host, userOpts = {}) {
       const c = effCenter(p, manualOffsets);
       elNode.style.transform = `translate(${c.x - n.width / 2}px, ${c.y - n.height / 2}px)`;
       if (!opts.nodeSlots) {
-        if (!elNode.dataset.fitted) { fitNodeText(elNode); elNode.dataset.fitted = '1'; }
+        if (!elNode.dataset.fitted) { unfitted.push(elNode); elNode.dataset.fitted = '1'; }
         applyTheme(elNode, n);
       }
       elNode.classList.toggle('loc-selected', selectedIds.has(n.id));
@@ -594,6 +595,7 @@ export function createOrgChart(host, userOpts = {}) {
       updateToggle(elNode, n);
     }
     for (const id in elById) if (!seen[id]) { elById[id].remove(); delete elById[id]; }
+    fitNodeTexts(unfitted);
     applyTreeA11y();
     emit('nodes-rendered', { ids: positioned.map((p) => p.node.id) });
   }
@@ -728,12 +730,33 @@ export function createOrgChart(host, userOpts = {}) {
     return t;
   }
   function isOverflowing(e) { return e.scrollWidth > e.clientWidth + 0.5 || e.scrollHeight > e.clientHeight + 0.5; }
-  function fitNodeText(e) {
-    e.style.setProperty('--loc-fit', '1');
-    if (!isOverflowing(e)) return;
-    let lo = FIT_MIN, hi = 1;
-    for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; e.style.setProperty('--loc-fit', String(mid)); if (isOverflowing(e)) hi = mid; else lo = mid; }
-    e.style.setProperty('--loc-fit', String(lo));
+  /* The elements that clip a card's text: the text block and its line-clamped
+     lines on a person card, the label on a department card. The card itself
+     is not measured: its expand/collapse handle hangs outside it on purpose. */
+  function textClips(card) {
+    return card.querySelectorAll('.loc-ptext, .loc-pname, .loc-ptitle, .loc-lbl');
+  }
+  function textOverflows(clips) {
+    for (const e of clips) if (isOverflowing(e)) return true;
+    return false;
+  }
+  /* Shrink each card's text (--loc-fit, down to FIT_MIN) until nothing clips.
+     All cards run the same binary search in lockstep: every step writes the
+     next scale to every card, then reads them all, so a batch costs one layout
+     per step instead of one per card per step. */
+  function fitNodeTexts(cards) {
+    if (!cards.length) return;
+    const jobs = cards.map((card) => ({ card, clips: textClips(card), lo: FIT_MIN, hi: 1 }));
+    for (const job of jobs) job.card.style.setProperty('--loc-fit', '1');
+    let active = jobs.filter((job) => textOverflows(job.clips));
+    for (let i = 0; i < 7 && active.length; i++) {
+      for (const job of active) job.card.style.setProperty('--loc-fit', String((job.lo + job.hi) / 2));
+      for (const job of active) {
+        const mid = (job.lo + job.hi) / 2;
+        if (textOverflows(job.clips)) job.hi = mid; else job.lo = mid;
+      }
+    }
+    for (const job of active) job.card.style.setProperty('--loc-fit', String(job.lo));
   }
   function updateToggle(elNode, n) {
     const t = elNode.querySelector('[data-role="toggle"]'); if (!t) return;
