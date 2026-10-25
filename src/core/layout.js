@@ -12,7 +12,6 @@
 //   Matrix                                 — uniform per-depth rows
 // Orientation is a pure transform applied after a logical TopToBottom layout.
 
-import dagre from '@dagrejs/dagre';
 import { SNAKE_STUB, CANVAS_PAD } from './constants.js';
 import { buildTree, getVisibleTree, visibleDepths } from './tree.js';
 import { makeNode } from './dataImport.js';
@@ -330,13 +329,6 @@ function packMasonryColumns(items, targetAspect, gapX, gapY) {
 
 function gridCeil(value, gridSize) {
   return Math.ceil(value / gridSize) * gridSize;
-}
-
-function rectanglesHaveClearance(a, b, gapX, gapY) {
-  return a.x + a.item.w + gapX <= b.x + 0.01
-    || b.x + b.item.w + gapX <= a.x + 0.01
-    || a.y + a.item.h + gapY <= b.y + 0.01
-    || b.y + b.item.h + gapY <= a.y + 0.01;
 }
 
 function pushFootprintSegment(rects, from, to, thickness, width, height) {
@@ -1384,23 +1376,6 @@ function measureSnake(entry, cms, mode, cfg) {
   };
 }
 
-function entryIsStructural(entry) {
-  return entry.children.length > 0 || entry.node.type === 'department' || isFeatured(entry);
-}
-
-function collectEntries(rootEntry) {
-  const entries = [];
-  (function visit(entry) {
-    if (!entry.node.isVirtual) entries.push(entry);
-    for (const child of entry.children) visit(child);
-  })(rootEntry);
-  return entries;
-}
-
-function supportsLayeredSmart(rootEntry) {
-  return collectEntries(rootEntry).every((entry) => !entry.node.layoutMode || isAuto(entry.node.layoutMode));
-}
-
 function uniquePoints(points) {
   const result = [];
   for (const point of points || []) {
@@ -1410,11 +1385,6 @@ function uniquePoints(points) {
     if (!previous || Math.abs(previous.x - next.x) > 0.01 || Math.abs(previous.y - next.y) > 0.01) result.push(next);
   }
   return result;
-}
-
-function internalEdgePoints(edge) {
-  const points = uniquePoints(edge?.points);
-  return points.length > 2 ? points.slice(1, -1) : [];
 }
 
 function edgePorts(parent, child, cfg) {
@@ -2508,212 +2478,6 @@ function buildFamilyNetworks(positioned, cfg) {
   return result;
 }
 
-function layoutGraphToTarget(graph, targetAspect, baseRankSep) {
-  const multipliers = [0.25, 0.4, 0.6, 0.8, 1, 1.35, 1.75, 2.25, 3, 4, 5.5];
-  const baseOptions = graph.graph();
-  let best = null;
-
-  for (const multiplier of multipliers) {
-    const ranksep = Math.max(8, baseRankSep * multiplier);
-    graph.setGraph({ ...baseOptions, ranksep });
-    dagre.layout(graph);
-    const dimensions = graph.graph();
-    const aspect = Number(dimensions.width) / Math.max(1, Number(dimensions.height));
-    const shapeError = Math.abs(Math.log(Math.max(0.01, aspect) / targetAspect));
-    if (!best || shapeError < best.shapeError - 1e-9
-      || (Math.abs(shapeError - best.shapeError) < 1e-9 && ranksep < best.ranksep)) {
-      best = { ranksep, shapeError };
-    }
-  }
-
-  graph.setGraph({ ...baseOptions, ranksep: best.ranksep });
-  dagre.layout(graph);
-  return best.ranksep;
-}
-
-/*
- * Mermaid's default flowchart layout is layered rather than recursively boxed.
- * AutoSmart uses the same class of rank/order solver for structural nodes, but
- * represents direct personnel as compact synthetic blocks. This keeps section
- * headings on unambiguous ranks while avoiding a single enormous personnel row.
- * The synthetic blocks never escape this function; callers still receive only
- * their real nodes and the original data model remains unchanged.
- */
-function layoutLayeredSmart(rootEntry, cfg) {
-  const entries = collectEntries(rootEntry);
-  const structural = entries.filter(entryIsStructural);
-  const structuralById = new Map(structural.map((entry) => [String(entry.node.id), entry]));
-  const structuralIds = new Set(structural.map((entry) => String(entry.node.id)));
-  const nodeSep = Math.max(8, cfg.spacingX * 0.25);
-  const baseRankSep = Math.max(24, cfg.spacingY * 0.8);
-  const edgeSep = Math.max(6, cfg.spacingX * 0.18);
-  const graph = new dagre.graphlib.Graph({ multigraph: false, compound: false })
-    .setGraph({
-      rankdir: 'TB',
-      ranker: 'network-simplex',
-      nodesep: nodeSep,
-      ranksep: baseRankSep,
-      edgesep: edgeSep,
-      marginx: 0,
-      marginy: 0,
-    })
-    .setDefaultEdgeLabel(() => ({}));
-
-  const leafGapX = Math.max(12, cfg.spacingX * 0.5);
-  const leafGapY = Math.max(12, cfg.spacingY * 0.42);
-  // Direct-personnel groups must be allowed to become genuinely portrait on a
-  // narrow host. The previous 0.9 floor forced large offices to remain nearly
-  // square/landscape even when the requested mobile aspect was below 0.5.
-  const leafTarget = clamp(cfg.targetAspect * Math.sqrt(8 / Math.max(1, structural.length)), 0.3, 2.6);
-  const groups = [];
-
-  for (const entry of structural) {
-    graph.setNode(String(entry.node.id), {
-      width: lw(entry.node, cfg),
-      height: lh(entry.node, cfg),
-      kind: 'real',
-    });
-  }
-
-  for (const entry of structural) {
-    const parentId = String(entry.node.id);
-    const structuralChildren = entry.children.filter(entryIsStructural);
-    const leafChildren = entry.children.filter((child) => !entryIsStructural(child));
-    const hasFeaturedChild = structuralChildren.some(isFeatured);
-
-    for (const child of structuralChildren) {
-      graph.setEdge(parentId, String(child.node.id), {
-        minlen: isFeatured(child) ? 1 : hasFeaturedChild ? 2 : 1,
-        weight: isFeatured(child) ? 100 : 1,
-      });
-    }
-
-    if (!leafChildren.length) continue;
-    const items = leafChildren.map((child) => {
-      const m = measureSubtree(child, cfg, leafTarget);
-      return { entry: child, m, w: m.w, h: m.h };
-    });
-    const pack = packRows(items, leafTarget, leafGapX, leafGapY);
-    const id = `\u0000leaf-group:${parentId}`;
-    const railMargin = Math.max(6, nodeSep * 0.6);
-    // Exterior fallbacks are part of the synthetic block's measured width, so
-    // Dagre reserves a real corridor instead of letting a neighboring block's
-    // card occupy the connector lane.
-    graph.setNode(id, { width: pack.w + railMargin * 2, height: pack.h, kind: 'leaf-group' });
-    graph.setEdge(parentId, id, { minlen: hasFeaturedChild ? 2 : 1 });
-    groups.push({ id, parent: entry, items, pack, railMargin });
-  }
-
-  // Forest roots are intentionally left as separate components; Dagre packs
-  // them deterministically without introducing a fake visible parent.
-  // Rank spacing is a layout variable, not a universal constant. Evaluate a
-  // bounded deterministic set and choose the spacing whose graph shape best
-  // matches the real screen/print content box. This lets shallow and deep
-  // offices use the same engine without leaving a large unused strip.
-  const rankSep = layoutGraphToTarget(graph, cfg.targetAspect, baseRankSep);
-
-  const centeredHeadByParent = new Map();
-  for (const entry of structural) {
-    if (!isFeatured(entry) || entry.children.length > 0 || !entry.node.parentId) continue;
-    const parentId = String(entry.node.parentId);
-    if (structuralIds.has(parentId) && !centeredHeadByParent.has(parentId)) centeredHeadByParent.set(parentId, entry);
-  }
-
-  function routedEdgePoints(parentId, targetId, targetX) {
-    const base = internalEdgePoints(graph.edge(parentId, targetId));
-    const head = centeredHeadByParent.get(parentId);
-    if (!head || targetId === String(head.node.id)) return base;
-    const parentPoint = graph.node(parentId);
-    const headPoint = graph.node(String(head.node.id));
-    const parentEntry = structuralById.get(parentId);
-    if (!parentPoint || !headPoint || !parentEntry) return base;
-
-    const parentBottom = parentPoint.y + lh(parentEntry.node, cfg) / 2;
-    const headTop = headPoint.y - lh(head.node, cfg) / 2;
-    const headBottom = headPoint.y + lh(head.node, cfg) / 2;
-    const aboveY = (parentBottom + headTop) / 2;
-    const belowY = headBottom + Math.max(8, rankSep * 0.2);
-    const side = targetX < parentPoint.x ? -1 : 1;
-    const laneX = parentPoint.x + side * (lw(head.node, cfg) / 2 + Math.max(10, edgeSep * 1.5));
-    const remainder = base.filter((point) => point.y > belowY + 0.01);
-    return uniquePoints([
-      { x: parentPoint.x, y: aboveY },
-      { x: laneX, y: aboveY },
-      { x: laneX, y: belowY },
-      { x: targetX, y: belowY },
-      ...remainder,
-    ]);
-  }
-
-  const positionedById = new Map();
-  for (const entry of structural) {
-    const id = String(entry.node.id);
-    const point = graph.node(id);
-    if (!point) continue;
-    const parentId = entry.node.parentId ? String(entry.node.parentId) : '';
-    const parentPoint = parentId ? graph.node(parentId) : null;
-    // A leaf office head owns the otherwise empty rank immediately below the
-    // office container. Center it exactly under that container; Dagre is still
-    // free to order and route the wider structural rank below it.
-    const alignFeatured = isFeatured(entry) && entry.children.length === 0 && parentPoint;
-    positionedById.set(id, {
-      node: entry.node,
-      lx: alignFeatured ? parentPoint.x : point.x,
-      ly: point.y,
-      w: lw(entry.node, cfg),
-      h: lh(entry.node, cfg),
-      parentId: entry.node.parentId,
-      routeType: 'bus',
-      routePoints: alignFeatured || !parentId || !structuralIds.has(parentId)
-        ? [] : routedEdgePoints(parentId, id, point.x),
-      resolvedLayoutMode: 'AutoSmart',
-    });
-  }
-
-  for (const group of groups) {
-    const box = graph.node(group.id);
-    const parentId = String(group.parent.node.id);
-    const edgePoints = routedEdgePoints(parentId, group.id, box.x);
-    const left = box.x - group.pack.w / 2;
-    const top = box.y - group.pack.h / 2;
-    const safeRail = safeInteriorRail(group.pack, Math.max(8, leafGapX * 0.28));
-    const leftRail = left - group.railMargin * 0.5;
-    const rightRail = left + group.pack.w + group.railMargin * 0.5;
-    const centerX = box.x;
-    const topLaneY = top - Math.max(9, leafGapY * 0.34);
-
-    for (const placement of group.pack.placements) {
-      const item = placement.item;
-      const childCenterX = left + placement.x + item.m.nodeCenterX;
-      const childCenterY = top + placement.y + item.m.nodeCenterY;
-      const rowBusY = top + placement.y - Math.max(9, leafGapY * 0.34);
-      const railX = safeRail == null
-        ? (childCenterX <= centerX ? leftRail : rightRail)
-        : left + safeRail;
-      const routePoints = uniquePoints([
-        ...edgePoints,
-        { x: centerX, y: topLaneY },
-        { x: railX, y: topLaneY },
-        { x: railX, y: rowBusY },
-        { x: childCenterX, y: rowBusY },
-      ]);
-      positionedById.set(String(item.entry.node.id), {
-        node: item.entry.node,
-        lx: childCenterX,
-        ly: childCenterY,
-        w: lw(item.entry.node, cfg),
-        h: lh(item.entry.node, cfg),
-        parentId: item.entry.node.parentId,
-        routeType: 'packed',
-        routePoints,
-        resolvedLayoutMode: 'AutoSmart',
-      });
-    }
-  }
-
-  return entries.map((entry) => positionedById.get(String(entry.node.id))).filter(Boolean);
-}
-
 /* assign absolute LOGICAL centers; returns flat positioned records */
 function layoutTree(rootEntry, cfg) {
   const m = measureSubtree(rootEntry, cfg);
@@ -3018,9 +2782,7 @@ export function layoutOrgChart(nodes, options = {}) {
   const visible = getVisibleTree(tree);
 
   // Auto Smart uses measured subtree blocks so shorter branches can share rows
-  // with deeper branches and occupy otherwise empty regions. The layered
-  // solver remains available internally while the compact grid becomes the
-  // default placement strategy requested by screen and export consumers.
+  // with deeper branches and occupy otherwise empty regions.
   const logical = isAuto(cfg.subtreeMode)
     ? layoutTreeAutoGrid(visible, cfg)
     : layoutTree(visible, cfg);
