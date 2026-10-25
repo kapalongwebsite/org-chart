@@ -12,6 +12,7 @@ import {
 } from '../core/index.js';
 import { resolveInteractiveLayoutTarget } from './layoutTarget.js';
 import { resolveConnectorGeometry } from '../core/connectorGeometry.js';
+import { layoutInputNode } from '../core/layout.js';
 import LayoutWorker from '../core/layout.worker.js?worker';
 import { cloneLayoutValue } from './cloneLayoutValue.js';
 
@@ -305,10 +306,10 @@ export function createOrgChart(host, userOpts = {}) {
     });
   }
   function runLayout() {
-    const layoutCfg = cfg();
-    const res = layoutOrgChart(NODES, layoutCfg);
+    const payload = layoutPayload(NODES, cfg());
+    const res = layoutOrgChart(payload.nodes, payload.options);
     applyLayoutResult(res);
-    if (opts.layoutCache !== false) rememberLayout(layoutSignature(NODES, layoutCfg), serializableLayout(res));
+    if (opts.layoutCache !== false) rememberLayout(layoutSignature(payload), serializableLayout(res));
   }
   function paintLayout() {
     root.classList.toggle('loc-horizontal', isHorizontal(cfg()));
@@ -331,8 +332,23 @@ export function createOrgChart(host, userOpts = {}) {
       cfg: result.cfg,
     };
   }
-  function layoutSignature(nodes, layoutCfg) {
-    return JSON.stringify({ nodes, options: layoutCfg });
+  /* What a layout request actually depends on. Nodes are reduced to the
+     fields the solver reads, so text, photo and host-data edits keep the cache
+     warm and host payloads (e.g. a whole API record per node) never travel to
+     the worker. autoEdgeSide only affects how connectors are drawn from a
+     finished layout, and an empty route-override map may arrive as [] from a
+     JSON backend or as {} from this renderer; neither belongs in the key. */
+  function layoutPayload(nodes, layoutCfg) {
+    const { familyRouteOverrides, ...options } = layoutCfg;
+    delete options.autoEdgeSide;
+    const overrides = familyRouteOverrides && typeof familyRouteOverrides === 'object'
+      ? Object.keys(familyRouteOverrides).sort().map((key) => [key, familyRouteOverrides[key]])
+      : [];
+    options.familyRouteOverrides = overrides.length ? Object.fromEntries(overrides) : null;
+    return { nodes: nodes.map(layoutInputNode), options };
+  }
+  function layoutSignature(payload) {
+    return JSON.stringify(payload);
   }
   function manualCenters() {
     const pinned = Object.create(null);
@@ -489,7 +505,7 @@ export function createOrgChart(host, userOpts = {}) {
     cancelActiveLayout('superseded', true);
     const id = ++layoutRequestId;
     const layoutCfg = cfg();
-    const signature = layoutSignature(NODES, layoutCfg);
+    const signature = layoutSignature(layoutPayload(NODES, layoutCfg));
     const pins = requestOpts.pins || (requestOpts.preserveManual ? manualCenters() : null);
     let resolveRequest;
     const promise = new Promise((resolve) => { resolveRequest = resolve; });

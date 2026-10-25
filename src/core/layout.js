@@ -734,11 +734,40 @@ function appendRoutePoint(points, point) {
   if (!last || Math.abs(last.x - point.x) > 0.01 || Math.abs(last.y - point.y) > 0.01) points.push(point);
 }
 
-function isFeatured(entry) {
-  const data = entry?.node?.data || {};
-  const label = String(entry?.node?.label || '');
+// A card whose title names the office head is featured beside its parent
+// instead of joining the sibling grid. This is the only use of label text.
+const HEAD_LABEL = /\b(municipal (vice )?mayor|office head|department head|head of office)\b/i;
+
+function isHeadNode(node) {
+  const data = node?.data || {};
   return data.printRole === 'head' || data.is_head === true || data.isHead === true
-    || /\b(municipal (vice )?mayor|office head|department head|head of office)\b/i.test(label);
+    || HEAD_LABEL.test(String(node?.label || ''));
+}
+
+function isFeatured(entry) {
+  return isHeadNode(entry?.node);
+}
+
+/* The part of a chart node layoutOrgChart() reads. Callers that ship nodes
+   to a worker or key a layout cache use this so card text, photos and host
+   data (which never move a card) neither travel nor invalidate the cache.
+   A label survives only when it decides head placement. */
+export function layoutInputNode(node) {
+  const data = node.data || {};
+  const roles = {};
+  for (const key of ['printRole', 'is_head', 'isHead']) if (data[key] !== undefined) roles[key] = data[key];
+  const label = String(node.label || '');
+  return {
+    id: node.id,
+    parentId: node.parentId,
+    type: node.type,
+    label: HEAD_LABEL.test(label) ? label : '',
+    width: node.width,
+    height: node.height,
+    collapsed: node.collapsed,
+    layoutMode: node.layoutMode,
+    data: roles,
+  };
 }
 
 function countBoundedOneRankFamilies(entry) {
@@ -2586,12 +2615,7 @@ function automaticClarityMetrics(positioned) {
   for (const children of childIds.values()) {
     const structural = children.filter((child) => childIds.has(String(child.node.id))
       || child.node.type === 'department');
-    const directLeaves = children.filter((child) => {
-      if (structural.includes(child)) return false;
-      const data = child.node.data || {};
-      return data.printRole !== 'head' && data.is_head !== true && data.isHead !== true
-        && !/\b(municipal (vice )?mayor|office head|department head|head of office)\b/i.test(String(child.node.label || ''));
-    });
+    const directLeaves = children.filter((child) => !structural.includes(child) && !isHeadNode(child.node));
     if (structural.length && directLeaves.length) {
       const lastLeafBottom = Math.max(...directLeaves.map((child) => child.ly + child.h / 2));
       const firstBranchTop = Math.min(...structural.map((child) => child.ly - child.h / 2));
