@@ -9,6 +9,8 @@ import {
   childCount, computeDepths, normalizeImported, exportLayout, buildChartSVG,
   resolveNodeStyle, normalizeRule, DEPT_SIZE, POS_SIZE,
   VIRTUAL_PHOTO_FRAME, RENDERED_PHOTO, PHOTO_BACKGROUND, PERSON_TEXT_HEIGHT,
+  nodeInputProblems, findInvalidNodes, invalidNodeDataError, exportBounds,
+  sanitizeView, sanitizeManualLayout, sanitizeSavedLayout, isSafeColor, invalidRuleColors,
 } from '../core/index.js';
 import { resolveInteractiveLayoutTarget } from './layoutTarget.js';
 import { resolveConnectorGeometry } from '../core/connectorGeometry.js';
@@ -20,6 +22,9 @@ import { cloneLayoutValue } from './cloneLayoutValue.js';
 const CARD_TEXT_BLOCK = PERSON_TEXT_HEIGHT;
 
 const SVGNS = 'http://www.w3.org/2000/svg';
+// Downloads read the object URL after click(); revoking it at once cancels the
+// download in some browsers.
+const DOWNLOAD_URL_TTL_MS = 30000;
 // Floor for the per-card text auto-fit. 0.5 let labels shrink to half size —
 // unreadable on screen and a blurry mess once zoomed in. 0.72 keeps text
 // legible; text that still doesn't fit clips (line-clamp) instead of shrinking.
@@ -95,6 +100,7 @@ const DEFAULT_OPTS = {
   reflowOnResize: false, // opt in when viewport aspect changes should regenerate geometry
   layoutWorker: true,  // move editor-triggered full layout work off the UI thread
   layoutCache: true,   // reuse exact completed layouts (bounded process-wide LRU)
+  exportPhotoTimeout: 8000, // ms an export waits for one photo before drawing its placeholder
   toolbar: true,      // true | false | { subtree, orient, actions, grid, mode, export }; subtree is opt-in
   advancedLayoutControls: false, // expose legacy per-node subtree strategy overrides in the inspector
   persist: false,
@@ -117,7 +123,7 @@ export function createOrgChart(host, userOpts = {}) {
     selectedNodeId: null, selectedEdgeId: null, selectedFamilyId: null,
     gridSize: opts.gridSize, showGrid: opts.showGrid,
     snapGrid: opts.snapGrid, alignGrid: initialAlignGrid,
-    editMode: !!opts.editMode,
+    editMode: !!opts.editMode && !opts.readonly,
     showImages: opts.showImages !== false,
     showLegend: !!opts.legend,
     autoEdgeSide: !!opts.autoEdgeSide,
@@ -137,29 +143,32 @@ export function createOrgChart(host, userOpts = {}) {
     photoOffsetY: Number.isFinite(+(userOpts.renderedImage && userOpts.renderedImage.offsetY)) ? +(userOpts.renderedImage && userOpts.renderedImage.offsetY) : RENDERED_PHOTO.offsetY,
     photoBackground: userOpts.photoBackground || PHOTO_BACKGROUND,
   };
-  let NODES = (opts.nodes || []).map(makeNode);
+  // id -> { width?, height? } sizes the caller set on individual nodes. Every
+  // other card follows the global card size (applyCardSizeToNodes).
+  let explicitSizes = Object.create(null);
+  let NODES = prepareNodes(opts.nodes || [], 'nodes');
   let nodeById = indexNodes(NODES);
   let manualOffsets = Object.create(null);
   let edgeWaypoints = Object.create(null);
   let edgeAnchors = Object.create(null);     // childId -> { p:{nx,ny}, c:{nx,ny} } manual line endpoints
-  let familyRouteOverrides = Object.assign(Object.create(null), opts.familyRouteOverrides || {}); // parentId -> stable family bus constraints
+  let familyRouteOverrides = opts.familyRouteOverrides                       // parentId -> stable family bus constraints
+    ? checkedManualLayout({ familyRouteOverrides: opts.familyRouteOverrides }, 'familyRouteOverrides option').familyRouteOverrides
+    : Object.create(null);
   let nodeOverrides = Object.create(null);   // id -> {field: value} manual node edits (persisted overlay)
   let selectedIds = new Set();               // multi-select set; state.selectedNodeId is the "primary" member
-  if (opts.settings) applyCardState(opts.settings);
-  let themeRules = ((opts.settings && opts.settings.themeRules) || opts.themeRules || []).map(normalizeRule);
+  // Manual offsets are relative to an automatic layout. After a restore
+  // (saved layout, import, undo/redo) they are relative to the layout that is
+  // about to be computed, not to the one on screen, so they must not be
+  // re-pinned against the current positions.
+  let offsetsPending = false;
+  let themeRules = [];
+  {
+    const initialRules = (opts.settings && opts.settings.themeRules) || opts.themeRules;
+    if (initialRules) applyViewState(checkedView({ themeRules: initialRules }, 'themeRules option'));
+    if (opts.settings) applyViewState(checkedView(opts.settings, 'settings option'));
+  }
   // snapshot of the as-configured settings — the target that resetSettings() restores to
-  const INITIAL_SETTINGS = {
-    spacingX: opts.spacingX, spacingY: opts.spacingY, gridSize: opts.gridSize,
-    showGrid: !!opts.showGrid, snapGrid: !!opts.snapGrid, alignGrid: initialAlignGrid,
-    cardWidth: state.cardWidth, photoHeight: state.photoHeight, textHeight: state.textHeight,
-    departmentWidth: state.departmentWidth, departmentHeight: state.departmentHeight,
-    photoContain: state.photoContain,
-    photoFrameWidth: state.photoFrameWidth, photoFrameHeight: state.photoFrameHeight,
-    photoImageWidth: state.photoImageWidth, photoImageHeight: state.photoImageHeight,
-    photoOffsetX: state.photoOffsetX, photoOffsetY: state.photoOffsetY,
-    photoBackground: state.photoBackground,
-    themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
-  };
+  const INITIAL_SETTINGS = viewConfig();
   let idCounter = 0;
   let positioned = [], posById = Object.create(null), familyNetworks = [], renderedFamilyNetworks = [];
   let framingBounds = null;
@@ -330,6 +339,7 @@ export function createOrgChart(host, userOpts = {}) {
   }
   function manualCenters() {
     const pinned = Object.create(null);
+    if (offsetsPending) return pinned;   // offsets belong to the next layout, not to posById
     for (const id of Object.keys(manualOffsets)) {
       const p = posById[id];
       if (p) pinned[id] = effCenter(p, manualOffsets);
@@ -355,11 +365,16 @@ export function createOrgChart(host, userOpts = {}) {
 
     for (const id of Object.keys(pins)) {
       const p = posById[id];
-      if (!p) { delete manualOffsets[id]; continue; }
+      if (!p) {
+        // a collapsed branch keeps its children's offsets for when it reopens
+        if (!nodeById[id]) delete manualOffsets[id];
+        continue;
+      }
       const dx = pins[id].x - p.cx, dy = pins[id].y - p.cy;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) manualOffsets[id] = { dx, dy };
       else delete manualOffsets[id];
     }
+    offsetsPending = false;
   }
   function setLayoutBusy(on) {
     layoutBusy = !!on;
@@ -394,12 +409,14 @@ export function createOrgChart(host, userOpts = {}) {
       cached: !!cached,
     });
     request.resolve(true);
+    flushDeferredHistory();
     return true;
   }
   function failLayoutRequest(request, error) {
     if (!activeLayout || activeLayout.id !== request.id) return;
     activeLayout = null;
     setLayoutBusy(false);
+    flushDeferredHistory();
     const detail = {
       id: request.id,
       reason: request.reason,
@@ -434,6 +451,8 @@ export function createOrgChart(host, userOpts = {}) {
   function requestLayout(reason = 'refresh', requestOpts = {}) {
     cancelActiveLayout('superseded', true);
     const id = ++layoutRequestId;
+    const invalid = findInvalidNodes(NODES);
+    if (invalid) return rejectInvalidNodes(id, reason, invalidNodeDataError(invalid));
     const layoutCfg = cfg();
     const signature = layoutSignature(NODES, layoutCfg);
     const pins = requestOpts.pins || (requestOpts.preserveManual ? manualCenters() : null);
@@ -491,6 +510,22 @@ export function createOrgChart(host, userOpts = {}) {
   function refresh(reason = 'refresh', requestOpts) {
     return requestLayout(reason, requestOpts);
   }
+  /* Node data that cannot form a forest (duplicate ids, parent cycles) is not
+     drawn at all — a partial chart would silently hide people. */
+  function rejectInvalidNodes(id, reason, error) {
+    positioned = []; posById = Object.create(null); familyNetworks = []; renderedFamilyNetworks = [];
+    framingBounds = null;
+    for (const nid in elById) { elById[nid].remove(); delete elById[nid]; }
+    for (const pid in pathById) { pathById[pid].remove(); delete pathById[pid]; }
+    for (const hid in hitById) { hitById[hid].remove(); delete hitById[hid]; }
+    visibleEdgesG.innerHTML = ''; edgeHandlesG.innerHTML = ''; familySelectionG.innerHTML = '';
+    setLayoutBusy(false);
+    layoutPromise = Promise.resolve(false);
+    console.warn(`local-org-chart: ${error.message}`);
+    Promise.resolve().then(() => { if (!destroyed) emit('layout-error', { id, reason, error }); });
+    flushDeferredHistory();
+    return layoutPromise;
+  }
   /* Apply a structural change (parent/child wiring) WITHOUT visually moving anything.
      We snapshot every node's on-screen position, run the change + layout, then pin
      any node the relayout would have moved back to where it was (via manualOffsets).
@@ -498,7 +533,7 @@ export function createOrgChart(host, userOpts = {}) {
      A later Force re-layout clears the pins and reflows normally. */
   function structuralEditKeepPositions(mutate) {
     const oldEff = Object.create(null);
-    for (const p of positioned) oldEff[p.node.id] = effCenter(p, manualOffsets);
+    if (!offsetsPending) for (const p of positioned) oldEff[p.node.id] = effCenter(p, manualOffsets);
     mutate();
     return requestLayout('structural-edit', { pins: oldEff });
   }
@@ -544,8 +579,12 @@ export function createOrgChart(host, userOpts = {}) {
     const deptW = Math.max(100, state.departmentWidth || DEPT_SIZE.width);
     const deptH = Math.max(50, state.departmentHeight || DEPT_SIZE.height);
     for (const n of NODES) {
-      if (n.type === 'department') { n.width = deptW; n.height = deptH; }
-      else { n.width = w; n.height = h; }
+      // a size the caller set on this node (data or an inspector edit) wins
+      const fixed = explicitSizes[n.id] || {};
+      const ov = nodeOverrides[n.id] && !nodeOverrides[n.id].__new ? nodeOverrides[n.id] : {};
+      const dept = n.type === 'department';
+      n.width = ov.width || fixed.width || (dept ? deptW : w);
+      n.height = ov.height || fixed.height || (dept ? deptH : h);
     }
   }
   function applyCardState(o) {
@@ -557,35 +596,35 @@ export function createOrgChart(host, userOpts = {}) {
     const department = o.departmentNode || {};
     const frame = o.virtualPhotoFrame || {};
     const image = o.renderedImage || {};
-    const width = typeof o.width === 'number' ? o.width : (typeof o.cardWidth === 'number' ? o.cardWidth : node.width);
-    const photoHeight = typeof o.photoHeight === 'number' ? o.photoHeight : node.photoHeight;
-    let textHeight = typeof o.textHeight === 'number' ? o.textHeight : node.textHeight;
-    if (typeof textHeight !== 'number' && typeof node.totalHeight === 'number' && typeof photoHeight === 'number') {
+    const width = Number.isFinite(o.width) ? o.width : (Number.isFinite(o.cardWidth) ? o.cardWidth : node.width);
+    const photoHeight = Number.isFinite(o.photoHeight) ? o.photoHeight : node.photoHeight;
+    let textHeight = Number.isFinite(o.textHeight) ? o.textHeight : node.textHeight;
+    if (!Number.isFinite(textHeight) && Number.isFinite(node.totalHeight) && Number.isFinite(photoHeight)) {
       textHeight = node.totalHeight - photoHeight;
     }
-    if (typeof width === 'number') state.cardWidth = Math.max(100, width);
-    if (typeof photoHeight === 'number') state.photoHeight = Math.max(40, photoHeight);
-    if (typeof textHeight === 'number') state.textHeight = Math.max(40, textHeight);
-    const departmentWidth = typeof o.departmentWidth === 'number' ? o.departmentWidth : department.width;
-    const departmentHeight = typeof o.departmentHeight === 'number' ? o.departmentHeight : department.height;
-    if (typeof departmentWidth === 'number') state.departmentWidth = Math.max(100, departmentWidth);
-    if (typeof departmentHeight === 'number') state.departmentHeight = Math.max(50, departmentHeight);
-    const frameWidth = typeof o.photoFrameWidth === 'number' ? o.photoFrameWidth : frame.width;
-    const frameHeight = typeof o.photoFrameHeight === 'number' ? o.photoFrameHeight : frame.height;
-    const imageWidth = typeof o.photoImageWidth === 'number' ? o.photoImageWidth : image.width;
-    const imageHeight = typeof o.photoImageHeight === 'number' ? o.photoImageHeight : image.height;
-    const offsetX = typeof o.photoOffsetX === 'number' ? o.photoOffsetX : image.offsetX;
-    const offsetY = typeof o.photoOffsetY === 'number' ? o.photoOffsetY : image.offsetY;
-    if (typeof frameWidth === 'number') state.photoFrameWidth = Math.max(1, frameWidth);
-    if (typeof frameHeight === 'number') state.photoFrameHeight = Math.max(1, frameHeight);
-    if (typeof imageWidth === 'number') state.photoImageWidth = Math.max(1, imageWidth);
-    if (typeof imageHeight === 'number') state.photoImageHeight = Math.max(1, imageHeight);
-    if (typeof offsetX === 'number') state.photoOffsetX = offsetX;
-    if (typeof offsetY === 'number') state.photoOffsetY = offsetY;
-    if ('contain' in o) state.photoContain = !!o.contain;
-    else if ('photoContain' in o) state.photoContain = !!o.photoContain;
-    else if (image.fit) state.photoContain = image.fit === 'contain';
-    if (typeof o.photoBackground === 'string' && o.photoBackground.trim()) state.photoBackground = o.photoBackground.trim();
+    if (Number.isFinite(width)) state.cardWidth = Math.max(100, width);
+    if (Number.isFinite(photoHeight)) state.photoHeight = Math.max(40, photoHeight);
+    if (Number.isFinite(textHeight)) state.textHeight = Math.max(40, textHeight);
+    const departmentWidth = Number.isFinite(o.departmentWidth) ? o.departmentWidth : department.width;
+    const departmentHeight = Number.isFinite(o.departmentHeight) ? o.departmentHeight : department.height;
+    if (Number.isFinite(departmentWidth)) state.departmentWidth = Math.max(100, departmentWidth);
+    if (Number.isFinite(departmentHeight)) state.departmentHeight = Math.max(50, departmentHeight);
+    const frameWidth = Number.isFinite(o.photoFrameWidth) ? o.photoFrameWidth : frame.width;
+    const frameHeight = Number.isFinite(o.photoFrameHeight) ? o.photoFrameHeight : frame.height;
+    const imageWidth = Number.isFinite(o.photoImageWidth) ? o.photoImageWidth : image.width;
+    const imageHeight = Number.isFinite(o.photoImageHeight) ? o.photoImageHeight : image.height;
+    const offsetX = Number.isFinite(o.photoOffsetX) ? o.photoOffsetX : image.offsetX;
+    const offsetY = Number.isFinite(o.photoOffsetY) ? o.photoOffsetY : image.offsetY;
+    if (Number.isFinite(frameWidth)) state.photoFrameWidth = Math.max(1, frameWidth);
+    if (Number.isFinite(frameHeight)) state.photoFrameHeight = Math.max(1, frameHeight);
+    if (Number.isFinite(imageWidth)) state.photoImageWidth = Math.max(1, imageWidth);
+    if (Number.isFinite(imageHeight)) state.photoImageHeight = Math.max(1, imageHeight);
+    if (Number.isFinite(offsetX)) state.photoOffsetX = offsetX;
+    if (Number.isFinite(offsetY)) state.photoOffsetY = offsetY;
+    if (typeof o.contain === 'boolean') state.photoContain = o.contain;
+    else if (typeof o.photoContain === 'boolean') state.photoContain = o.photoContain;
+    else if (image.fit === 'contain' || image.fit === 'cover') state.photoContain = image.fit === 'contain';
+    if (isSafeColor(o.photoBackground)) state.photoBackground = o.photoBackground.trim();
     return {
       sizeChanged: beforeSize !== [state.cardWidth, state.photoHeight, state.textHeight, state.departmentWidth, state.departmentHeight].join('|'),
       renderChanged: beforeRender !== [state.photoContain, state.photoFrameWidth, state.photoFrameHeight,
@@ -972,7 +1011,15 @@ export function createOrgChart(host, userOpts = {}) {
     clearAlignGuides();
     rmWin('pointermove', onNodePointerMove); rmWin('pointerup', onNodePointerUp);
     persist();
-    if (moved) pushHistory();   // one undo step per drag (whole group)
+    if (moved) { pushHistory(); emitGeometryEdit('node-drag'); }   // one undo step per drag (whole group)
+  }
+
+  /* Manual geometry edits (card drags, waypoints, endpoints) change the layout
+     without a relayout, so they announce it themselves. */
+  function emitGeometryEdit(reason) {
+    emit('layout-change', {
+      positioned, familyNetworks, mode: state.subtreeMode, orientation: state.orientation, reason, edit: true,
+    });
   }
 
   // ---- alignment snapping: snap a dragged node/waypoint to the parent's connector
@@ -1121,7 +1168,7 @@ export function createOrgChart(host, userOpts = {}) {
   }
   /* straighten the selected lines: drop their manual waypoints + endpoint anchors */
   function resetSelectedEdges() {
-    if (!selectedEdges.size) return;
+    if (refuseReadonly('resetSelectedEdges') || !selectedEdges.size) return;
     let changed = false;
     for (const id of selectedEdges) {
       if (edgeWaypoints[id]) { delete edgeWaypoints[id]; changed = true; }
@@ -1130,6 +1177,7 @@ export function createOrgChart(host, userOpts = {}) {
     if (!changed) return;
     if (state.selectedEdgeId && selectedEdges.has(state.selectedEdgeId)) deselectEdge();
     drawConnectors(); applyEdgeSelectionClasses(); persist(); pushHistory();
+    emitGeometryEdit('edges-reset');
     emit('edges-reset', { ids: [...selectedEdges] });
   }
   function segSeg(ax, ay, bx, by, cx, cy, dx, dy) {
@@ -1256,6 +1304,7 @@ export function createOrgChart(host, userOpts = {}) {
     for (const id in pathById) pathById[id].classList.remove('loc-family-member');
   }
   function resetFamilyRoute(parentId = state.selectedFamilyId) {
+    if (refuseReadonly('resetFamilyRoute')) return false;
     const id = parentId == null ? null : String(parentId);
     if (!id || !familyRouteOverrides[id]) return false;
     delete familyRouteOverrides[id];
@@ -1264,6 +1313,7 @@ export function createOrgChart(host, userOpts = {}) {
     return true;
   }
   function setFamilyRouteOverride(parentId, override) {
+    if (refuseReadonly('setFamilyRouteOverride')) return false;
     const id = parentId == null ? '' : String(parentId);
     if (!id || !posById[id]) return false;
     if (!override || !Number.isFinite(Number(override.trunkOffset))) return resetFamilyRoute(id);
@@ -1361,16 +1411,17 @@ export function createOrgChart(host, userOpts = {}) {
     rmWin('pointermove', onEpMove); rmWin('pointerup', onEpUp);
     if (d && d.which === 'parent' && reparentTarget) { const t = reparentTarget; highlightReparentTarget(null); reparentNode(d.id, t); return; }
     highlightReparentTarget(null); persist();
-    if (d && d.changed) pushHistory();   // an endpoint anchor was moved
+    if (d && d.changed) { pushHistory(); emitGeometryEdit('edge-anchor'); }   // an endpoint anchor was moved
   }
   /* change a node's parent (''/null = detach to a root). Positions are preserved —
      this only adds/removes the connection, it does not re-flow the chart. */
   function reparentNode(id, newParentId) {
-    const n = nodeById[id]; if (!n || newParentId === id) return;
-    if (newParentId && descendantsOf(id).indexOf(newParentId) >= 0) return;   // no cycles
+    if (refuseReadonly('reparentNode')) return false;
+    const n = nodeById[id]; if (!n || newParentId === id) return false;
+    if (newParentId && descendantsOf(id).indexOf(newParentId) >= 0) return false;   // no cycles
     const pid = newParentId || '';
     const oldParentId = n.parentId == null ? '' : String(n.parentId);
-    if ((n.parentId || '') === pid) return;                                   // no change
+    if ((n.parentId || '') === pid) return false;                                   // no change
     state.selectedEdgeId = null; state.selectedFamilyId = null;
     edgeHandlesG.innerHTML = ''; familySelectionG.innerHTML = '';
     structuralEditKeepPositions(() => {
@@ -1386,14 +1437,15 @@ export function createOrgChart(host, userOpts = {}) {
     if (panel.classList.contains('loc-open') && state.selectedNodeId === id) renderInspector();
     emit('node-change', { id, node: { ...n }, patch: { parentId: pid }, reparented: true });
     pushHistory();
+    return true;
   }
-  function detachNode(id) { reparentNode(id, ''); }
-  function attachNode(id, parentId) { if (parentId) reparentNode(id, parentId); }
+  function detachNode(id) { return reparentNode(id, ''); }
+  function attachNode(id, parentId) { return parentId ? reparentNode(id, parentId) : false; }
 
   // ---- interactive "Attach": pick this node, then click a target parent ----
   let attaching = null;
   function beginAttach(id) {
-    if (!id) return;
+    if (refuseReadonly('beginAttach') || !id) return;
     attaching = id; root.classList.add('loc-attaching');
     emit('attach-start', { id });
   }
@@ -1431,13 +1483,21 @@ export function createOrgChart(host, userOpts = {}) {
   const SUBMODES = ['', 'AutoSmart', 'Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight'];
   function escAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
   function applyEditModeUI() { root.classList.toggle('loc-edit', state.editMode); }
+  /* true (after one warning) when a public edit is attempted on a readonly chart */
+  function refuseReadonly(name) {
+    if (!opts.readonly) return false;
+    console.warn(`local-org-chart: ${name}() ignored because the chart is readonly`);
+    return true;
+  }
   function setEditMode(on) {
+    if (on && refuseReadonly('setEditMode')) return false;
     state.editMode = !!on;
     applyEditModeUI(); syncToolbar();
     if (!state.editMode) { deselectEdge(); deselectFamilyRoute(); }
     if (panel.classList.contains('loc-open')) renderInspector();
     emit('edit-mode-change', { editMode: state.editMode });
     persist();
+    return true;
   }
   function openInspector(id) {
     if (!opts.inspector) return;
@@ -1534,11 +1594,26 @@ export function createOrgChart(host, userOpts = {}) {
   function genId() { let id; do { id = 'node-' + (++idCounter); } while (nodeById[id]); return id; }
   /* apply a field patch to a node + record it as a persisted overlay */
   function updateNode(id, patch) {
-    const n = nodeById[id]; if (!n) return;
+    if (refuseReadonly('updateNode')) return false;
+    const n = nodeById[id]; if (!n) return false;
+    const problems = [];
+    const clean = sanitizeManualLayout({ nodeOverrides: { [id]: patch } }, problems, 'updateNode').nodeOverrides[id] || {};
+    reportInput('node patch', problems);
+    patch = clean;
+    if (!Object.keys(patch).length) return false;
+    const dataBefore = n.data || {};
     Object.assign(n, patch);
     // layout works on node COPIES; keep the positioned copy in sync for non-structural redraws
     if (posById[id] && posById[id].node !== n) Object.assign(posById[id].node, patch);
-    nodeOverrides[id] = Object.assign(nodeOverrides[id] || {}, patch);
+    const overlay = Object.assign({}, patch);
+    if (patch.data) {
+      // record only the data keys this edit changed
+      const changedData = {};
+      for (const k of Object.keys(patch.data)) if (patch.data[k] !== dataBefore[k]) changedData[k] = patch.data[k];
+      const prev = (nodeOverrides[id] && nodeOverrides[id].data) || {};
+      overlay.data = Object.assign({}, prev, changedData);
+    }
+    nodeOverrides[id] = Object.assign(nodeOverrides[id] || {}, overlay);
     const structural = ['type', 'width', 'height', 'layoutMode'].some((k) => k in patch);
     if (elById[id]) { elById[id].remove(); delete elById[id]; }   // rebuild the card content
     drawNodes();
@@ -1547,6 +1622,7 @@ export function createOrgChart(host, userOpts = {}) {
     persist();
     // coalesce successive edits to the same field(s) of the same node into one step
     pushHistory('field:' + id + ':' + Object.keys(patch).join(','));
+    return true;
   }
   function descendantsOf(id) {
     const out = [], stack = [id];
@@ -1554,7 +1630,7 @@ export function createOrgChart(host, userOpts = {}) {
     return out;
   }
   function addChild(parentId) {
-    if (!state.editMode) return null;
+    if (refuseReadonly('addChild') || !state.editMode) return null;
     const id = genId();
     const node = makeNode({ id, parentId: parentId || '', type: 'position', label: 'NEW POSITION', personName: '', status: '' });
     NODES.push(node); nodeById[id] = node;
@@ -1565,15 +1641,21 @@ export function createOrgChart(host, userOpts = {}) {
     return id;
   }
   function deleteNode(id) {
-    if (!state.editMode || !id) return;
+    if (refuseReadonly('deleteNode') || !state.editMode || !id) return false;
     const oldParentId = nodeById[id]?.parentId;
     const ids = [id].concat(descendantsOf(id)), set = new Set(ids);
     NODES = NODES.filter((n) => !set.has(n.id)); nodeById = indexNodes(NODES);
-    ids.forEach((x) => { nodeOverrides[x] = { __deleted: true }; if (elById[x]) { elById[x].remove(); delete elById[x]; } selectedIds.delete(x); });
+    ids.forEach((x) => {
+      nodeOverrides[x] = { __deleted: true };
+      delete manualOffsets[x]; delete edgeWaypoints[x]; delete edgeAnchors[x];
+      if (elById[x]) { elById[x].remove(); delete elById[x]; }
+      selectedIds.delete(x);
+    });
     if (oldParentId) delete familyRouteOverrides[String(oldParentId)];
     ids.forEach((x) => { delete familyRouteOverrides[String(x)]; });
     if (set.has(state.selectedNodeId)) { state.selectedNodeId = selectedIds.size ? [...selectedIds][selectedIds.size - 1] : null; if (!state.selectedNodeId) closeInspector(); }
     refresh('delete-node', { preserveManual: true }); emit('node-change', { id, removed: true, ids }); persist(); pushHistory();
+    return true;
   }
   /* re-apply the persisted edit overlay onto the current NODES (after props/restore) */
   function applyOverrides() {
@@ -1584,7 +1666,13 @@ export function createOrgChart(host, userOpts = {}) {
       const ov = nodeOverrides[id]; if (!ov || ov.__deleted) continue;
       if (ov.__new) {
         if (!nodeById[id]) { const rest = Object.assign({}, ov); delete rest.__new; const node = makeNode(rest); NODES.push(node); nodeById[id] = node; }
-      } else if (nodeById[id]) { Object.assign(nodeById[id], ov); }
+      } else if (nodeById[id]) {
+        const n = nodeById[id];
+        const { data, ...fields } = ov;
+        Object.assign(n, fields);
+        // a data overlay holds only the edited keys; server keys stay current
+        if (data) n.data = Object.assign({}, n.data, data);
+      }
     }
   }
 
@@ -1633,55 +1721,36 @@ export function createOrgChart(host, userOpts = {}) {
   function legSection(title, rows) { return `<div class="loc-leg-section"><div class="loc-leg-title">${title}</div>${rows}</div>`; }
   function legSwatch(cls, label) { return `<div class="loc-leg-row"><span class="loc-leg-swatch ${cls}"></span><span class="loc-leg-label">${label}</span></div>`; }
   function getSettings() {
-    return {
-      spacingX: state.spacingX, spacingY: state.spacingY, gridSize: state.gridSize,
-      orientation: state.orientation, subtreeMode: state.subtreeMode,
-      showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid,
-      showImages: state.showImages, autoEdgeSide: state.autoEdgeSide,
-      cardWidth: state.cardWidth, photoHeight: state.photoHeight, textHeight: state.textHeight,
-      departmentWidth: state.departmentWidth, departmentHeight: state.departmentHeight,
-      photoContain: state.photoContain,
-      virtualPhotoFrame: { width: state.photoFrameWidth, height: state.photoFrameHeight },
-      renderedImage: {
-        width: state.photoImageWidth, height: state.photoImageHeight,
-        fit: state.photoContain ? 'contain' : 'cover', align: 'center',
-        offsetX: state.photoOffsetX, offsetY: state.photoOffsetY,
-      },
+    return Object.assign(viewConfig(), {
       node: {
         width: state.cardWidth, photoHeight: state.photoHeight, textHeight: state.textHeight,
         totalHeight: state.photoHeight + state.textHeight,
       },
       departmentNode: { width: state.departmentWidth, height: state.departmentHeight },
-      photoBackground: state.photoBackground,
-      themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
-    };
+    });
   }
+  /* Apply a settings object. A call that changes nothing is a no-op: no
+     relayout and no settings-change event (so two-way bindings settle). */
   function setSettings(s, o) {
-    s = s || {};
-    if (typeof s.spacingX === 'number') state.spacingX = s.spacingX;
-    if (typeof s.spacingY === 'number') state.spacingY = s.spacingY;
-    if (typeof s.gridSize === 'number') state.gridSize = s.gridSize;
-    if (s.orientation) state.orientation = normalizeOrientation(s.orientation);
-    if (s.subtreeMode) state.subtreeMode = s.subtreeMode;
-    if ('showGrid' in s) state.showGrid = !!s.showGrid;
-    if ('snapGrid' in s) state.snapGrid = !!s.snapGrid;
-    if ('alignGrid' in s) state.alignGrid = !!s.alignGrid;
-    if ('showImages' in s && !!s.showImages !== state.showImages) {
-      state.showImages = !!s.showImages;
+    const before = JSON.stringify(viewConfig());
+    const clean = checkedView(s || {}, 'settings');
+    const showImages = state.showImages;
+    const cardChanged = applyViewState(clean);
+    if (JSON.stringify(viewConfig()) === before) return false;
+    if (state.showImages !== showImages) {
       for (const id in elById) { elById[id].remove(); delete elById[id]; }   // rebuild cards on image toggle
     }
-    if ('autoEdgeSide' in s) state.autoEdgeSide = !!s.autoEdgeSide;
-    const cardChanged = applyCardState(s);
     if (cardChanged.sizeChanged || cardChanged.renderChanged) applyCardSizeVars();
     if (cardChanged.sizeChanged) {
       applyCardSizeToNodes();
       for (const id in elById) delete elById[id].dataset.fitted;
     }
-    if (Array.isArray(s.themeRules)) themeRules = s.themeRules.map(normalizeRule);
+    applyThemeAll();
     applyGridOverlay(); syncToolbar(); refresh('settings');
     if (settingsPanel.classList.contains('loc-open')) renderSettings();
     if (!(o && o.silent)) emit('settings-change', getSettings());
     persist();
+    return true;
   }
   function toggleSettings(force) {
     const wasOpen = settingsPanel.classList.contains('loc-open');
@@ -1691,32 +1760,25 @@ export function createOrgChart(host, userOpts = {}) {
     if (open) renderSettings();
     if (open !== wasOpen) emit(open ? 'settings-open' : 'settings-close', {});
   }
-  /* restore spacing / grid / theme rules to the as-configured defaults */
+  /* restore spacing / grid / card size / theme rules to the as-configured
+     defaults (layout mode, orientation, photos and smart edges are kept) */
   function resetSettings() {
-    setSettings({
-      spacingX: INITIAL_SETTINGS.spacingX, spacingY: INITIAL_SETTINGS.spacingY, gridSize: INITIAL_SETTINGS.gridSize,
-      showGrid: INITIAL_SETTINGS.showGrid, snapGrid: INITIAL_SETTINGS.snapGrid, alignGrid: INITIAL_SETTINGS.alignGrid,
-      cardWidth: INITIAL_SETTINGS.cardWidth, photoHeight: INITIAL_SETTINGS.photoHeight, textHeight: INITIAL_SETTINGS.textHeight,
-      departmentWidth: INITIAL_SETTINGS.departmentWidth, departmentHeight: INITIAL_SETTINGS.departmentHeight,
-      photoContain: INITIAL_SETTINGS.photoContain,
-      virtualPhotoFrame: { width: INITIAL_SETTINGS.photoFrameWidth, height: INITIAL_SETTINGS.photoFrameHeight },
-      renderedImage: {
-        width: INITIAL_SETTINGS.photoImageWidth, height: INITIAL_SETTINGS.photoImageHeight,
-        fit: INITIAL_SETTINGS.photoContain ? 'contain' : 'cover', align: 'center',
-        offsetX: INITIAL_SETTINGS.photoOffsetX, offsetY: INITIAL_SETTINGS.photoOffsetY,
-      },
-      photoBackground: INITIAL_SETTINGS.photoBackground,
-      themeRules: INITIAL_SETTINGS.themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
-    });
+    const target = cloneData(INITIAL_SETTINGS);
+    for (const key of ['subtreeMode', 'orientation', 'showImages', 'autoEdgeSide']) delete target[key];
+    setSettings(target);
     applyThemeAll();
   }
   function setRange(key, label, val, min, max) {
-    return `<label class="loc-field"><span>${label}: <b data-rangelabel="${key}">${val}</b></span>`
-      + `<input type="range" data-set="${key}" min="${min}" max="${max}" value="${val}"/></label>`;
+    const v = Number.isFinite(Number(val)) ? Number(val) : min;
+    return `<label class="loc-field"><span>${label}: <b data-rangelabel="${key}">${v}</b></span>`
+      + `<input type="range" data-set="${key}" min="${min}" max="${max}" value="${v}"/></label>`;
   }
+  // <input type="color"> only holds #rrggbb; anything else shows the default swatch
+  const COLOR_INPUT = /^#[0-9a-f]{6}$/i;
   function colorField(i, key, label, val) {
+    const swatch = COLOR_INPUT.test(val || '') ? val : '#e0524d';
     return `<label class="loc-color"><input type="checkbox" data-rule="${i}" data-rk="${key}-on"${val ? ' checked' : ''}/>`
-      + `<span>${label}</span><input type="color" data-rule="${i}" data-rk="${key}" value="${val || '#e0524d'}"/></label>`;
+      + `<span>${label}</span><input type="color" data-rule="${i}" data-rk="${key}" value="${escAttr(swatch)}"/></label>`;
   }
   function ruleRow(r, i) {
     const opt = (v, l) => `<option value="${v}"${r.field === v ? ' selected' : ''}>${l}</option>`;
@@ -1798,23 +1860,87 @@ export function createOrgChart(host, userOpts = {}) {
       themeRules: themeRules.map((r) => ({ enabled: r.enabled, field: r.field, value: r.value, style: Object.assign({}, r.style) })),
     };
   }
-  function applyViewConfig(v) {
-    if (!v) return;
+  /* Apply an already-validated view (sanitizeView output) to state only. Used
+     by every load path: constructor settings, setSettings, saved layouts,
+     imports, undo/redo and the persisted state. */
+  function applyViewState(v) {
+    if (!v) return { sizeChanged: false, renderChanged: false };
     if (v.subtreeMode) state.subtreeMode = v.subtreeMode;
     if (v.orientation) state.orientation = normalizeOrientation(v.orientation);
     ['spacingX', 'spacingY', 'gridSize'].forEach((k) => { if (typeof v[k] === 'number') state[k] = v[k]; });
-    if ('showGrid' in v) state.showGrid = !!v.showGrid;
-    if ('snapGrid' in v) state.snapGrid = !!v.snapGrid;
-    if ('alignGrid' in v) state.alignGrid = !!v.alignGrid;
-    if ('showImages' in v) state.showImages = !!v.showImages;
-    if ('autoEdgeSide' in v) state.autoEdgeSide = !!v.autoEdgeSide;
-    applyCardState(v);
-    applyCardSizeVars(); applyCardSizeToNodes();
+    if ('showGrid' in v) state.showGrid = v.showGrid;
+    if ('snapGrid' in v) state.snapGrid = v.snapGrid;
+    if ('alignGrid' in v) state.alignGrid = v.alignGrid;
+    if ('showImages' in v) state.showImages = v.showImages;
+    if ('autoEdgeSide' in v) state.autoEdgeSide = v.autoEdgeSide;
+    const changed = applyCardState(v);
     if (Array.isArray(v.themeRules)) themeRules = v.themeRules.map(normalizeRule);
+    return changed;
+  }
+  /* validate + apply a view config, then push card geometry onto the DOM */
+  function applyViewConfig(v, context = 'view') {
+    if (!v) return;
+    const showImages = state.showImages;
+    applyViewState(checkedView(v, context));
+    if (state.showImages !== showImages) {
+      for (const id in elById) { elById[id].remove(); delete elById[id]; }   // rebuild cards on image toggle
+    }
+    applyCardSizeVars(); applyCardSizeToNodes();
+  }
+
+  // ---- input validation (saved layouts, imports, settings, node data) ----
+  /* Report rejected input once per call: one console.warn naming every dropped
+     entry, plus an `input-warning` event for hosts that surface it. */
+  function reportInput(context, problems) {
+    if (!problems || !problems.length) return;
+    console.warn(`local-org-chart: ignored invalid ${context}: ${problems.join('; ')}`);
+    // deferred so listeners registered right after construction still hear it
+    Promise.resolve().then(() => { if (!destroyed) emit('input-warning', { context, problems: problems.slice() }); });
+  }
+  function checkedView(v, context) {
+    const problems = [];
+    const clean = sanitizeView(v, problems, context);
+    reportInput(context, problems);
+    return clean;
+  }
+  function checkedManualLayout(layout, context) {
+    const problems = [];
+    const clean = sanitizeManualLayout(layout, problems, context);
+    reportInput(context, problems);
+    return clean;
+  }
+  /* loose node records -> internal nodes, reporting fields makeNode drops and
+     remembering per-node sizes the caller set explicitly */
+  function prepareNodes(list, context) {
+    const problems = [];
+    const sizes = Object.create(null);
+    const out = [];
+    for (const src of Array.isArray(list) ? list : []) {
+      if (!src || typeof src !== 'object') { problems.push('a node that is not an object'); continue; }
+      for (const p of nodeInputProblems(src)) problems.push(`${src.id}: ${p}`);
+      const node = makeNode(src);
+      const size = {};
+      if (node.width === src.width) size.width = node.width;
+      if (node.height === src.height) size.height = node.height;
+      if (size.width || size.height) sizes[node.id] = size;
+      out.push(node);
+    }
+    explicitSizes = sizes;
+    reportInput(context, problems);
+    return out;
+  }
+  /* drop per-id manual state for ids that are no longer nodes */
+  function pruneMissingIds(keepIds) {
+    const keep = keepIds || nodeById;
+    for (const map of [manualOffsets, edgeWaypoints, edgeAnchors, familyRouteOverrides]) {
+      for (const id of Object.keys(map)) if (!(id in keep)) delete map[id];
+    }
   }
   function snapshot() {
     return {
-      nodes: NODES.map((n) => cloneData(n)),
+      // node copies share `data` (treated as immutable — edits replace it), so
+      // large consumer payloads are not deep-copied into every undo step
+      nodes: NODES.map((n) => Object.assign({}, n)),
       manualOffsets: cloneData(manualOffsets),
       edgeWaypoints: cloneData(edgeWaypoints),
       edgeAnchors: cloneData(edgeAnchors),
@@ -1826,13 +1952,16 @@ export function createOrgChart(host, userOpts = {}) {
   }
   function restoreSnapshot(s) {
     applyingHistory = true;
+    const parentsBefore = Object.create(null);
+    for (const n of NODES) parentsBefore[n.id] = n.parentId;
     NODES = (s.nodes || []).map(makeNode); nodeById = indexNodes(NODES);
-    manualOffsets = cloneData(s.manualOffsets) || Object.create(null);
-    edgeWaypoints = cloneData(s.edgeWaypoints) || Object.create(null);
-    edgeAnchors = cloneData(s.edgeAnchors) || Object.create(null);
-    familyRouteOverrides = cloneData(s.familyRouteOverrides) || Object.create(null);
-    nodeOverrides = cloneData(s.nodeOverrides) || Object.create(null);
-    applyViewConfig(s.view);   // restores mode/orientation/spacing too — so an accidental relayout undoes cleanly
+    manualOffsets = Object.assign(Object.create(null), cloneData(s.manualOffsets));
+    edgeWaypoints = Object.assign(Object.create(null), cloneData(s.edgeWaypoints));
+    edgeAnchors = Object.assign(Object.create(null), cloneData(s.edgeAnchors));
+    familyRouteOverrides = Object.assign(Object.create(null), cloneData(s.familyRouteOverrides));
+    nodeOverrides = Object.assign(Object.create(null), cloneData(s.nodeOverrides));
+    offsetsPending = true;     // the snapshot's offsets belong to the layout it was taken on
+    applyViewConfig(s.view, 'history');   // restores mode/orientation/spacing too — so an accidental relayout undoes cleanly
     for (const id in elById) { elById[id].remove(); delete elById[id]; }
     for (const id in pathById) { pathById[id].remove(); delete pathById[id]; }
     for (const id in hitById) { hitById[id].remove(); delete hitById[id]; }
@@ -1843,9 +1972,29 @@ export function createOrgChart(host, userOpts = {}) {
     if (panel.classList.contains('loc-open')) { if (state.selectedNodeId) renderInspector(); else closeInspector(); }
     if (settingsPanel.classList.contains('loc-open')) renderSettings();
     applyingHistory = false;
+    // A host persists reparents from node-change, so undoing/redoing one must
+    // tell it the parent moved back.
+    for (const n of NODES) {
+      if (!(n.id in parentsBefore) || parentsBefore[n.id] === n.parentId) continue;
+      emit('node-change', { id: n.id, node: { ...n }, patch: { parentId: n.parentId }, reparented: true, history: true });
+    }
+  }
+  // A change that starts a layout is recorded once that layout settles, so the
+  // snapshot holds the re-pinned offsets the user actually sees.
+  let deferredHistory = null;
+  function flushDeferredHistory() {
+    if (!deferredHistory) return;
+    const { key } = deferredHistory;
+    deferredHistory = null;
+    pushHistory(key);
   }
   function pushHistory(key) {
     if (applyingHistory) return;
+    if (activeLayout) {
+      // several changes while one layout runs collapse into one undo step
+      deferredHistory = { key: deferredHistory ? null : (key != null ? key : null) };
+      return;
+    }
     const snap = snapshot();
     if (key != null && key === lastHistKey && histIndex >= 0) {
       history[histIndex] = snap;                       // coalesce successive same-key edits
@@ -1860,57 +2009,47 @@ export function createOrgChart(host, userOpts = {}) {
   function resetHistory() { history = [snapshot()]; histIndex = 0; lastHistKey = null; emitHistory(); }
   function canUndo() { return histIndex > 0; }
   function canRedo() { return histIndex >= 0 && histIndex < history.length - 1; }
-  function undo() { if (!canUndo()) return; histIndex--; lastHistKey = null; restoreSnapshot(history[histIndex]); emitHistory(); }
-  function redo() { if (!canRedo()) return; histIndex++; lastHistKey = null; restoreSnapshot(history[histIndex]); emitHistory(); }
+  function settleHistoryBeforeStep() {
+    if (!deferredHistory) return;
+    // record the pending change first so undo steps back over it, not past it
+    const { key } = deferredHistory;
+    deferredHistory = null;
+    const busy = activeLayout; activeLayout = null;
+    pushHistory(key);
+    activeLayout = busy;
+  }
+  function undo() { settleHistoryBeforeStep(); if (!canUndo()) return; histIndex--; lastHistKey = null; restoreSnapshot(history[histIndex]); emitHistory(); }
+  function redo() { settleHistoryBeforeStep(); if (!canRedo()) return; histIndex++; lastHistKey = null; restoreSnapshot(history[histIndex]); emitHistory(); }
   function emitHistory() { syncToolbar(); emit('history-change', { canUndo: canUndo(), canRedo: canRedo() }); }
 
   // ================= persistence =================
   function persist() {
     if (!opts.persist) return;
     try {
-      localStorage.setItem(opts.storageKey, JSON.stringify({
-        orientation: state.orientation, subtreeMode: state.subtreeMode,
-        spacingX: state.spacingX, spacingY: state.spacingY,
+      localStorage.setItem(opts.storageKey, JSON.stringify(Object.assign(viewConfig(), {
         zoom: state.zoom, panX: state.panX, panY: state.panY,
-        showGrid: state.showGrid, snapGrid: state.snapGrid, alignGrid: state.alignGrid, gridSize: state.gridSize,
-        editMode: state.editMode, showImages: state.showImages, showLegend: state.showLegend,
-        autoEdgeSide: state.autoEdgeSide,
-        cardWidth: state.cardWidth, photoHeight: state.photoHeight, textHeight: state.textHeight,
-        departmentWidth: state.departmentWidth, departmentHeight: state.departmentHeight,
-        photoContain: state.photoContain,
-        virtualPhotoFrame: { width: state.photoFrameWidth, height: state.photoFrameHeight },
-        renderedImage: {
-          width: state.photoImageWidth, height: state.photoImageHeight,
-          fit: state.photoContain ? 'contain' : 'cover', align: 'center',
-          offsetX: state.photoOffsetX, offsetY: state.photoOffsetY,
-        },
-        photoBackground: state.photoBackground,
-        manualOffsets, edgeWaypoints, edgeAnchors, familyRouteOverrides, nodeOverrides, themeRules,
+        editMode: state.editMode, showLegend: state.showLegend,
+        manualOffsets, edgeWaypoints, edgeAnchors, familyRouteOverrides, nodeOverrides,
         collapsed: NODES.filter((n) => n.collapsed).map((n) => n.id),
-      }));
+      })));
     } catch (e) { /* quota / unavailable — ignore */ }
   }
   function restore() {
     if (!opts.persist) return;
     let s; try { s = JSON.parse(localStorage.getItem(opts.storageKey) || 'null'); } catch (e) { s = null; }
-    if (!s) return;
-    if (s.orientation) state.orientation = normalizeOrientation(s.orientation);
-    if (s.subtreeMode) state.subtreeMode = s.subtreeMode;
-    ['spacingX', 'spacingY', 'zoom', 'panX', 'panY', 'gridSize'].forEach((k) => { if (typeof s[k] === 'number') state[k] = s[k]; });
-    state.showGrid = !!s.showGrid; state.snapGrid = !!s.snapGrid; state.alignGrid = !!s.alignGrid;
-    state.editMode = !!s.editMode;
-    if ('showImages' in s) state.showImages = !!s.showImages;
-    if ('showLegend' in s) state.showLegend = !!s.showLegend;
-    if ('autoEdgeSide' in s) state.autoEdgeSide = !!s.autoEdgeSide;
-    applyCardState(s);
+    if (!s || typeof s !== 'object') return;
+    applyViewState(checkedView(s, 'stored state'));
+    ['zoom', 'panX', 'panY'].forEach((k) => { if (Number.isFinite(s[k])) state[k] = s[k]; });
+    if (state.zoom <= 0) state.zoom = 1;
+    if (typeof s.editMode === 'boolean') state.editMode = s.editMode && !opts.readonly;
+    if (typeof s.showLegend === 'boolean') state.showLegend = s.showLegend;
+    const manual = checkedManualLayout(s, 'stored state');
+    manualOffsets = manual.manualOffsets; edgeWaypoints = manual.edgeWaypoints;
+    edgeAnchors = manual.edgeAnchors; familyRouteOverrides = manual.familyRouteOverrides;
+    nodeOverrides = manual.nodeOverrides; applyOverrides();
     applyCardSizeVars(); applyCardSizeToNodes();
-    if (s.manualOffsets) manualOffsets = s.manualOffsets;
-    if (s.edgeWaypoints) edgeWaypoints = s.edgeWaypoints;
-    if (s.edgeAnchors) edgeAnchors = s.edgeAnchors;
-    if (s.familyRouteOverrides) familyRouteOverrides = s.familyRouteOverrides;
-    if (s.nodeOverrides) { nodeOverrides = s.nodeOverrides; applyOverrides(); }
-    if (Array.isArray(s.themeRules)) themeRules = s.themeRules.map(normalizeRule);
-    if (Array.isArray(s.collapsed)) { const set = new Set(s.collapsed); for (const n of NODES) n.collapsed = set.has(n.id); }
+    if (Array.isArray(s.collapsed)) { const set = new Set(manual.collapsed.map(String)); for (const n of NODES) n.collapsed = set.has(String(n.id)); }
+    offsetsPending = true;
   }
 
   // ================= layout presets =================
@@ -1936,16 +2075,22 @@ export function createOrgChart(host, userOpts = {}) {
   /* apply a layout object (from a preset or your backend) onto the current data */
   function applyLayout(obj) {
     if (!obj) return Promise.resolve(false);
-    applyViewConfig(obj.view);
-    if (obj.full && obj.layout) {
-      manualOffsets = cloneData(obj.layout.manualOffsets) || Object.create(null);
-      edgeWaypoints = cloneData(obj.layout.edgeWaypoints) || Object.create(null);
-      edgeAnchors = cloneData(obj.layout.edgeAnchors) || Object.create(null);
-      familyRouteOverrides = cloneData(obj.layout.familyRouteOverrides) || Object.create(null);
-      nodeOverrides = cloneData(obj.layout.nodeOverrides) || Object.create(null);
+    const { layout: clean, problems } = sanitizeSavedLayout(obj);
+    reportInput('layout', problems);
+    if (!clean) return Promise.resolve(false);
+    applyViewConfig(clean.view, 'layout');
+    if (clean.full) {
+      manualOffsets = clean.layout.manualOffsets;
+      edgeWaypoints = clean.layout.edgeWaypoints;
+      edgeAnchors = clean.layout.edgeAnchors;
+      familyRouteOverrides = clean.layout.familyRouteOverrides;
+      nodeOverrides = clean.layout.nodeOverrides;
       applyOverrides();
-      const cset = new Set(obj.layout.collapsed || []);
-      for (const n of NODES) n.collapsed = cset.has(n.id);
+      applyCardSizeToNodes();
+      pruneMissingIds();
+      const cset = new Set(clean.layout.collapsed.map(String));
+      for (const n of NODES) n.collapsed = cset.has(String(n.id));
+      offsetsPending = true;
     } else {
       manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null);
       familyRouteOverrides = Object.create(null); // pattern-only → fresh auto layout
@@ -2014,8 +2159,17 @@ export function createOrgChart(host, userOpts = {}) {
     }
     return calculateBounds(positioned, manualOffsets, pad);
   }
-  function buildSVG(raster, images) {
+  function logicalPaths() {
     const paths = []; for (const id in pathById) paths.push({ id, d: pathById[id].getAttribute('d') });
+    return paths;
+  }
+  /* export frame: cards plus every connector point (manual waypoints and
+     dragged endpoints can sit outside the cards), padded */
+  function exportFrame(pad) {
+    return exportBounds(positioned, manualOffsets, logicalPaths(), pad);
+  }
+  function buildSVG(raster, images) {
+    const paths = logicalPaths();
     return buildChartSVG(positioned, paths, {
       manualOffsets, raster: !!raster, measureText, fitOf,
       photoHeight: state.photoHeight, photoContain: state.photoContain,
@@ -2028,7 +2182,7 @@ export function createOrgChart(host, userOpts = {}) {
       photoBackground: state.photoBackground,
       images: images || null,
       familyNetworks, rebuildFamilyIds: familyRebuildIds(),
-      bounds: chartBounds(40),
+      bounds: exportBounds(positioned, manualOffsets, paths, 40),
     });
   }
   /* load a photo cross-origin and convert it to a base64 data URL so it can be
@@ -2038,31 +2192,46 @@ export function createOrgChart(host, userOpts = {}) {
   function photoToDataURL(url) {
     return new Promise((resolve) => {
       const img = new Image();
+      let settled = false;
+      const done = (value, failure) => {
+        if (settled) return; settled = true;
+        clearTimeout(timer);
+        resolve({ data: value, failure });
+      };
+      // a stalled host must not hold the export forever
+      const waitMs = Number.isFinite(+opts.exportPhotoTimeout) && +opts.exportPhotoTimeout > 0 ? +opts.exportPhotoTimeout : 8000;
+      const timer = setTimeout(() => { img.onload = null; img.onerror = null; img.src = ''; done(null, 'timed out'); }, waitMs);
       img.crossOrigin = 'anonymous'; img.referrerPolicy = 'no-referrer';
       img.onload = () => {
         try {
           const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
-          if (!w || !h) { resolve(null); return; }
+          if (!w || !h) { done(null, 'empty image'); return; }
           const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
           cv.getContext('2d').drawImage(img, 0, 0);
-          resolve(cv.toDataURL('image/png'));
-        } catch (e) { resolve(null); }      // tainted (no CORS headers) → give up on this one
+          done(cv.toDataURL('image/png'));
+        } catch (e) { done(null, 'blocked by CORS'); }      // tainted (no CORS headers)
       };
-      img.onerror = () => resolve(null);
+      img.onerror = () => done(null, 'failed to load');
       img.src = url;
     });
   }
-  /* { photo_url -> dataURL } for every person card (skips ones that can't be embedded) */
+  /* { photo_url -> dataURL } for every person card. A photo that fails, is
+     CORS-blocked or times out keeps its placeholder; they are reported once. */
   function collectPhotoData() {
     if (!state.showImages) return Promise.resolve({});
     const urls = [], seen = new Set();
     for (const n of NODES) {
       const u = n.type !== 'department' && n.data && n.data.photo_url;
-      if (u && !seen.has(u)) { seen.add(u); urls.push(u); }
+      if (u && typeof u === 'string' && !seen.has(u)) { seen.add(u); urls.push(u); }
     }
     if (!urls.length) return Promise.resolve({});
-    return Promise.all(urls.map((u) => photoToDataURL(u).then((d) => [u, d])))
-      .then((pairs) => { const m = {}; for (const [u, d] of pairs) if (d) m[u] = d; return m; });
+    return Promise.all(urls.map((u) => photoToDataURL(u).then((r) => [u, r])))
+      .then((pairs) => {
+        const m = {}, failed = [];
+        for (const [u, r] of pairs) { if (r.data) m[u] = r.data; else failed.push(`${u} (${r.failure})`); }
+        if (failed.length) console.warn(`local-org-chart: export used placeholders for ${failed.length} photo(s): ${failed.join(', ')}`);
+        return m;
+      });
   }
   function exportSVG() {
     return collectPhotoData().then((images) => {
@@ -2074,7 +2243,7 @@ export function createOrgChart(host, userOpts = {}) {
   function exportPNG(scale) {
     scale = scale || 3;
     return collectPhotoData().then((images) => new Promise((resolve) => {
-      const b = chartBounds(40);
+      const b = exportFrame(40);
       const MAX_SIDE = 16000, MAX_AREA = 200e6;
       let s = Math.min(scale, MAX_SIDE / b.w, MAX_SIDE / b.h);
       if (b.w * s * b.h * s > MAX_AREA) s = Math.sqrt(MAX_AREA / (b.w * b.h));
@@ -2115,7 +2284,7 @@ export function createOrgChart(host, userOpts = {}) {
     const asDataURL = opt.as === 'dataURL' || opt.as === 'dataurl';
     const fname = opt.filename || 'org-chart.webp';
     return collectPhotoData().then((images) => new Promise((resolve) => {
-      const b = chartBounds(40);
+      const b = exportFrame(40);
       const MAX_AREA = 200e6;
       let s = Math.min(scale, maxSide / b.w, maxSide / b.h);
       if (b.w * s * b.h * s > MAX_AREA) s = Math.sqrt(MAX_AREA / (b.w * b.h));
@@ -2146,29 +2315,65 @@ export function createOrgChart(host, userOpts = {}) {
       img.src = url;
     }));
   }
+  /* Print the chart to PDF through the browser's print dialog. Call it from a
+     user gesture: the window opens synchronously (pop-up blockers allow that),
+     then the chart arrives as an <img> of an SVG blob. An SVG used as an image
+     cannot run script or load external resources, so no chart data is ever
+     parsed as HTML in a window that shares this page's origin. Resolves true
+     once the print dialog has been requested. */
   function exportPDF() {
-    return collectPhotoData().then((images) => {
-      const w = window.open('', '_blank'); if (!w) return false;
-      w.document.open();
-      w.document.write('<!doctype html><html><head><title>Org Chart</title><style>@page{margin:8mm;}html,body{margin:0;padding:0;}svg{width:100%;height:auto;display:block;}</style></head><body>'
-        + buildSVG(false, images) + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.focus();window.print();},350);};</scr' + 'ipt></body></html>');
-      w.document.close();
-      return true;
+    let w = null;
+    try { w = window.open('', '_blank'); } catch (e) { w = null; }
+    if (!w) return Promise.resolve(false);
+    const doc = w.document;
+    doc.open();
+    doc.write('<!doctype html><html><head><meta charset="utf-8"><title>Org Chart</title>'
+      + '<style>@page{margin:8mm;}html,body{margin:0;padding:0;font:14px system-ui,sans-serif;}'
+      + 'img{display:block;width:100%;height:auto;}p{margin:24px;color:#475467;}</style></head>'
+      + '<body><p data-role="status">Preparing the chart for printing…</p></body></html>');
+    doc.close();
+    const status = () => doc.querySelector('[data-role="status"]');
+    return collectPhotoData().then((images) => new Promise((resolve) => {
+      if (w.closed) { resolve(false); return; }
+      const url = URL.createObjectURL(new Blob([buildSVG(true, images)], { type: 'image/svg+xml;charset=utf-8' }));
+      const img = doc.createElement('img');
+      img.alt = 'Organization chart';
+      img.onload = () => {
+        const msg = status(); if (msg) msg.remove();
+        setTimeout(() => {
+          try { w.focus(); w.print(); } catch (e) { /* window closed */ }
+          setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_URL_TTL_MS);
+          resolve(true);
+        }, 350);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        const msg = status(); if (msg) msg.textContent = 'The chart could not be prepared for printing.';
+        resolve(false);
+      };
+      img.src = url;
+      doc.body.appendChild(img);
+    })).catch((error) => {
+      const msg = status(); if (msg) msg.textContent = 'The chart could not be prepared for printing.';
+      console.warn('local-org-chart: PDF export failed', error);
+      return false;
     });
   }
   function downloadBlob(blob, name) {
     const url = URL.createObjectURL(blob); const a = document.createElement('a');
-    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_URL_TTL_MS);
   }
 
   // ================= public setters =================
+  /* Replace the chart data. Fresh data is authoritative: manual state for ids
+     that no longer exist is dropped and the data's parentId wins over a local
+     reparent overlay. Positional and field edits for surviving ids are kept
+     unless `resetEdits` is set. `meta` (an imported file) replaces every
+     manual map and the settings it carries. */
   function setNodes(nodes, meta, opts2) {
     const keepEdits = !(opts2 && opts2.resetEdits);
-    NODES = (nodes || []).map(makeNode); nodeById = indexNodes(NODES);
-    // Positional edits (offsets / waypoints / anchors) now survive a data refresh
-    // by default — same as node field edits — so a reactive `nodes` change no
-    // longer wipes manually-dragged positions. Only resetEdits clears them, and
-    // `meta` (e.g. from loadJSON / a saved layout) still overrides per-field below.
+    NODES = prepareNodes(nodes || [], meta ? 'imported nodes' : 'nodes'); nodeById = indexNodes(NODES);
     if (!keepEdits) {
       manualOffsets = Object.create(null); edgeWaypoints = Object.create(null);
       edgeAnchors = Object.create(null); familyRouteOverrides = Object.create(null);
@@ -2180,28 +2385,48 @@ export function createOrgChart(host, userOpts = {}) {
     for (const id in pathById) { pathById[id].remove(); delete pathById[id]; }
     for (const id in hitById) { hitById[id].remove(); delete hitById[id]; }
     if (meta) {
-      if (meta.subtreeMode) state.subtreeMode = meta.subtreeMode;
-      if (meta.orientation) state.orientation = normalizeOrientation(meta.orientation);
-      if (meta.manualOffsets) manualOffsets = meta.manualOffsets;
-      if (meta.edgeWaypoints) edgeWaypoints = meta.edgeWaypoints;
-      if (meta.edgeAnchors) edgeAnchors = meta.edgeAnchors;
-      if (meta.familyRouteOverrides) familyRouteOverrides = meta.familyRouteOverrides;
-      if (meta.nodeOverrides) { nodeOverrides = meta.nodeOverrides; }
-      if (typeof meta.editMode === 'boolean') state.editMode = meta.editMode;
-      if (meta.settings) {
-        applyCardState(meta.settings);
-        if (Array.isArray(meta.settings.themeRules)) themeRules = meta.settings.themeRules.map(normalizeRule);
+      importMeta(meta);
+    } else if (keepEdits) {
+      // drop overlays that the new data has made stale
+      for (const id of Object.keys(nodeOverrides)) {
+        const ov = nodeOverrides[id];
+        if (ov.__new) continue;                                   // locally added node
+        if (!(id in nodeById)) { delete nodeOverrides[id]; continue; }
+        if ('parentId' in ov) { delete ov.parentId; if (!Object.keys(ov).length) delete nodeOverrides[id]; }
       }
     }
     applyCardSizeVars();
+    if (keepEdits || meta) applyOverrides();   // re-layer persisted node edits onto the new data
     applyCardSizeToNodes();
-    if (keepEdits) applyOverrides();   // re-layer persisted node edits onto the new data
+    pruneMissingIds();
     applyEditModeUI(); syncToolbar();
     const pending = refresh('set-nodes');
     if (opts.fitOnInit) pending.then((applied) => { if (applied) fitToScreen(); });
     return pending;
   }
-  function loadJSON(data) { const { nodes, meta } = normalizeImported(data); setNodes(nodes, meta); return nodes.length; }
+  /* an imported file's manual maps + settings (missing maps reset to empty) */
+  function importMeta(meta) {
+    const view = {};
+    for (const key of ['orientation', 'subtreeMode', 'spacingX', 'spacingY']) if (meta[key] != null) view[key] = meta[key];
+    applyViewState(checkedView(Object.assign(view, meta.settings || {}), 'imported settings'));
+    const manual = checkedManualLayout(meta, 'imported layout');
+    manualOffsets = manual.manualOffsets; edgeWaypoints = manual.edgeWaypoints;
+    edgeAnchors = manual.edgeAnchors; familyRouteOverrides = manual.familyRouteOverrides;
+    nodeOverrides = manual.nodeOverrides;
+    if (typeof meta.editMode === 'boolean') state.editMode = meta.editMode && !opts.readonly;
+    // exported nodes always carry width/height; only a size that differs from
+    // the imported global card size is a per-node size
+    const w = Math.max(100, state.cardWidth), h = Math.max(60, state.photoHeight + state.textHeight);
+    for (const n of NODES) {
+      const fixed = explicitSizes[n.id]; if (!fixed) continue;
+      const dept = n.type === 'department';
+      if (fixed.width === (dept ? state.departmentWidth : w)) delete fixed.width;
+      if (fixed.height === (dept ? state.departmentHeight : h)) delete fixed.height;
+      if (!fixed.width && !fixed.height) delete explicitSizes[n.id];
+    }
+    offsetsPending = true;
+  }
+  function loadJSON(data) { const { nodes, meta } = normalizeImported(data); setNodes(nodes, meta || {}); return nodes.length; }
   function setOrientation(o) {
     const orientation = normalizeOrientation(o);
     state.orientation = orientation; manualOffsets = Object.create(null); edgeWaypoints = Object.create(null); edgeAnchors = Object.create(null); familyRouteOverrides = Object.create(null); deselectEdge(); deselectFamilyRoute(); syncToolbar();
@@ -2218,12 +2443,24 @@ export function createOrgChart(host, userOpts = {}) {
     return pending;
   }
   function setSpacing(x, y) {
-    if (x != null) state.spacingX = x; if (y != null) state.spacingY = y;
+    const clean = checkedView({ spacingX: x == null ? undefined : x, spacingY: y == null ? undefined : y }, 'spacing');
+    if ('spacingX' in clean) state.spacingX = clean.spacingX;
+    if ('spacingY' in clean) state.spacingY = clean.spacingY;
     const pending = refresh('spacing'); emit('settings-change', getSettings()); pushHistory('spacing');
     return pending;
   }
   function setOption(key, val) {
     if (key in state) {
+      // state values reach geometry and markup, so they keep their type
+      const current = state[key];
+      if (typeof current === 'number' && !(typeof val === 'number' && Number.isFinite(val))) { reportInput('option', [`${key} ${JSON.stringify(val)}`]); return; }
+      if (typeof current === 'boolean' && typeof val !== 'boolean') { reportInput('option', [`${key} ${JSON.stringify(val)}`]); return; }
+      if (key === 'editMode' && val && refuseReadonly('setOption')) return;
+      if (key === 'orientation' || key === 'subtreeMode') {
+        const clean = checkedView({ [key]: val }, 'option');
+        if (!(key in clean)) return;
+        val = clean[key];
+      }
       state[key] = val;
       if (key === 'showGrid') applyGridOverlay();
       if (key === 'alignGrid') { manualOffsets = Object.create(null); refresh('align-grid'); }
@@ -2380,6 +2617,7 @@ export function createOrgChart(host, userOpts = {}) {
     const arr = ensureEditableWaypoints(id);
     arr.splice(nearestSegment(controls, pt), 0, pt);
     updateEdgeGeom(id); renderEdgeHandles(); persist(); pushHistory();
+    emitGeometryEdit('waypoint-add');
   });
   addL(edgeHandlesG, 'pointerdown', (e) => {
     if (opts.readonly || !state.editMode) return;
@@ -2390,11 +2628,12 @@ export function createOrgChart(host, userOpts = {}) {
       addWin('pointermove', onEpMove); addWin('pointerup', onEpUp); return;
     }
     let idx;
+    let inserted = false;
     if (t.dataset.wp != null) idx = +t.dataset.wp;
-    else if (t.dataset.add != null) { const s = +t.dataset.add; const wps = ensureEditableWaypoints(id); wps.splice(s, 0, snapPoint(clientToContent(e.clientX, e.clientY))); idx = s; updateEdgeGeom(id); }
+    else if (t.dataset.add != null) { const s = +t.dataset.add; const wps = ensureEditableWaypoints(id); wps.splice(s, 0, snapPoint(clientToContent(e.clientX, e.clientY))); idx = s; inserted = true; updateEdgeGeom(id); }
     else return;
     e.stopPropagation(); e.preventDefault();
-    edgeDrag = { id, idx }; addWin('pointermove', onHandleMove); addWin('pointerup', onHandleUp);
+    edgeDrag = { id, idx, changed: inserted }; addWin('pointermove', onHandleMove); addWin('pointerup', onHandleUp);
   });
   addL(edgeHandlesG, 'dblclick', (e) => {
     const t = e.target;
@@ -2403,9 +2642,14 @@ export function createOrgChart(host, userOpts = {}) {
     const id = state.selectedEdgeId, wps = edgeWaypoints[id]; if (!wps) return;
     wps.splice(+t.dataset.wp, 1); if (!wps.length) delete edgeWaypoints[id];
     updateEdgeGeom(id); renderEdgeHandles(); persist(); pushHistory();
+    emitGeometryEdit('waypoint-remove');
   });
-  function onHandleMove(e) { if (!edgeDrag) return; const wps = edgeWaypoints[edgeDrag.id]; if (!wps) return; wps[edgeDrag.idx] = waypointAlignSnap(edgeDrag.id, snapPoint(clientToContent(e.clientX, e.clientY))); updateEdgeGeom(edgeDrag.id); renderEdgeHandles(); }
-  function onHandleUp() { edgeDrag = null; clearAlignGuides(); rmWin('pointermove', onHandleMove); rmWin('pointerup', onHandleUp); persist(); pushHistory(); }
+  function onHandleMove(e) { if (!edgeDrag) return; const wps = edgeWaypoints[edgeDrag.id]; if (!wps) return; wps[edgeDrag.idx] = waypointAlignSnap(edgeDrag.id, snapPoint(clientToContent(e.clientX, e.clientY))); edgeDrag.changed = true; updateEdgeGeom(edgeDrag.id); renderEdgeHandles(); }
+  function onHandleUp() {
+    const d = edgeDrag; edgeDrag = null;
+    clearAlignGuides(); rmWin('pointermove', onHandleMove); rmWin('pointerup', onHandleUp); persist();
+    if (d && d.changed) { pushHistory(); emitGeometryEdit('waypoint-move'); }
+  }
 
   // legend close button
   addL(legendEl, 'click', (e) => { if (e.target.closest('[data-role="legend-close"]')) setShowLegend(false); });
@@ -2495,8 +2739,11 @@ export function createOrgChart(host, userOpts = {}) {
       if (rk === 'enabled') r.enabled = t.checked;
       else if (rk === 'field') r.field = t.value;
       else if (rk === 'value') r.value = t.value;
-      else if (rk === 'bg' || rk === 'text' || rk === 'border') { if (colorOn(i, rk)) r.style[rk] = t.value; }
-      else if (/-on$/.test(rk)) { const ck = rk.replace('-on', ''); r.style[ck] = t.checked ? (colorVal(i, ck) || '#e0524d') : ''; }
+      else if (rk === 'bg' || rk === 'text' || rk === 'border') { if (colorOn(i, rk) && isSafeColor(t.value)) r.style[rk] = t.value; }
+      else if (/-on$/.test(rk)) {
+        const ck = rk.replace('-on', ''), picked = colorVal(i, ck);
+        r.style[ck] = t.checked ? (isSafeColor(picked) ? picked : '#e0524d') : '';
+      }
       applyThemeAll(); emit('settings-change', getSettings()); persist();
     }
   });
@@ -2667,9 +2914,12 @@ export function createOrgChart(host, userOpts = {}) {
   if (workerAvailable) {
     const initialLayout = refresh('initial');
     if (opts.fitOnInit) initialLayout.then((applied) => { if (applied) fitToScreen(); });
+  } else if (findInvalidNodes(NODES)) {
+    rejectInvalidNodes(++layoutRequestId, 'initial', invalidNodeDataError(findInvalidNodes(NODES)));
   } else {
     runLayout();
     paintLayout();
+    offsetsPending = false;
     layoutPromise = Promise.resolve(true);
     if (opts.fitOnInit) fitToScreen();
   }
@@ -2721,7 +2971,7 @@ export function createOrgChart(host, userOpts = {}) {
     setShowGrid, setSnapToGrid, setAlignToGrid, toggleGrid,
     fitToScreen, relayout, forceRelayout, resetView, expandAll, collapseAll, toggleCollapse, centerOnNode,
     search, clearSearch, exportJSON, exportSVG, exportPNG, exportWebP, exportPDF, buildSVG,
-    setEditMode, isEditMode: () => state.editMode,
+    setEditMode, isEditMode: () => state.editMode, isReadonly: () => !!opts.readonly,
     setShowImages, isShowingImages: () => state.showImages,
     setShowLegend, toggleLegend, isShowingLegend: () => state.showLegend, getLegendBody: () => legendBody,
     setAutoEdgeSide, isAutoEdgeSide: () => state.autoEdgeSide,
