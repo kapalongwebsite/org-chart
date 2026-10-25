@@ -64,3 +64,18 @@ test('the first layout-change reaches Vue without a worker; maxZoom is honoured'
   assert.equal(chart.value.fitToScreen({ minZoom: 0.01 }), true);
   unmount();
 });
+
+test('Vue forwards input-warning and exposes isReadonly', async () => {
+  const warnings = [];
+  const chart = ref(null);
+  const nodes = sampleNodes();
+  nodes[1] = { ...nodes[1], width: '240"/><script>' };
+  const { unmount } = await mountVue(() => h(OrgChart, {
+    ref: chart, nodes, layoutWorker: false, readonly: true,
+    'onInput-warning': (e) => warnings.push(e),
+  }));
+  await tick(20);
+  assert.ok(warnings.length >= 1, 'input-warning reached the Vue listener');
+  assert.equal(chart.value.isReadonly(), true);
+  unmount();
+});
