@@ -2374,23 +2374,32 @@ function routeFamilyConnectorNetworks(positioned, cfg) {
     const ingress = Math.max(10, Math.min(cfg.spacingX, cfg.spacingY) * 0.22);
     const gateFlow = startAxis.flow + flowSign * ingress;
     const override = cfg.familyRouteOverrides?.[parentId];
+    // Neither the cards a child's line must avoid nor the routes of other
+    // families change while this family's channels are compared.
+    const unrelatedRectsByChild = children.map((child) => positioned
+      .filter((item) => item.node.id !== parent.node.id && item.node.id !== child.node.id)
+      .map((item) => ({
+        left: item.cx - item.node.width / 2,
+        right: item.cx + item.node.width / 2,
+        top: item.cy - item.node.height / 2,
+        bottom: item.cy + item.node.height / 2,
+      })));
+    const otherFamilyPaths = [...pathByChild]
+      .filter(([childId]) => {
+        const other = byId.get(childId);
+        return other && String(other.parentId) !== parentId;
+      })
+      .map(([, otherPath]) => otherPath);
 
     for (const trunkCross of candidateFamilyChannels(parent, children, positioned, cfg)) {
       const candidates = [];
       let valid = true;
-      for (const child of children) {
+      for (const [childIndex, child] of children.entries()) {
         const ports = edgePorts(parent, child, cfg);
         const start = pointAxes(ports.start, horizontal);
         const end = pointAxes(ports.end, horizontal);
         const direct = [ports.start, ports.end];
-        const unrelatedRects = positioned
-          .filter((item) => item.node.id !== parent.node.id && item.node.id !== child.node.id)
-          .map((item) => ({
-            left: item.cx - item.node.width / 2,
-            right: item.cx + item.node.width / 2,
-            top: item.cy - item.node.height / 2,
-            bottom: item.cy + item.node.height / 2,
-          }));
+        const unrelatedRects = unrelatedRectsByChild[childIndex];
         if (Math.abs(start.cross - end.cross) < 0.01 && !pathCrossesRects(direct, unrelatedRects)) {
           candidates.push(direct);
           continue;
@@ -2408,11 +2417,9 @@ function routeFamilyConnectorNetworks(positioned, cfg) {
         candidates.push(path);
       }
       if (!valid) continue;
-      const collidesWithOtherFamily = candidates.some((candidate) => [...pathByChild].some(([childId, otherPath]) => {
-        const other = byId.get(childId);
-        return other && String(other.parentId) !== parentId
-          && (pathsCrossOpen(candidate, otherPath) || pathsOverlapOpen(candidate, otherPath));
-      }));
+      const collidesWithOtherFamily = candidates.some((candidate) => otherFamilyPaths.some((otherPath) => (
+        pathsCrossOpen(candidate, otherPath) || pathsOverlapOpen(candidate, otherPath)
+      )));
       if (collidesWithOtherFamily) continue;
       // A mathematically short median rail can still create a conspicuous
       // ceiling-shaped detour immediately below the parent. Prefer a channel
