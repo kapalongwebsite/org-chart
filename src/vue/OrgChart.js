@@ -9,6 +9,12 @@
 //   #empty     -> shown when there are no nodes
 // Written with defineComponent + h() so no SFC compiler is needed; Vue stays an
 // external peer dependency.
+//
+// Most props are mirrored live onto the engine. These are read once when the
+// chart mounts (change them by re-mounting, e.g. with a :key):
+//   inspector, inspectorTarget, settingsTarget, legendTarget, fullscreenControl,
+//   toolbar, advancedLayoutControls, fitOnInit, reflowOnResize, layoutWorker,
+//   layoutCache, persist, storageKey, ariaLabel — and which slots are provided.
 import {
   defineComponent, h, ref, shallowRef, computed, markRaw,
   onMounted, onBeforeUnmount, watch, Teleport,
@@ -17,6 +23,7 @@ import { createOrgChart } from '../vanilla/createOrgChart.js';
 import {
   DEPT_SIZE, POS_SIZE, VIRTUAL_PHOTO_FRAME, RENDERED_PHOTO, PHOTO_BACKGROUND, PERSON_TEXT_HEIGHT,
 } from '../core/constants.js';
+import { normalizeRule } from '../core/theme.js';
 
 const EVENTS = [
   'node-click', 'node-select', 'node-drag-start', 'node-drag', 'node-drag-end',
@@ -29,6 +36,27 @@ const EVENTS = [
   'edges-select', 'edges-reset',
   'family-route-select', 'family-route-change', 'family-route-reset',
 ];
+
+/* order-independent structural equality for plain settings values */
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a), kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && sameValue(a[k], b[k]));
+}
+/* true when applying `next` would leave the engine's settings unchanged:
+   every key the caller passes already holds that value */
+function settingsUnchanged(next, current) {
+  if (!current) return false;
+  return Object.keys(next).every((k) => {
+    if (k === 'themeRules') {
+      return Array.isArray(next.themeRules) && sameValue(next.themeRules.map(normalizeRule), current.themeRules);
+    }
+    return Object.prototype.hasOwnProperty.call(current, k) && sameValue(next[k], current[k]);
+  });
+}
 
 function toStyle(s) {
   const o = {};
@@ -47,6 +75,8 @@ export const OrgChart = defineComponent({
     enableDragging: { type: Boolean, default: true },
     enablePan: { type: Boolean, default: true },
     enableZoom: { type: Boolean, default: true },
+    maxZoom: { type: Number, default: 4 },                         // how far wheel / pinch / zoomBy can zoom in
+    ariaLabel: { type: String, default: null },                    // accessible name of the chart tree (init-only)
     readonly: { type: Boolean, default: false },
     editMode: { type: Boolean, default: false },
     inspector: { type: Boolean, default: true },
@@ -114,6 +144,8 @@ export const OrgChart = defineComponent({
         enableDragging: props.enableDragging,
         enablePan: props.enablePan,
         enableZoom: props.enableZoom,
+        maxZoom: props.maxZoom,
+        ariaLabel: props.ariaLabel || undefined,
         readonly: props.readonly,
         editMode: props.editMode,
         inspector: props.inspector,
@@ -165,6 +197,16 @@ export const OrgChart = defineComponent({
       refreshState();
       syncHosts();          // capture the hosts created during the engine's initial boot
       ready.value = true;
+      // Without a worker the first layout completes inside createOrgChart(),
+      // before these listeners exist. Report it so consumers see the same
+      // first layout-change as with the worker.
+      if (!chart.isLayoutBusy() && chart.getPositioned().length) {
+        const st = chart.getState();
+        emit('layout-change', {
+          positioned: chart.getPositioned(), familyNetworks: chart.getFamilyNetworks(),
+          mode: st.subtreeMode, orientation: st.orientation,
+        });
+      }
     });
 
     watch(() => props.nodes, (v) => { if (chart) { chart.setNodes(v || []); syncHosts(); refreshState(); } });
@@ -173,10 +215,15 @@ export const OrgChart = defineComponent({
     watch(() => [props.spacingX, props.spacingY], ([x, y]) => chart && chart.setSpacing(x, y));
     watch(() => props.readonly, (v) => chart && chart.setOption('readonly', v));
     watch(() => props.editMode, (v) => chart && chart.setEditMode(v));
-    watch(() => props.settings, (v) => { if (chart && v) chart.setSettings(v); }, { deep: true });
+    // Re-applying equal settings would relayout and emit settings-change again;
+    // with a two-way binding or an inline object prop that loops forever.
+    watch(() => props.settings, (v) => {
+      if (chart && v && !settingsUnchanged(v, chart.getSettings())) chart.setSettings(v);
+    }, { deep: true });
     watch(() => props.enableDragging, (v) => chart && chart.setOption('enableDragging', v));
     watch(() => props.enablePan, (v) => chart && chart.setOption('enablePan', v));
     watch(() => props.enableZoom, (v) => chart && chart.setOption('enableZoom', v));
+    watch(() => props.maxZoom, (v) => chart && chart.setOption('maxZoom', v));
     watch(() => props.fitOnLayoutChange, (v) => chart && chart.setOption('fitOnLayoutChange', v));
     watch(() => props.showImages, (v) => chart && chart.setShowImages(v));
     watch(() => props.photoHeight, (v) => chart && chart.setPhotoHeight(v));
@@ -200,7 +247,8 @@ export const OrgChart = defineComponent({
 
     expose({
       // ---- view / layout ----
-      fitToScreen: () => chart && chart.fitToScreen(),
+      fitToScreen: (options) => !!(chart && chart.fitToScreen(options)),
+      zoomBy: (factor, point) => (chart ? chart.zoomBy(factor, point) : null),
       relayout: () => chart && chart.relayout(),
       forceRelayout: () => chart && chart.forceRelayout(),
       resetView: () => chart && chart.resetView(),
