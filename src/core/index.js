@@ -8,6 +8,7 @@ export {
 
 export {
   indexNodes, buildTree, getVisibleTree, visibleDepths, computeDepths, childCount,
+  findInvalidNodes, invalidNodeDataError,
 } from './tree.js';
 
 export {
@@ -22,11 +23,14 @@ export {
 export { searchNodes } from './search.js';
 export { calculateBounds, fitBounds } from './bounds.js';
 export {
-  makeNode, normalizeImported, convertNestedTree, convertMoTree, isMoArray, personNameFromPos,
+  makeNode, nodeInputProblems, normalizeImported, convertNestedTree, convertMoTree, isMoArray, personNameFromPos,
 } from './dataImport.js';
-export { exportLayout } from './exportLayout.js';
-export { buildChartSVG } from './svgExport.js';
+export { exportLayout, LAYOUT_EXPORT_VERSION } from './exportLayout.js';
+export { buildChartSVG, exportBounds, escapeXml } from './svgExport.js';
+export { sanitizeView, sanitizeManualLayout, sanitizeSavedLayout } from './layoutData.js';
 export {
   buildVisibleConnectorSegments, buildFamilyConnectorNetwork, resolveConnectorGeometry,
 } from './connectorGeometry.js';
-export { DEFAULT_SETTINGS, normalizeSettings, normalizeRule, resolveNodeStyle } from './theme.js';
+export {
+  DEFAULT_SETTINGS, normalizeSettings, normalizeRule, resolveNodeStyle, isSafeColor, invalidRuleColors,
+} from './theme.js';

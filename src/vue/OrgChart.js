@@ -35,6 +35,7 @@ const EVENTS = [
   'presets-change', 'preset-load', 'selection-change', 'legend-change',
   'edges-select', 'edges-reset',
   'family-route-select', 'family-route-change', 'family-route-reset',
+  'input-warning',
 ];
 
 /* order-independent structural equality for plain settings values */
@@ -346,6 +347,7 @@ export const OrgChart = defineComponent({
       getNodes: () => chart && chart.getNodes(),
       getPositioned: () => chart && chart.getPositioned(),
       isLayoutBusy: () => !!(chart && chart.isLayoutBusy()),
+      isReadonly: () => (chart ? chart.isReadonly() : true),
       whenLayoutSettled: () => chart ? chart.whenLayoutSettled() : Promise.resolve(false),
       cancelLayout: () => !!(chart && chart.cancelLayout()),
 

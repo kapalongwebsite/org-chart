@@ -47,19 +47,32 @@ function pathFromPoints(points) {
   return points.map((point, index) => `${index ? 'L' : 'M'} ${coordinate(point.x)} ${coordinate(point.y)}`).join(' ');
 }
 
+// Lines closer than this on their fixed axis are one lane. Standalone paths
+// are serialized at 0.1 precision and family networks at 0.001, so the same
+// physical line can arrive as 3523.4 and 3523.401.
+const LANE_PRECISION = 100;
+function laneKey(fixed) {
+  return Math.round(fixed * LANE_PRECISION);
+}
+
 function mergeRenderableSegments(segments) {
+  // Group by the quantized lane first and only then by start, so collinear
+  // pieces of one lane are merged in order and a segment can never be
+  // absorbed into a disjoint neighbour that merely sorted next to it.
   const ordered = segments.map((segment) => {
     const horizontal = Math.abs(segment.a.y - segment.b.y) < EPSILON;
+    const fixed = rounded(horizontal ? segment.a.y : segment.a.x);
     return {
       ...segment,
       horizontal,
-      fixed: rounded(horizontal ? segment.a.y : segment.a.x),
+      fixed,
+      lane: laneKey(fixed),
       start: rounded(Math.min(horizontal ? segment.a.x : segment.a.y, horizontal ? segment.b.x : segment.b.y)),
       end: rounded(Math.max(horizontal ? segment.a.x : segment.a.y, horizontal ? segment.b.x : segment.b.y)),
       styleKey: defaultStyleKey(segment.style),
     };
   }).sort((first, second) => Number(first.horizontal) - Number(second.horizontal)
-    || first.fixed - second.fixed
+    || first.lane - second.lane
     || first.styleKey.localeCompare(second.styleKey)
     || first.start - second.start
     || first.end - second.end);
@@ -68,7 +81,7 @@ function mergeRenderableSegments(segments) {
     const previous = merged.at(-1);
     if (previous
       && previous.horizontal === segment.horizontal
-      && Math.abs(previous.fixed - segment.fixed) < EPSILON
+      && previous.lane === segment.lane
       && previous.styleKey === segment.styleKey
       && segment.start <= previous.end + EPSILON) {
       previous.end = Math.max(previous.end, segment.end);
@@ -262,17 +275,18 @@ export function buildFamilyConnectorNetwork(parentId, childPaths, options = {}) 
       segment,
       horizontal,
       fixed: rounded(horizontal ? segment.a.y : segment.a.x),
+      lane: laneKey(rounded(horizontal ? segment.a.y : segment.a.x)),
       start: rounded(Math.min(horizontal ? segment.a.x : segment.a.y, horizontal ? segment.b.x : segment.b.y)),
       end: rounded(Math.max(horizontal ? segment.a.x : segment.a.y, horizontal ? segment.b.x : segment.b.y)),
     };
   }).filter((entry) => entry.horizontal !== flowHorizontal)
     .sort((first, second) => Number(first.horizontal) - Number(second.horizontal)
-      || first.fixed - second.fixed || first.start - second.start || first.end - second.end);
+      || first.lane - second.lane || first.start - second.start || first.end - second.end);
   const busRuns = [];
   for (const entry of crossSegments) {
     const previous = busRuns.at(-1);
     if (previous && previous.horizontal === entry.horizontal
-      && Math.abs(previous.fixed - entry.fixed) < EPSILON
+      && previous.lane === entry.lane
       && entry.start <= previous.end + EPSILON) {
       previous.end = Math.max(previous.end, entry.end);
       previous.segmentIds.push(entry.segment.id);
@@ -282,6 +296,7 @@ export function buildFamilyConnectorNetwork(parentId, childPaths, options = {}) 
     busRuns.push({
       horizontal: entry.horizontal,
       fixed: entry.fixed,
+      lane: entry.lane,
       start: entry.start,
       end: entry.end,
       segmentIds: [entry.segment.id],

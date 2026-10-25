@@ -140,7 +140,35 @@ export function calculateBounds(positioned: PositionedNode[], manualOffsets?: Re
 export function fitBounds(bounds: Bounds, viewportW: number, viewportH: number, opts?: { maxZoom?: number; margin?: number }): { zoom: number; panX: number; panY: number };
 export function normalizeImported(data: any): { nodes: OrgNode[]; meta: any };
 export function makeNode(src: OrgNode): OrgNode;
+/** Fields of a raw node that `makeNode` ignores (wrong type, non-finite size, unknown enum). */
+export function nodeInputProblems(src: any): string[];
+export interface InvalidNodeData { duplicateIds: string[]; cycleIds: string[]; }
+/** Duplicate ids, self-parents and parent cycles in a flat node list, or null when it forms a forest. */
+export function findInvalidNodes(nodes: OrgNode[]): InvalidNodeData | null;
+/** The Error thrown by `buildTree`/`layoutOrgChart` for invalid node data. */
+export function invalidNodeDataError(problems: InvalidNodeData): Error & { code: 'INVALID_DATA'; details: InvalidNodeData };
 export function exportLayout(state: any, nodes: OrgNode[], manualOffsets?: any, edgeWaypoints?: any): any;
+/** `version` written by `exportLayout` / `exportJSON`. */
+export const LAYOUT_EXPORT_VERSION: number;
+/** Card bounds plus every connector point (manual waypoints included), padded. */
+export function exportBounds(positioned: PositionedNode[], manualOffsets?: Record<string, { dx: number; dy: number }>, paths?: Array<string | ConnectorPath>, pad?: number): Bounds;
+/** XML text/attribute escaping that also drops characters XML 1.0 cannot carry. */
+export function escapeXml(value: any): string;
+/** Validators for saved layouts, settings and imports. Invalid entries are dropped and described in `problems`. */
+export function sanitizeView(view: any, problems?: string[], where?: string): ChartSettings & Record<string, any>;
+export function sanitizeManualLayout(layout: any, problems?: string[], where?: string): {
+  manualOffsets: Record<string, { dx: number; dy: number }>;
+  edgeWaypoints: Record<string, Array<{ x: number; y: number }>>;
+  edgeAnchors: Record<string, { p?: { nx: number; ny: number }; c?: { nx: number; ny: number } }>;
+  familyRouteOverrides: Record<string, FamilyRouteOverride>;
+  nodeOverrides: Record<string, any>;
+  collapsed: Array<string | number>;
+};
+export function sanitizeSavedLayout(layout: any): { layout: { full: boolean; view: Record<string, any>; layout?: ReturnType<typeof sanitizeManualLayout> } | null; problems: string[] };
+/** True for colour literals only: #rgb/#rgba/#rrggbb/#rrggbbaa and numeric rgb()/rgba()/hsl()/hsla(). */
+export function isSafeColor(value: any): boolean;
+/** Style keys of a theme rule whose colour `isSafeColor` rejects. */
+export function invalidRuleColors(rule: any): string[];
 export function buildChartSVG(positioned: PositionedNode[], paths: Array<string | ConnectorPath>, opts?: {
   manualOffsets?: any;
   raster?: boolean;
@@ -260,6 +288,8 @@ export interface CreateOptions extends LayoutOptions, CardGeometryOptions {
   toolbar?: boolean | Partial<Record<'subtree' | 'orient' | 'history' | 'actions' | 'search' | 'grid' | 'mode' | 'export', boolean>>;
   persist?: boolean;
   storageKey?: string;
+  /** Milliseconds an export waits for one photo before drawing its placeholder. Default 8000. */
+  exportPhotoTimeout?: number;
 }
 
 export type OrgChartEventName =
@@ -268,7 +298,8 @@ export type OrgChartEventName =
   | 'relayout' | 'layout-start' | 'layout-complete' | 'layout-cancel' | 'layout-error'
   | 'edit-mode-change' | 'node-change' | 'settings-change'
   | 'family-route-select' | 'family-route-change' | 'family-route-reset'
-  | 'inspector-open' | 'inspector-close' | 'settings-open' | 'settings-close' | 'fullscreen-change';
+  | 'inspector-open' | 'inspector-close' | 'settings-open' | 'settings-close' | 'fullscreen-change'
+  | 'input-warning';
 
 export interface ScreenRect { left: number; top: number; right: number; bottom: number; width: number; height: number; }
 
@@ -315,7 +346,8 @@ export interface OrgChartInstance {
   exportJSON(download?: boolean): any;
   exportSVG(): string;
   exportPNG(scale?: number): void;
-  exportPDF(): void;
+  /** Call from a user gesture: the print window opens synchronously. Resolves false if it was blocked. */
+  exportPDF(): Promise<boolean>;
   buildSVG(raster?: boolean): string;
   setShowImages(on: boolean): boolean;
   isShowingImages(): boolean;
@@ -324,13 +356,15 @@ export interface OrgChartInstance {
   setCardSize(options: CardGeometryOptions): void;
   setPhotoRendering(options: CardGeometryOptions): void;
   setPhotoContain(on: boolean): void;
-  setEditMode(on: boolean): void;
+  setEditMode(on: boolean): boolean;
   isEditMode(): boolean;
-  updateNode(id: string, patch: Partial<OrgNode>): void;
+  /** The `readonly` option: every public edit method is refused (with one warning). */
+  isReadonly(): boolean;
+  updateNode(id: string, patch: Partial<OrgNode>): boolean;
   addChild(parentId: string): string | null;
-  deleteNode(id: string): void;
-  reparentNode(id: string, newParentId: string): void;
-  detachNode(id: string): void;
+  deleteNode(id: string): boolean;
+  reparentNode(id: string, newParentId: string): boolean;
+  detachNode(id: string): boolean;
   getFamilyRouteSelection(): string | null;
   getFamilyNetworks(): FamilyNetwork[];
   getFamilyRouteOverrides(): Record<string, FamilyRouteOverride>;
@@ -341,7 +375,8 @@ export interface OrgChartInstance {
   /** The selected node's on-screen rectangle (viewport coords), or null. */
   nodeScreenRect(id: string): ScreenRect | null;
   getSettings(): ChartSettings;
-  setSettings(settings: ChartSettings): void;
+  /** false (and no relayout or event) when nothing changed. */
+  setSettings(settings: ChartSettings): boolean;
   toggleSettings(force?: boolean): void;
   /** Restore spacing / grid / theme rules to the as-configured defaults. */
   resetSettings(): void;
@@ -406,13 +441,13 @@ export interface OrgChartVueInstance {
   setPhotoContain(on: boolean): void;
 
   // edit mode / inspector / settings
-  setEditMode(on: boolean): void;
+  setEditMode(on: boolean): boolean;
   isEditMode(): boolean;
-  updateNode(id: string, patch: Partial<OrgNode>): void;
+  updateNode(id: string, patch: Partial<OrgNode>): boolean;
   addChild(parentId: string): string | null;
-  deleteNode(id: string): void;
-  reparentNode(id: string, newParentId: string): void;
-  detachNode(id: string): void;
+  deleteNode(id: string): boolean;
+  reparentNode(id: string, newParentId: string): boolean;
+  detachNode(id: string): boolean;
   getFamilyRouteSelection(): string | null;
   getFamilyNetworks(): FamilyNetwork[];
   getFamilyRouteOverrides(): Record<string, FamilyRouteOverride>;
@@ -422,7 +457,8 @@ export interface OrgChartVueInstance {
   closeInspector(): void;
   nodeScreenRect(id: string): ScreenRect | null;
   getSettings(): ChartSettings;
-  setSettings(settings: ChartSettings): void;
+  /** false (and no relayout or event) when nothing changed. */
+  setSettings(settings: ChartSettings): boolean;
   toggleSettings(force?: boolean): void;
   resetSettings(): void;
   getLayout(options?: { full?: boolean }): any;
@@ -442,7 +478,8 @@ export interface OrgChartVueInstance {
   exportJSON(download?: boolean): any;
   exportSVG(): string;
   exportPNG(scale?: number): void;
-  exportPDF(): void;
+  /** Call from a user gesture: the print window opens synchronously. Resolves false if it was blocked. */
+  exportPDF(): Promise<boolean>;
   buildSVG(raster?: boolean): string;
 
   // generic / advanced

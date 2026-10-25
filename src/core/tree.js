@@ -7,8 +7,62 @@ export function indexNodes(list) {
   return m;
 }
 
-/* flat nodes -> nested tree under a hidden virtual root (supports forests) */
+function hasParent(n) {
+  return n.parentId !== '' && n.parentId != null && n.parentId !== false;
+}
+
+/* Structural problems that make a flat node list impossible to draw as a
+   forest: repeated ids, self-parents and parent cycles. A parentId that names
+   no node is not a problem — that node is a root. Returns null when the list
+   is valid, otherwise { duplicateIds, cycleIds } (string ids, sorted). */
+export function findInvalidNodes(nodes) {
+  const byId = new Map();
+  const duplicates = new Set();
+  for (const n of nodes || []) {
+    const id = String(n.id);
+    if (byId.has(id)) duplicates.add(id);
+    else byId.set(id, n);
+  }
+  // Walk each parent chain once. 1 = on the current chain, 2 = known to reach
+  // a root; meeting a 1 again closes a cycle.
+  const mark = new Map();
+  const cycles = new Set();
+  for (const id of byId.keys()) {
+    if (mark.has(id)) continue;
+    const chain = [];
+    let cur = id;
+    while (cur != null && byId.has(cur) && !mark.has(cur)) {
+      mark.set(cur, 1);
+      chain.push(cur);
+      const n = byId.get(cur);
+      cur = hasParent(n) ? String(n.parentId) : null;
+    }
+    if (cur != null && mark.get(cur) === 1) {
+      for (let i = chain.indexOf(cur); i < chain.length; i++) cycles.add(chain[i]);
+    }
+    for (const c of chain) mark.set(c, 2);
+  }
+  if (!duplicates.size && !cycles.size) return null;
+  return { duplicateIds: [...duplicates].sort(), cycleIds: [...cycles].sort() };
+}
+
+/* Error raised for node data that cannot be laid out. `code` is stable for
+   consumers; `details` names the offending ids. */
+export function invalidNodeDataError(problems) {
+  const parts = [];
+  if (problems.duplicateIds.length) parts.push(`duplicate ids: ${problems.duplicateIds.join(', ')}`);
+  if (problems.cycleIds.length) parts.push(`parent cycles through: ${problems.cycleIds.join(', ')}`);
+  const error = new Error(`Invalid org chart data (${parts.join('; ')}).`);
+  error.code = 'INVALID_DATA';
+  error.details = { duplicateIds: problems.duplicateIds.slice(), cycleIds: problems.cycleIds.slice() };
+  return error;
+}
+
+/* flat nodes -> nested tree under a hidden virtual root (supports forests).
+   Throws an INVALID_DATA error for duplicate ids or parent cycles. */
 export function buildTree(nodes) {
+  const problems = findInvalidNodes(nodes);
+  if (problems) throw invalidNodeDataError(problems);
   const wrap = Object.create(null);
   for (const n of nodes) wrap[n.id] = { node: n, children: [] };
 
@@ -20,9 +74,8 @@ export function buildTree(nodes) {
 
   for (const n of nodes) {
     const entry = wrap[n.id];
-    const pid = n.parentId;
-    if (pid && wrap[pid]) wrap[pid].children.push(entry);  // real parent
-    else virtual.children.push(entry);                      // a real root
+    if (hasParent(n) && wrap[n.parentId]) wrap[n.parentId].children.push(entry);  // real parent
+    else virtual.children.push(entry);                                           // a real root
   }
   return virtual;
 }
@@ -47,16 +100,26 @@ export function visibleDepths(visibleRoot) {
   return d;
 }
 
-/* absolute depth of every node from the flat list (used by collapseAll) */
+/* absolute depth of every node from the flat list (used by collapseAll).
+   Iterative, so deep chains cannot overflow the stack; members of a parent
+   cycle get depth 0. */
 export function computeDepths(nodes, nodeById) {
   const d = Object.create(null);
-  function dep(id) {
-    if (id in d) return d[id];
-    const n = nodeById[id];
-    if (!n || !n.parentId) return (d[id] = 0);
-    return (d[id] = dep(n.parentId) + 1);
+  for (const n of nodes) {
+    if (n.id in d) continue;
+    const chain = [];
+    const onChain = new Set();
+    let cur = n;
+    let base = 0;
+    while (cur) {
+      if (cur.id in d) { base = d[cur.id] + 1; break; }
+      if (onChain.has(cur.id)) { base = 0; break; }
+      onChain.add(cur.id);
+      chain.push(cur);
+      cur = hasParent(cur) ? nodeById[cur.parentId] : null;
+    }
+    for (let i = chain.length - 1; i >= 0; i--) d[chain[i].id] = base + (chain.length - 1 - i);
   }
-  for (const n of nodes) dep(n.id);
   return d;
 }
 
