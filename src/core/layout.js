@@ -837,6 +837,27 @@ export function layoutInputNode(node) {
   };
 }
 
+/* Whether the 'band' leaf strategy can lay out any family differently from
+   'inline'. It only matters for a family with both plain leaf children and
+   children with their own subtrees, and not for a top-level GridSmart family
+   that measureAuto() already bands as cohesive branches. Mirrors the
+   separateLeafBand rule there; depth counts from the virtual root as
+   measureSubtree() does. */
+function bandCanChangeLayout(entry, cfg, depth = 0) {
+  let leaves = 0, branches = 0;
+  for (const child of entry.children) {
+    if (isFeatured(child)) continue;
+    if (child.children.length === 0) leaves += 1;
+    else branches += 1;
+  }
+  const alreadyBanded = cfg.subtreeMode === 'GridSmart'
+    && depth <= 1
+    && !entry.node.isVirtual
+    && (branches >= 4 || usesCenteredThreeBranchRank(entry, cfg, depth));
+  if (leaves && branches && !alreadyBanded) return true;
+  return entry.children.some((child) => bandCanChangeLayout(child, cfg, depth + 1));
+}
+
 function countBoundedOneRankFamilies(entry) {
   const regularChildren = entry.children.filter((child) => !isFeatured(child));
   const eligible = regularChildren.length === 5
@@ -2717,7 +2738,7 @@ function layoutTreeAutoGrid(rootEntry, cfg) {
     ? [1, 1.8]
     : [0.72, 0.84, 0.92, 1, 1.08, 1.18, 1.32, 1.55, 1.8];
   const verticalSpacingScales = [0.78, 1, 1.22];
-  const packingStrategies = cfg.subtreeMode === 'GridSmart'
+  const allPackingStrategies = cfg.subtreeMode === 'GridSmart'
     ? [
       { blockFlow: 'occupancy', leafFlow: 'inline', flexibleRows: false, preferShortFirst: false },
       { blockFlow: 'occupancy', leafFlow: 'band', flexibleRows: false, preferShortFirst: false },
@@ -2734,6 +2755,11 @@ function layoutTreeAutoGrid(rootEntry, cfg) {
       { blockFlow: 'rows', leafFlow: 'band', flexibleRows: true, preferShortFirst: false },
       { blockFlow: 'adaptive', leafFlow: 'band', flexibleRows: true, preferShortFirst: false },
     ];
+  // A 'band' pass that cannot differ from its 'inline' twin would only tie
+  // with it, and the earlier inline candidate wins every tie; skip it.
+  const packingStrategies = bandCanChangeLayout(rootEntry, cfg)
+    ? allPackingStrategies
+    : allPackingStrategies.filter((strategy) => strategy.leafFlow !== 'band');
   const candidates = [];
   const evaluateMultipliers = (multipliers) => {
     for (const targetMultiplier of multipliers) {
