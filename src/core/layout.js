@@ -2765,7 +2765,15 @@ export function normalizeConfig(options = {}) {
   const sizeAspect = size && Number(size.width) > 0 && Number(size.height) > 0
     ? Number(size.width) / Number(size.height)
     : null;
-  const visualTargetAspect = sizeAspect || Number(options.targetAspect) || 1.6;
+  // A config this function already produced carries the caller's visual
+  // aspect next to the orientation-adjusted logical one. Reading it back keeps
+  // normalisation idempotent: the renderer and the layout worker pass a
+  // normalised config in again, and re-inverting targetAspect would turn a
+  // wide LeftToRight/RightToLeft request into a tall chart.
+  const priorVisual = Number(options.visualTargetAspect);
+  const visualTargetAspect = sizeAspect
+    || (Number.isFinite(priorVisual) && priorVisual > 0 ? priorVisual : 0)
+    || Number(options.targetAspect) || 1.6;
   const horizontal = orientation === 'LeftToRight' || orientation === 'RightToLeft';
   const targetAspect = horizontal ? 1 / visualTargetAspect : visualTargetAspect;
   return {
