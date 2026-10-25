@@ -1919,16 +1919,46 @@ function repairReservedChannelConflicts(positioned, cfg) {
     }
     return depth;
   };
-  const pathOf = (edge) => positionedEdgePath(edge.parent, edge.child, cfg);
-  const conflicts = (first, second) => first.parentId !== second.parentId
-    && (pathsCrossOpen(pathOf(first), pathOf(second)) || pathsOverlapOpen(pathOf(first), pathOf(second)));
+  // Card positions are fixed here; only a repaired edge's route changes. Paths
+  // and pairwise conflict results are therefore cached and invalidated only
+  // for the edge that was just rerouted.
+  const pathCache = new Map();
+  const pathOf = (edge) => {
+    let path = pathCache.get(edge);
+    if (!path) {
+      path = positionedEdgePath(edge.parent, edge.child, cfg);
+      pathCache.set(edge, path);
+    }
+    return path;
+  };
+  const edgeIndex = new Map(edges.map((edge, index) => [edge, index]));
+  // 0 = unknown, 1 = conflict, -1 = clear; indexed first * edges + second.
+  const pairState = new Int8Array(edges.length * edges.length);
+  const conflicts = (firstIndex, secondIndex) => {
+    const first = edges[firstIndex], second = edges[secondIndex];
+    if (first.parentId === second.parentId) return false;
+    const key = firstIndex * edges.length + secondIndex;
+    if (pairState[key] === 0) {
+      const a = pathOf(first), b = pathOf(second);
+      pairState[key] = pathsCrossOpen(a, b) || pathsOverlapOpen(a, b) ? 1 : -1;
+    }
+    return pairState[key] === 1;
+  };
+  const rerouted = (edge) => {
+    pathCache.delete(edge);
+    const changed = edgeIndex.get(edge);
+    for (let other = 0; other < edges.length; other += 1) {
+      pairState[changed * edges.length + other] = 0;
+      pairState[other * edges.length + changed] = 0;
+    }
+  };
 
   const maxAttempts = Math.max(1, edges.length * 2);
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     let pair = null;
     for (let firstIndex = 0; firstIndex < edges.length && !pair; firstIndex += 1) {
       for (let secondIndex = firstIndex + 1; secondIndex < edges.length; secondIndex += 1) {
-        if (conflicts(edges[firstIndex], edges[secondIndex])) {
+        if (conflicts(firstIndex, secondIndex)) {
           pair = [edges[firstIndex], edges[secondIndex]];
           break;
         }
@@ -1960,6 +1990,7 @@ function repairReservedChannelConflicts(positioned, cfg) {
       edge.child.routePoints = complete.length > 2
         ? complete.slice(1, -1)
         : [midpoint(complete[0], complete[1])];
+      rerouted(edge);
       repaired = true;
       break;
     }
