@@ -226,6 +226,10 @@ export interface CreateOptions extends LayoutOptions, CardGeometryOptions {
   enableDragging?: boolean;
   enablePan?: boolean;
   enableZoom?: boolean;
+  /** How far wheel, pinch and zoomBy() can zoom in. Default 4. */
+  maxZoom?: number;
+  /** Accessible name of the chart tree (role="tree"). Default 'Organization chart'. */
+  ariaLabel?: string;
   readonly?: boolean;
   editMode?: boolean;
   inspector?: boolean;
@@ -268,6 +272,16 @@ export type OrgChartEventName =
 
 export interface ScreenRect { left: number; top: number; right: number; bottom: number; width: number; height: number; }
 
+export interface FitOptions {
+  /** When framing the whole chart would zoom below this, use this zoom instead. */
+  minZoom?: number;
+  /** Where a `minZoom` view is anchored: the root's leading edge (`'top'`, default) or the chart centre. */
+  anchor?: 'top' | 'center';
+}
+
+/** A client-coordinate point; `{ clientX, clientY }` (e.g. a pointer event) is accepted too. */
+export interface ClientPoint { x?: number; y?: number; clientX?: number; clientY?: number; }
+
 export interface OrgChartInstance {
   root: HTMLElement;
   setNodes(nodes: OrgNode[], meta?: any, options?: { resetEdits?: boolean }): Promise<boolean>;
@@ -280,7 +294,11 @@ export interface OrgChartInstance {
   setSnapToGrid(on: boolean): boolean;
   setAlignToGrid(on: boolean): boolean;
   toggleGrid(force?: boolean): boolean;
-  fitToScreen(): void;
+  /** Frame the chart. Returns false when there is nothing to frame yet; a fit
+   *  requested while the canvas has no size runs once it is laid out. */
+  fitToScreen(options?: FitOptions): boolean;
+  /** Zoom by a factor around a client point (default: the canvas centre). Returns the new zoom. */
+  zoomBy(factor: number, point?: ClientPoint): number;
   relayout(): Promise<boolean>;
   forceRelayout(): Promise<boolean>;
   resetView(): Promise<boolean>;
@@ -347,7 +365,8 @@ export function createOrgChart(host: HTMLElement, options?: CreateOptions): OrgC
 //   const chartRef = ref<OrgChartVueInstance | null>(null)
 export interface OrgChartVueInstance {
   // view / layout
-  fitToScreen(): void;
+  fitToScreen(options?: FitOptions): boolean;
+  zoomBy(factor: number, point?: ClientPoint): number | null;
   relayout(): Promise<boolean> | null;
   forceRelayout(): Promise<boolean> | null;
   resetView(): Promise<boolean> | null;

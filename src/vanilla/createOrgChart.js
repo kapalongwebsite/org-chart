@@ -109,7 +109,8 @@ export function createOrgChart(host, userOpts = {}) {
   const initialAlignGrid = opts.alignGrid == null
     ? opts.subtreeMode === 'GridSmart'
     : !!opts.alignGrid;
-  const MAX_ZOOM = +opts.maxZoom > 1 ? +opts.maxZoom : 4;   // how far the wheel can zoom in
+  // How far wheel/pinch/zoomBy can zoom in; read live so setOption('maxZoom') applies.
+  function maxZoom() { return +opts.maxZoom > 1 ? +opts.maxZoom : 4; }
 
   // ---- per-instance state ----
   const state = {
@@ -183,11 +184,15 @@ export function createOrgChart(host, userOpts = {}) {
   let layoutWorker = null;
   const listeners = [];                 // {target,type,fn} for clean teardown
   const events = Object.create(null);   // name -> [cb]
+  let destroyed = false;                // set by destroy(); the instance is inert afterwards
 
   // ---- tiny event emitter ----
   function on(name, cb) { (events[name] || (events[name] = [])).push(cb); return api; }
   function off(name, cb) { if (events[name]) events[name] = events[name].filter((f) => f !== cb); return api; }
-  function emit(name, payload) { (events[name] || []).forEach((cb) => { try { cb(payload); } catch (e) { /* swallow */ } }); }
+  function emit(name, payload) {
+    if (destroyed) return;
+    (events[name] || []).forEach((cb) => { try { cb(payload); } catch (e) { /* swallow */ } });
+  }
   function addL(target, type, fn, optsL) { target.addEventListener(type, fn, optsL); listeners.push({ target, type, fn, optsL }); }
 
   // ---- DOM scaffold ----
@@ -210,6 +215,9 @@ export function createOrgChart(host, userOpts = {}) {
   svg.appendChild(edgeHitsG);
   svg.appendChild(familyHitsG);
   const nodesLayer = el('div', 'loc-nodes');
+  // Cards are treeitems with a roving tabindex (see applyTreeA11y); the layer is the tree.
+  nodesLayer.setAttribute('role', 'tree');
+  nodesLayer.setAttribute('aria-label', opts.ariaLabel || 'Organization chart');
   const overlay = document.createElementNS(SVGNS, 'svg'); overlay.setAttribute('class', 'loc-overlay');
   const edgeHandlesG = document.createElementNS(SVGNS, 'g'); edgeHandlesG.setAttribute('class', 'loc-edgehandles');
   const familySelectionG = document.createElementNS(SVGNS, 'g'); familySelectionG.setAttribute('class', 'loc-family-selection');
@@ -243,7 +251,7 @@ export function createOrgChart(host, userOpts = {}) {
   const panel = el('div', 'loc-panel');
   panel.innerHTML =
     '<div class="loc-panel-head"><span class="loc-panel-title">Node</span>'
-    + '<button class="loc-panel-close" title="Close" data-role="panel-close">✕</button></div>'
+    + '<button type="button" class="loc-panel-close" title="Close" aria-label="Close details" data-role="panel-close">✕</button></div>'
     + '<div class="loc-panel-body" data-role="panel-body"></div>'
     + '<div class="loc-panel-foot" data-role="panel-foot"></div>';
   // The drawer lives inside the canvas by default, but `inspectorTarget` can
@@ -259,7 +267,7 @@ export function createOrgChart(host, userOpts = {}) {
   const settingsPanel = el('div', 'loc-settings');
   settingsPanel.innerHTML =
     '<div class="loc-panel-head"><span class="loc-panel-title">Settings</span>'
-    + '<button class="loc-panel-close" title="Close" data-role="settings-close">✕</button></div>'
+    + '<button type="button" class="loc-panel-close" title="Close" aria-label="Close settings" data-role="settings-close">✕</button></div>'
     + '<div class="loc-panel-body" data-role="settings-body"></div>';
   // like the inspector, the settings drawer can live in an external element.
   const settingsHost = resolveTarget(opts.settingsTarget) || canvas;
@@ -271,7 +279,7 @@ export function createOrgChart(host, userOpts = {}) {
   // corner by default; `legendTarget` mounts it into any external element.
   const legendEl = el('div', 'loc-legend');
   legendEl.innerHTML = '<div class="loc-legend-head"><span class="loc-legend-title">Legend</span>'
-    + '<button class="loc-legend-close" title="Hide legend" data-role="legend-close">✕</button></div>'
+    + '<button type="button" class="loc-legend-close" title="Hide legend" aria-label="Hide legend" data-role="legend-close">✕</button></div>'
     + '<div class="loc-legend-body" data-role="legend-body"></div>';
   const legendHost = resolveTarget(opts.legendTarget) || canvas;
   legendHost.appendChild(legendEl);
@@ -586,6 +594,7 @@ export function createOrgChart(host, userOpts = {}) {
       updateToggle(elNode, n);
     }
     for (const id in elById) if (!seen[id]) { elById[id].remove(); delete elById[id]; }
+    applyTreeA11y();
     emit('nodes-rendered', { ids: positioned.map((p) => p.node.id) });
   }
   // ---- global card sizing + centred portrait overscan ----
@@ -714,7 +723,10 @@ export function createOrgChart(host, userOpts = {}) {
     return d;
   }
   /* the +/- collapse handle that sits centered on the bottom edge of a node */
-  function makeToggleEl() { const t = el('div', 'loc-toggle'); t.dataset.role = 'toggle'; return t; }
+  function makeToggleEl() {
+    const t = el('button', 'loc-toggle'); t.type = 'button'; t.tabIndex = -1; t.dataset.role = 'toggle';
+    return t;
+  }
   function isOverflowing(e) { return e.scrollWidth > e.clientWidth + 0.5 || e.scrollHeight > e.clientHeight + 0.5; }
   function fitNodeText(e) {
     e.style.setProperty('--loc-fit', '1');
@@ -843,11 +855,16 @@ export function createOrgChart(host, userOpts = {}) {
   }
 
   // ================= transform / sizing =================
+  /* Paint the camera. Runs on every pan/pinch/wheel frame, so it does not
+     persist; gestures persist once when they settle, one-shot camera changes
+     (fit, center, zoomBy) persist immediately. */
   function applyTransform() {
+    if (!(Number.isFinite(state.zoom) && state.zoom > 0)) state.zoom = 1;
+    if (!Number.isFinite(state.panX)) state.panX = 0;
+    if (!Number.isFinite(state.panY)) state.panY = 0;
     content.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
     zoomReadout.textContent = Math.round(state.zoom * 100) + '%';
     if (state.selectedEdgeId && !edgeDrag) renderEdgeHandles();
-    persist();
   }
   function sizeSvg() {
     // Track the FULL content bounds (incl. negative space from nodes dragged
@@ -872,20 +889,107 @@ export function createOrgChart(host, userOpts = {}) {
     canvas.classList.toggle('loc-gridon', state.showGrid);
   }
 
-  // ================= fit / center =================
-  function fitToScreen() {
-    if (!positioned.length) return;
+  // ================= fit / center / zoom =================
+  const ZOOM_FLOOR = 0.15;       // wheel/pinch zoom-out limit, unless the fitted view is already smaller
+  const FIT_EDGE_MARGIN = 24;    // px kept between the canvas edge and an anchored chart
+  let pendingFit = null;         // fit options waiting for a hidden/zero-size canvas to get a size
+  let sizeObserver = null, sizeRaf = 0;
+  function canvasHasSize() { return canvas.clientWidth > 0 && canvas.clientHeight > 0; }
+  /* A fit requested while the canvas is hidden (display:none, a closed tab)
+     runs once the canvas is laid out, instead of producing a zero zoom. */
+  function deferFit(options) {
+    pendingFit = options || {};
+    if (sizeObserver || typeof ResizeObserver === 'undefined') return;
+    sizeObserver = new ResizeObserver(() => {
+      if (!pendingFit || !canvasHasSize() || sizeRaf) return;
+      sizeRaf = requestAnimationFrame(() => {
+        sizeRaf = 0;
+        if (pendingFit && canvasHasSize()) fitToScreen(pendingFit);
+      });
+    });
+    sizeObserver.observe(canvas);
+  }
+  /* the zoom that frames the whole chart in the current canvas (null while hidden) */
+  function fittedZoom() {
+    if (!positioned.length || !canvasHasSize()) return null;
+    const z = fitBounds(chartBounds(0), canvas.clientWidth, canvas.clientHeight).zoom;
+    return Number.isFinite(z) && z > 0 ? z : null;
+  }
+  /* the root card used to anchor a readable top-of-chart view */
+  function anchorRoot() {
+    for (const p of positioned) if (!p.node.parentId || !posById[p.node.parentId]) return p;
+    return null;
+  }
+  /* Frame the chart. With `minZoom`, a chart too large to read when fully
+     framed is shown at `minZoom` instead, anchored at its root edge ('top',
+     the default — the leading edge for the orientation) or its centre. */
+  function fitToScreen(options) {
+    if (destroyed || !positioned.length) return false;
+    if (!canvasHasSize()) { deferFit(options); return false; }
+    pendingFit = null;
+    const o = options || {};
+    const w = canvas.clientWidth, h = canvas.clientHeight;
     const b = chartBounds(0);
-    const v = fitBounds(b, canvas.clientWidth, canvas.clientHeight);
-    state.zoom = v.zoom; state.panX = v.panX; state.panY = v.panY;
-    applyTransform();
+    const v = fitBounds(b, w, h);
+    let zoom = v.zoom, panX = v.panX, panY = v.panY;
+    const minZoom = Number(o.minZoom);
+    if (Number.isFinite(minZoom) && minZoom > 0 && zoom < minZoom) {
+      zoom = Math.min(minZoom, maxZoom());
+      if (o.anchor === 'center') {
+        panX = w / 2 - (b.x + b.w / 2) * zoom;
+        panY = h / 2 - (b.y + b.h / 2) * zoom;
+      } else {
+        const rootPos = anchorRoot();
+        const rc = rootPos ? effCenter(rootPos, manualOffsets) : { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+        if (state.orientation === 'LeftToRight') { panX = FIT_EDGE_MARGIN - b.x * zoom; panY = h / 2 - rc.y * zoom; }
+        else if (state.orientation === 'RightToLeft') { panX = w - FIT_EDGE_MARGIN - (b.x + b.w) * zoom; panY = h / 2 - rc.y * zoom; }
+        else if (state.orientation === 'BottomToTop') { panX = w / 2 - rc.x * zoom; panY = h - FIT_EDGE_MARGIN - (b.y + b.h) * zoom; }
+        else { panX = w / 2 - rc.x * zoom; panY = FIT_EDGE_MARGIN - b.y * zoom; }
+      }
+    }
+    if (!(Number.isFinite(zoom) && zoom > 0)) return false;
+    state.zoom = zoom; state.panX = panX; state.panY = panY;
+    applyTransform(); persist();
+    return true;
   }
   function centerOnNode(id) {
-    const p = posById[id]; if (!p) return;
+    const p = posById[id]; if (!p || !canvasHasSize()) return;
     const c = effCenter(p, manualOffsets);
     state.panX = canvas.clientWidth / 2 - c.x * state.zoom;
     state.panY = canvas.clientHeight / 2 - c.y * state.zoom;
-    applyTransform();
+    applyTransform(); persist();
+  }
+  /* zoom to `nz` keeping the content under the client point (cx, cy) fixed;
+     zooming out never goes below the floor or the fitted zoom, whichever is
+     smaller, and never zooms in */
+  function zoomAround(nz, cx, cy) {
+    if (!(Number.isFinite(state.zoom) && state.zoom > 0)) state.zoom = 1;
+    if (!Number.isFinite(nz) || nz <= 0) return state.zoom;
+    if (nz < state.zoom) {
+      const fit = fittedZoom();
+      const floor = Math.min(ZOOM_FLOOR, fit == null ? ZOOM_FLOOR : fit, state.zoom);
+      nz = Math.max(floor, nz);
+    } else {
+      nz = Math.min(Math.max(maxZoom(), state.zoom), nz);
+    }
+    if (nz === state.zoom) return nz;
+    const rect = canvas.getBoundingClientRect();
+    const mx = cx - rect.left, my = cy - rect.top;
+    state.panX = mx - (mx - state.panX) * (nz / state.zoom);
+    state.panY = my - (my - state.panY) * (nz / state.zoom);
+    state.zoom = nz; applyTransform();
+    return nz;
+  }
+  /* programmatic zoom by a factor around a client point (default: canvas centre) */
+  function zoomBy(factor, point) {
+    const f = Number(factor);
+    if (destroyed || !(Number.isFinite(f) && f > 0)) return destroyed ? null : state.zoom;
+    const rect = canvas.getBoundingClientRect();
+    const px = point && Number.isFinite(+(point.clientX ?? point.x)) ? +(point.clientX ?? point.x) : rect.left + rect.width / 2;
+    const py = point && Number.isFinite(+(point.clientY ?? point.y)) ? +(point.clientY ?? point.y) : rect.top + rect.height / 2;
+    const z = zoomAround(state.zoom * f, px, py);
+    persist();
+    return z;
   }
   /* after a structural relayout (mode / orientation / re-layout) the new tree can
      sit elsewhere, leaving the old pan/zoom pointed at empty space. This re-frames
@@ -966,11 +1070,50 @@ export function createOrgChart(host, userOpts = {}) {
       group: dragState.groupIds,
     });
   }
+  // Pointer travel up to this many px is a click: it never moves, snaps or pans.
+  const CLICK_SLOP_PX = 4;
+  let capturedPointer = null;
+  function canDragNodes() { return !opts.readonly && opts.enableDragging && state.editMode; }
+  /* Route a gesture's remaining pointer events to the canvas so it continues
+     outside the chart and ends cleanly. Taken only once the press becomes a
+     drag/pan, so a plain click still targets the card it started on. */
+  function capturePointer(pointerId) {
+    if (pointerId == null || typeof canvas.setPointerCapture !== 'function') return;
+    try { canvas.setPointerCapture(pointerId); capturedPointer = pointerId; } catch (e) { /* pointer already released */ }
+  }
+  function releasePointer() {
+    if (capturedPointer == null) return;
+    const id = capturedPointer; capturedPointer = null;
+    try { if (canvas.hasPointerCapture && canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id); } catch (e) { /* ignore */ }
+  }
+  /* select a card the way a click does: selection, node-select, inspector */
+  function selectFromClick(id) {
+    if (!nodeById[id]) return;
+    deselectEdge();
+    deselectFamilyRoute();
+    if (!selectedIds.has(id)) selectNode(id); else { state.selectedNodeId = id; applySelectionClasses(); applyIncident(); }
+    setRovingFocus(id, false);
+    emit('node-select', { id, node: nodeById[id], rect: nodeScreenRect(id) });
+    if (opts.inspector) openInspector(id);
+  }
   function onNodePointerDown(e, id) {
     if (e.target.closest('[data-role="toggle"]')) return;
+    // The middle button pans from anywhere (the canvas handler takes it); other
+    // non-primary buttons are left to the browser's context menu.
+    if (e.button === 1) return;
     e.stopPropagation();
+    if (e.button != null && e.button !== 0) return;
     focusRoot();
     if (attaching) { if (tryAttachTo(id)) return; }   // attach mode: this click picks the parent
+    if (!canDragNodes()) {
+      // Ctrl/⌘+click toggles this node in the selection (multi-select).
+      if (e.ctrlKey || e.metaKey) { deselectEdge(); deselectFamilyRoute(); toggleInSelection(id); return; }
+      // Without card dragging a press on a card pans exactly like the empty
+      // canvas; releasing without moving is the click that selects it.
+      if (opts.enablePan) { startPan(e, { nodeId: id }); return; }
+      selectFromClick(id);
+      return;
+    }
     deselectEdge();
     deselectFamilyRoute();
     // Ctrl/⌘+click toggles this node in the selection (multi-select) and does NOT
@@ -979,25 +1122,28 @@ export function createOrgChart(host, userOpts = {}) {
     // plain click: if the node is already part of a multi-selection, KEEP the set
     // (so we can group-drag); otherwise reset to a single selection.
     if (!selectedIds.has(id)) selectNode(id); else { state.selectedNodeId = id; applySelectionClasses(); applyIncident(); }
+    setRovingFocus(id, false);
     emit('node-select', { id, node: nodeById[id], rect: nodeScreenRect(id) });
-    if (opts.readonly || !opts.enableDragging || !state.editMode) {
-      if (opts.inspector) openInspector(id);
-      return;
-    }
     // group drag when 2+ nodes are selected and this is one of them; else single.
     const groupIds = (selectedIds.has(id) && selectedIds.size > 1) ? [...selectedIds] : [id];
     const bases = Object.create(null);
-    for (const gid of groupIds) { const o = manualOffsets[gid] || { dx: 0, dy: 0 }; bases[gid] = { dx: o.dx, dy: o.dy }; if (elById[gid]) elById[gid].classList.add('loc-dragging'); }
-    drag = { id, groupIds, bases, startX: e.clientX, startY: e.clientY, moved: false };
+    for (const gid of groupIds) { const o = manualOffsets[gid] || { dx: 0, dy: 0 }; bases[gid] = { dx: o.dx, dy: o.dy }; }
+    drag = { id, pointerId: e.pointerId, groupIds, bases, startX: e.clientX, startY: e.clientY, moved: false, lastDdx: 0, lastDdy: 0 };
     emit('node-drag-start', { id, node: nodeById[id], group: groupIds });
-    addWin('pointermove', onNodePointerMove); addWin('pointerup', onNodePointerUp);
+    addWin('pointermove', onNodePointerMove); addWin('pointerup', onNodePointerUp); addWin('pointercancel', onNodePointerUp);
   }
   function onNodePointerMove(e) {
-    if (!drag) return;
+    if (!drag || pinch || (drag.pointerId != null && e.pointerId != null && e.pointerId !== drag.pointerId)) return;
+    const tx = e.clientX - drag.startX, ty = e.clientY - drag.startY;
+    if (!drag.moved) {
+      if (Math.abs(tx) + Math.abs(ty) <= CLICK_SLOP_PX) return;   // click jitter never moves or snaps the card
+      drag.moved = true;
+      for (const gid of drag.groupIds) { if (elById[gid]) elById[gid].classList.add('loc-dragging'); }
+      capturePointer(drag.pointerId);
+    }
     // pointer delta in content space (applied uniformly to the whole group)
-    let ddx = (e.clientX - drag.startX) / state.zoom;
-    let ddy = (e.clientY - drag.startY) / state.zoom;
-    if (Math.abs(e.clientX - drag.startX) + Math.abs(e.clientY - drag.startY) > 3) drag.moved = true;
+    let ddx = tx / state.zoom;
+    let ddy = ty / state.zoom;
     const base = posById[drag.id], pb = drag.bases[drag.id];
     if (base) {
       const ox = base.cx + pb.dx, oy = base.cy + pb.dy;   // primary's current (pre-move) center
@@ -1008,13 +1154,15 @@ export function createOrgChart(host, userOpts = {}) {
         drawAlignGuides(snap.gx, snap.gy);
       }
     }
+    drag.lastDdx = ddx; drag.lastDdy = ddy;
     for (const gid of drag.groupIds) { const b = drag.bases[gid]; manualOffsets[gid] = { dx: b.dx + ddx, dy: b.dy + ddy }; }
     if (!dragRaf) dragRaf = requestAnimationFrame(() => {
       dragRaf = 0;
       renderNodeDragFrame(drag);
     });
   }
-  function onNodePointerUp() {
+  function onNodePointerUp(e) {
+    if (drag && e && drag.pointerId != null && e.pointerId != null && e.pointerId !== drag.pointerId) return;
     let moved = false;
     const dragState = drag;
     if (dragState) {
@@ -1029,13 +1177,42 @@ export function createOrgChart(host, userOpts = {}) {
       sizeSvg();   // a dragged node may extend the content bounds → grow grid/canvas now, not only on refresh
       moved = !!dragState.moved;
       if (moved) suppressNextNodeClick(dragState.id);
-      else if (opts.inspector) openInspector(dragState.id);
+      else if (opts.inspector && (!e || e.type !== 'pointercancel')) openInspector(dragState.id);
     }
     drag = null;
     clearAlignGuides();
-    rmWin('pointermove', onNodePointerMove); rmWin('pointerup', onNodePointerUp);
+    rmWin('pointermove', onNodePointerMove); rmWin('pointerup', onNodePointerUp); rmWin('pointercancel', onNodePointerUp);
+    releasePointer();
     persist();
     if (moved) pushHistory();   // one undo step per drag (whole group)
+  }
+  /* Abandon a card drag that has not moved yet (a second finger turned the
+     press into a pinch). node-drag-end still pairs the earlier node-drag-start. */
+  function cancelNodeDrag() {
+    const d = drag; if (!d) return;
+    if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; }
+    for (const gid of d.groupIds) {
+      const b = d.bases[gid];
+      if (b && (b.dx || b.dy)) manualOffsets[gid] = { dx: b.dx, dy: b.dy }; else delete manualOffsets[gid];
+      if (elById[gid]) elById[gid].classList.remove('loc-dragging');
+    }
+    if (d.moved) { for (const gid of d.groupIds) redrawNode(gid); redrawIncidents(d.groupIds); }
+    drag = null;
+    clearAlignGuides();
+    rmWin('pointermove', onNodePointerMove); rmWin('pointerup', onNodePointerUp); rmWin('pointercancel', onNodePointerUp);
+    releasePointer();
+    emit('node-drag-end', { id: d.id, node: nodeById[d.id], offset: manualOffsets[d.id], group: d.groupIds, cancelled: true });
+  }
+  /* A layout that lands mid-drag re-anchors manual offsets onto the new
+     automatic positions (pins keep every card where it is). Re-base the drag on
+     those offsets so the next pointer move continues from the same place. */
+  function rebaseActiveDrag() {
+    if (!drag) return;
+    for (const gid of drag.groupIds) {
+      const o = manualOffsets[gid] || { dx: 0, dy: 0 };
+      drag.bases[gid] = { dx: o.dx - drag.lastDdx, dy: o.dy - drag.lastDdy };
+      if (drag.moved && elById[gid]) elById[gid].classList.add('loc-dragging');
+    }
   }
 
   // ---- alignment snapping: snap a dragged node/waypoint to the parent's connector
@@ -1110,6 +1287,7 @@ export function createOrgChart(host, userOpts = {}) {
     for (const id in elById) {
       elById[id].classList.toggle('loc-selected', selectedIds.has(id));
       elById[id].classList.toggle('loc-primary', state.selectedNodeId === id && selectedIds.size > 1);
+      elById[id].setAttribute('aria-selected', selectedIds.has(id) ? 'true' : 'false');
     }
   }
   function emitSelection() { emit('selection-change', { ids: [...selectedIds], primary: state.selectedNodeId }); }
@@ -2369,8 +2547,11 @@ export function createOrgChart(host, userOpts = {}) {
     if (want) enterFullscreen(); else exitFullscreen();
     return want;
   }
+  let wasFullscreen = false;
   function onFullscreenChange() {
     const fs = isFullscreen();
+    if (fs === wasFullscreen) return;   // another element entered/left fullscreen
+    wasFullscreen = fs;
     root.classList.toggle('loc-fullscreen', fs);
     if (fsFloat) fsFloat.title = fs ? 'Exit fullscreen' : 'Fullscreen';
     syncToolbar();
@@ -2576,60 +2757,213 @@ export function createOrgChart(host, userOpts = {}) {
     emit('settings-change', getSettings()); persist();
   });
 
-  // pan — the current node/edge selection is PRESERVED while panning; only a
-  // click on empty space (a press that doesn't turn into a drag) clears it.
+  // ================= pan / pinch / wheel =================
+  // A gesture composites the zoom layer while it runs (.loc-gesturing) and
+  // persists the camera once when it settles. Touch pans claim the gesture via
+  // touch-action:none (see the stylesheet); two fingers pinch-zoom.
+  const GESTURE_SETTLE_MS = 150;
+  const WHEEL_ZOOM_PER_PX = 0.001;        // ≈10% per 100px mouse-wheel notch
+  const PINCH_WHEEL_ZOOM_PER_PX = 0.01;   // Ctrl+wheel is a trackpad pinch: small deltas
+  const touchPoints = new Map();          // active touch pointerId -> { x, y }
+  let pan = null;     // { pointerId, sx, sy, px, py, moved, nodeId, clearOnClick }
+  let pinch = null;   // camera + finger baseline captured when the second finger lands
+  let gestureTimer = 0;
+  function beginGesture() {
+    if (gestureTimer) { clearTimeout(gestureTimer); gestureTimer = 0; }
+    canvas.classList.add('loc-gesturing');
+  }
+  function settleGesture() {
+    if (gestureTimer) clearTimeout(gestureTimer);
+    gestureTimer = setTimeout(() => {
+      gestureTimer = 0;
+      if ((pan && pan.moved) || pinch) return;   // still running; it settles again when it ends
+      canvas.classList.remove('loc-gesturing');
+      persist();
+    }, GESTURE_SETTLE_MS);
+  }
+  function isPanelTarget(t) {
+    return !!(t && t.closest && (t.closest('.loc-panel') || t.closest('.loc-settings')
+      || t.closest('.loc-fsbtn') || t.closest('.loc-legend')));
+  }
+  /* a click (press without a pan) on empty space clears every selection */
+  function clearCanvasSelection() {
+    clearNodeSelection();
+    if (state.selectedEdgeId) deselectEdge();
+    if (state.selectedFamilyId) deselectFamilyRoute();
+    clearEdgeSelection();
+    if (attaching) cancelAttach();
+    closeInspector();
+  }
+  function startPan(e, o) {
+    if (pan) return;
+    beginPan(e.pointerId, e.clientX, e.clientY, false, o);
+  }
+  function beginPan(pointerId, x, y, moved, o = {}) {
+    pan = { pointerId, sx: x, sy: y, px: state.panX, py: state.panY, moved, nodeId: o.nodeId || null, clearOnClick: !!o.clearOnClick };
+    if (!pan.nodeId || moved) canvas.classList.add('loc-panning');
+    if (moved) beginGesture();
+    addWin('pointermove', onPanMove); addWin('pointerup', onPanUp); addWin('pointercancel', onPanCancel);
+  }
+  function onPanMove(ev) {
+    if (!pan || ev.pointerId !== pan.pointerId || pinch) return;
+    const dx = ev.clientX - pan.sx, dy = ev.clientY - pan.sy;
+    if (!pan.moved) {
+      if (Math.abs(dx) + Math.abs(dy) <= CLICK_SLOP_PX) return;
+      pan.moved = true;
+      canvas.classList.add('loc-panning');
+      beginGesture();
+      capturePointer(pan.pointerId);
+    }
+    state.panX = pan.px + dx; state.panY = pan.py + dy; applyTransform();
+  }
+  function endPan(cancelled) {
+    const g = pan; if (!g) return;
+    pan = null;
+    rmWin('pointermove', onPanMove); rmWin('pointerup', onPanUp); rmWin('pointercancel', onPanCancel);
+    canvas.classList.remove('loc-panning');
+    releasePointer();
+    if (g.moved) {
+      if (g.nodeId) suppressNextNodeClick(g.nodeId);
+      settleGesture();
+      return;
+    }
+    if (cancelled) return;
+    if (g.nodeId) selectFromClick(g.nodeId);
+    else if (g.clearOnClick) clearCanvasSelection();
+  }
+  function onPanUp(ev) { if (pan && ev.pointerId === pan.pointerId) endPan(false); }
+  function onPanCancel(ev) { if (pan && ev.pointerId === pan.pointerId) endPan(true); }
+
   addL(canvas, 'pointerdown', (e) => {
-    if (e.target.closest('.loc-node') || e.target.closest('.loc-edgehits path')
-        || e.target.closest('.loc-edgehandles *') || e.target.closest('.loc-panel')
-        || e.target.closest('.loc-settings') || e.target.closest('.loc-fsbtn')
-        || e.target.closest('.loc-legend')) {
-      return; // node / edge / handle / panel / control interaction — don't pan or deselect
+    const t = e.target;
+    if (isPanelTarget(t)) return;
+    // middle button: pan from anywhere, including over cards in edit mode
+    if (e.button === 1) {
+      if (!opts.enablePan || pan) return;
+      e.preventDefault();   // no middle-click autoscroll
+      focusRoot();
+      startPan(e, {});
+      return;
+    }
+    if (e.button != null && e.button !== 0) return;
+    if (t.closest('.loc-node') || t.closest('.loc-edgehits path') || t.closest('.loc-edgehandles *')) {
+      return; // node / edge / handle interaction — don't pan or deselect
     }
     focusRoot();
-    const clearSelection = () => {
-      clearNodeSelection();
-      if (state.selectedEdgeId) deselectEdge();
-      if (state.selectedFamilyId) deselectFamilyRoute();
-      clearEdgeSelection();
-      if (attaching) cancelAttach();
-      closeInspector();
-    };
     // Alt + drag on empty canvas → marquee box select connector LINES
     if (e.altKey) { startLineMarquee(e); return; }
     // Ctrl/⌘ + drag on empty canvas → marquee box select nodes (Windows-11 style)
     if (e.ctrlKey || e.metaKey) { startMarquee(e); return; }
-    if (!opts.enablePan) { clearSelection(); return; }
-    const sx = e.clientX, sy = e.clientY, px = state.panX, py = state.panY;
-    let moved = false;
-    canvas.classList.add('loc-panning');
-    const mv = (ev) => {
-      if (!moved && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 3) moved = true;
-      state.panX = px + (ev.clientX - sx); state.panY = py + (ev.clientY - sy); applyTransform();
-    };
-    const up = () => {
-      canvas.classList.remove('loc-panning'); rmWin('pointermove', mv); rmWin('pointerup', up);
-      if (!moved) clearSelection();   // a click (not a pan) on empty space clears selection
-    };
-    addWin('pointermove', mv); addWin('pointerup', up);
+    // the current node/edge selection is PRESERVED while panning; only a click
+    // on empty space (a press that doesn't turn into a pan) clears it
+    if (!opts.enablePan) { clearCanvasSelection(); return; }
+    startPan(e, { clearOnClick: true });
   });
-  // zoom
+
+  // Touch tracking runs in the capture phase so a second finger is claimed for
+  // the pinch before any card or canvas handler can start its own gesture.
+  addL(canvas, 'pointerdown', (e) => {
+    if (e.pointerType !== 'touch' || isPanelTarget(e.target)) return;
+    touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touchPoints.size < 2) return;
+    e.stopPropagation();
+    if (touchPoints.size === 2 && opts.enableZoom && !pinch) startPinch();
+  }, true);
+  function startPinch() {
+    if (drag) {
+      if (drag.moved) return;     // a card already being dragged keeps the gesture
+      cancelNodeDrag();          // two fingers on a card zoom instead of dragging it
+    }
+    const [a, b] = [...touchPoints.values()];
+    const rect = canvas.getBoundingClientRect();
+    const fit = fittedZoom();
+    pinch = {
+      dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+      zoom: state.zoom, px: state.panX, py: state.panY,
+      mx: (a.x + b.x) / 2 - rect.left, my: (a.y + b.y) / 2 - rect.top,
+      floor: Math.min(ZOOM_FLOOR, fit == null ? ZOOM_FLOOR : fit, state.zoom),
+      ceil: Math.max(maxZoom(), state.zoom),
+    };
+    if (pan) pan.moved = true;   // the first finger's press is no longer a click
+    canvas.classList.remove('loc-panning');
+    beginGesture();
+  }
+  function onTouchMove(e) {
+    if (!touchPoints.has(e.pointerId)) return;
+    touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!pinch || touchPoints.size < 2) return;
+    const [a, b] = [...touchPoints.values()];
+    const rect = canvas.getBoundingClientRect();
+    const mx = (a.x + b.x) / 2 - rect.left, my = (a.y + b.y) / 2 - rect.top;
+    const scaled = pinch.zoom * ((Math.hypot(a.x - b.x, a.y - b.y) || 1) / pinch.dist);
+    const nz = Math.min(pinch.ceil, Math.max(pinch.floor, scaled));
+    // the content point that was under the starting midpoint follows the
+    // fingers' midpoint, so a pinch can zoom and pan in one motion
+    const cx = (pinch.mx - pinch.px) / pinch.zoom, cy = (pinch.my - pinch.py) / pinch.zoom;
+    state.zoom = nz; state.panX = mx - cx * nz; state.panY = my - cy * nz;
+    applyTransform();
+  }
+  function onTouchEnd(e) {
+    if (!touchPoints.delete(e.pointerId)) return;
+    if (!pinch || touchPoints.size >= 2) return;
+    pinch = null;
+    // the finger left on the glass keeps panning from where the view is now
+    if (touchPoints.size === 1 && opts.enablePan) {
+      const [[id, pt]] = [...touchPoints.entries()];
+      if (pan) { pan.pointerId = id; pan.sx = pt.x; pan.sy = pt.y; pan.px = state.panX; pan.py = state.panY; pan.moved = true; }
+      else beginPan(id, pt.x, pt.y, true);
+    }
+    settleGesture();
+  }
+  addWin('pointermove', onTouchMove); addWin('pointerup', onTouchEnd); addWin('pointercancel', onTouchEnd);
+
+  // zoom — vertical wheel zooms around the pointer; a horizontal wheel or
+  // Shift+wheel (deltaY 0) pans sideways and never zooms
+  function wheelPixels(delta, mode) {
+    if (!delta) return 0;
+    if (mode === 1) return delta * 40;                              // DOM_DELTA_LINE
+    if (mode === 2) return delta * (canvas.clientHeight || 800);    // DOM_DELTA_PAGE
+    return delta;
+  }
   addL(canvas, 'wheel', (e) => {
     if (!opts.enableZoom) return;
     // Let the drawers/legend scroll natively when the pointer is over them —
     // otherwise the wheel would zoom the canvas instead of scrolling the panel.
-    if (e.target.closest && (e.target.closest('.loc-panel') || e.target.closest('.loc-settings') || e.target.closest('.loc-legend'))) return;
+    if (isPanelTarget(e.target)) return;
+    const dy = wheelPixels(e.deltaY, e.deltaMode), dx = wheelPixels(e.deltaX, e.deltaMode);
+    if (!dy && !dx) return;
     e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    const nz = Math.min(MAX_ZOOM, Math.max(0.15, state.zoom * factor));
-    state.panX = mx - (mx - state.panX) * (nz / state.zoom);
-    state.panY = my - (my - state.panY) * (nz / state.zoom);
-    state.zoom = nz; applyTransform();
+    beginGesture();
+    if (!dy) {
+      if (opts.enablePan) { state.panX -= dx; applyTransform(); }
+    } else {
+      const k = e.ctrlKey ? PINCH_WHEEL_ZOOM_PER_PX : WHEEL_ZOOM_PER_PX;
+      zoomAround(state.zoom * Math.min(2, Math.max(0.5, Math.exp(-dy * k))), e.clientX, e.clientY);
+    }
+    settleGesture();
   }, { passive: false });
 
+  // Pressing and dragging on the chart never starts a text selection or a
+  // native drag-and-drop (which would cancel the pointer stream mid-pan);
+  // fields inside the drawers keep normal selection.
+  function allowsNativeSelection(t) {
+    const elT = t && (t.nodeType === 1 ? t : t.parentElement);
+    if (!elT || !elT.closest) return false;
+    return !!(elT.closest('.loc-panel') || elT.closest('.loc-settings') || elT.closest('.loc-legend')
+      || elT.closest('input, textarea, select, [contenteditable="true"]'));
+  }
+  addL(canvas, 'selectstart', (e) => { if (!allowsNativeSelection(e.target)) e.preventDefault(); });
+  addL(canvas, 'dragstart', (e) => { if (!allowsNativeSelection(e.target)) e.preventDefault(); });
+  // Focus moves (Tab into a card) must not scroll the clipped canvas — the
+  // camera pans to the focused card instead.
+  addL(canvas, 'scroll', () => { if (canvas.scrollLeft || canvas.scrollTop) { canvas.scrollLeft = 0; canvas.scrollTop = 0; } });
+
   function addWin(type, fn) { window.addEventListener(type, fn); listeners.push({ target: window, type, fn }); }
-  function rmWin(type, fn) { window.removeEventListener(type, fn); }
+  function rmWin(type, fn) {
+    window.removeEventListener(type, fn);
+    const i = listeners.findIndex((l) => l.target === window && l.type === type && l.fn === fn);
+    if (i !== -1) listeners.splice(i, 1);
+  }
 
   // keyboard undo/redo — scoped to the chart (root is focusable; we focus it on
   // canvas/node interaction). Skipped while typing in a field so native text undo works.
@@ -2638,6 +2972,11 @@ export function createOrgChart(host, userOpts = {}) {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     const k = (e.key || '').toLowerCase();
+    // the chart root has focus after a pointer press: arrows continue in the tree
+    if (t === root && !(e.ctrlKey || e.metaKey || e.altKey) && (k.startsWith('arrow') || k === 'home')) {
+      const start = focusId || state.selectedNodeId || (anchorRoot() && anchorRoot().node.id);
+      if (start && elById[start]) { e.preventDefault(); setRovingFocus(start, true); return; }
+    }
     // line-marquee actions (no modifier): Delete straightens selected lines, Esc clears
     if (!(e.ctrlKey || e.metaKey)) {
       if (state.selectedFamilyId && (k === 'delete' || k === 'backspace')) { e.preventDefault(); resetFamilyRoute(); return; }
@@ -2648,6 +2987,131 @@ export function createOrgChart(host, userOpts = {}) {
     }
     if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
     else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
+  });
+
+  // ================= keyboard tree navigation =================
+  // Cards are treeitems with a roving tabindex: exactly one card (the selected
+  // one, else the root) is in the Tab order. Arrows move between parent, first
+  // child and siblings in visual order; Enter/Space select like a click; +/-
+  // expand/collapse; Home jumps to the root.
+  let focusId = null;
+  function a11yLabel(n) {
+    if (n.type === 'department') return n.label || '';
+    return [n.label, n.personName, n.status ? (STATUS_LABELS[n.status] || n.status) : ''].filter(Boolean).join(', ');
+  }
+  /* depth per node, walking parent links with a step limit so malformed
+     (cyclic) data cannot recurse forever */
+  function treeDepths() {
+    const depth = Object.create(null);
+    for (const n of NODES) {
+      let d = 0, p = n.parentId;
+      while (p && nodeById[p] && d <= NODES.length) { d++; p = nodeById[p].parentId; }
+      depth[n.id] = d;
+    }
+    return depth;
+  }
+  function applyTreeA11y() {
+    const depth = treeDepths();
+    const kids = Object.create(null);
+    for (const n of NODES) if (n.parentId) kids[n.parentId] = (kids[n.parentId] || 0) + 1;
+    if (!focusId || !elById[focusId]) {
+      const root0 = anchorRoot();
+      focusId = (state.selectedNodeId && elById[state.selectedNodeId]) ? state.selectedNodeId : (root0 ? root0.node.id : null);
+    }
+    for (const p of positioned) {
+      const n = p.node, e = elById[n.id]; if (!e) continue;
+      const tab = n.id === focusId ? 0 : -1;
+      e.setAttribute('role', 'treeitem');
+      e.setAttribute('aria-level', String((depth[n.id] || 0) + 1));
+      e.setAttribute('aria-label', a11yLabel(n));
+      e.setAttribute('aria-selected', selectedIds.has(n.id) ? 'true' : 'false');
+      if (kids[n.id]) e.setAttribute('aria-expanded', n.collapsed ? 'false' : 'true'); else e.removeAttribute('aria-expanded');
+      if (e.tabIndex !== tab) e.tabIndex = tab;
+      const t = e.querySelector('[data-role="toggle"]');
+      if (t) {
+        t.tabIndex = tab;
+        if (kids[n.id]) t.setAttribute('aria-expanded', n.collapsed ? 'false' : 'true'); else t.removeAttribute('aria-expanded');
+        if (opts.readonly) t.setAttribute('aria-disabled', 'true'); else t.removeAttribute('aria-disabled');
+      }
+    }
+  }
+  function setRovingFocus(id, moveFocus) {
+    const e = id != null && elById[id]; if (!e) return;
+    const prev = focusId != null && elById[focusId];
+    if (prev && prev !== e) {
+      prev.tabIndex = -1;
+      const pt = prev.querySelector('[data-role="toggle"]'); if (pt) pt.tabIndex = -1;
+    }
+    focusId = id;
+    e.tabIndex = 0;
+    const t = e.querySelector('[data-role="toggle"]'); if (t) t.tabIndex = 0;
+    if (moveFocus) {
+      try { e.focus({ preventScroll: true }); } catch (err) { /* ignore */ }
+      ensureNodeVisible(id);
+    }
+  }
+  /* pan just enough to bring a keyboard-focused card fully into view */
+  function ensureNodeVisible(id) {
+    const r = nodeScreenRect(id); if (!r || !canvasHasSize()) return;
+    const c = canvas.getBoundingClientRect();
+    if (r.left < c.left || r.top < c.top || r.right > c.right || r.bottom > c.bottom) centerOnNode(id);
+  }
+  /* visible cards in reading order along the sibling axis for this orientation */
+  function visualOrder(list) {
+    const horizontal = state.orientation === 'LeftToRight' || state.orientation === 'RightToLeft';
+    return list.slice().sort((a, b) => horizontal ? (a.cy - b.cy) || (a.cx - b.cx) : (a.cx - b.cx) || (a.cy - b.cy));
+  }
+  function treeNeighbor(id, key) {
+    const n = nodeById[id]; if (!n) return null;
+    const isRootOf = (p) => !p.node.parentId || !posById[p.node.parentId];
+    if (key === 'ArrowUp') return n.parentId && posById[n.parentId] ? n.parentId : null;
+    if (key === 'Home') { const r = anchorRoot(); return r ? r.node.id : null; }
+    if (key === 'ArrowDown') {
+      if (n.collapsed) return null;
+      const children = visualOrder(positioned.filter((p) => p.node.parentId === id));
+      return children.length ? children[0].node.id : null;
+    }
+    const siblings = visualOrder(positioned.filter((p) => (posById[n.parentId] ? p.node.parentId === n.parentId : isRootOf(p))));
+    const i = siblings.findIndex((p) => p.node.id === id);
+    const next = key === 'ArrowRight' ? siblings[i + 1] : siblings[i - 1];
+    return next ? next.node.id : null;
+  }
+  addL(nodesLayer, 'keydown', (e) => {
+    const card = e.target.closest && e.target.closest('.loc-node'); if (!card) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const id = card.dataset.id, n = nodeById[id]; if (!n) return;
+    const onToggle = !!e.target.closest('[data-role="toggle"]');
+    const key = e.key;
+    if (key === 'Enter' || key === ' ' || key === 'Spacebar') {
+      if (onToggle) return;   // the toggle button's own click expands/collapses
+      e.preventDefault();
+      selectFromClick(id);
+      emit('node-click', { id, node: n });
+      return;
+    }
+    if (key === '+' || key === '=' || key === 'Add' || key === '-' || key === '_' || key === 'Subtract') {
+      const expand = key === '+' || key === '=' || key === 'Add';
+      if (opts.readonly || !childCount(NODES, id) || !!n.collapsed !== expand) return;
+      e.preventDefault();
+      toggleCollapse(id);
+      return;
+    }
+    if (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight' || key === 'Home') {
+      e.preventDefault();
+      const target = treeNeighbor(id, key);
+      if (target) setRovingFocus(target, true);
+    }
+  });
+  // Tab focus (or a click that focused a card) keeps the roving stop on it and
+  // pans keyboard focus into view.
+  let lastPointerDownAt = -Infinity;
+  addL(canvas, 'pointerdown', () => { lastPointerDownAt = performance.now(); }, true);
+  addL(nodesLayer, 'focusin', (e) => {
+    const card = e.target.closest && e.target.closest('.loc-node'); if (!card) return;
+    const id = card.dataset.id;
+    if (id !== focusId) setRovingFocus(id, false);
+    // a press focuses the card it lands on; only keyboard focus pans the view
+    if (performance.now() - lastPointerDownAt > 500) ensureNodeVisible(id);
   });
 
   // ================= optional toolbar =================
@@ -2661,12 +3125,12 @@ export function createOrgChart(host, userOpts = {}) {
     let html = '';
     if (show('subtree')) html += group('Subtree', ['AutoSmart', 'Balanced', 'Center', 'Left', 'Right', 'Alternate', 'AlternateLeft', 'AlternateRight'].map((m) => btn('mode', m, m === 'AutoSmart' ? 'Auto smart' : m)).join(''));
     if (show('orient')) html += group('Orient', [['TopToBottom', 'Top'], ['BottomToTop', 'Bottom'], ['LeftToRight', 'Left'], ['RightToLeft', 'Right']].map(([o, l]) => btn('orient', o, l)).join(''));
-    if (show('history')) html += group('', '<button data-act="undo" title="Undo (Ctrl+Z)">Undo</button><button data-act="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>');
-    if (show('actions')) html += group('', '<button data-act="expand">Expand</button><button data-act="collapse">Collapse</button><button data-act="fit">Fit</button><button data-act="relayout" title="Recalculate while preserving manual positions and routes">Re-layout</button><button data-act="reset" title="Clear manual geometry and rebuild the chart">Reset</button><button data-act="fullscreen" title="Toggle fullscreen">Fullscreen</button>');
+    if (show('history')) html += group('', '<button type="button" data-act="undo" title="Undo (Ctrl+Z)">Undo</button><button type="button" data-act="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>');
+    if (show('actions')) html += group('', '<button type="button" data-act="expand">Expand</button><button type="button" data-act="collapse">Collapse</button><button type="button" data-act="fit">Fit</button><button type="button" data-act="relayout" title="Recalculate while preserving manual positions and routes">Re-layout</button><button type="button" data-act="reset" title="Clear manual geometry and rebuild the chart">Reset</button><button type="button" data-act="fullscreen" title="Toggle fullscreen">Fullscreen</button>');
     if (show('search')) html += group('Search', '<input type="search" data-role="search" class="loc-search-input" placeholder="Search…" />');
-    if (show('grid')) html += group('Grid', '<button data-flag="showGrid">Show</button><button data-flag="snapGrid">Snap</button><button data-flag="alignGrid">Align</button>');
-    if (show('mode')) html += group('Mode', '<button data-act="edit" title="Toggle edit mode">Edit</button><button data-act="images" title="Toggle photos / user icons">Images</button><button data-act="legend" title="Toggle legend">Legend</button><button data-act="settings" title="Settings &amp; theming">Settings</button>');
-    if (show('export')) html += group('Export', '<button data-act="png">PNG</button><button data-act="svg">SVG</button><button data-act="pdf">PDF</button><button data-act="json">JSON</button>');
+    if (show('grid')) html += group('Grid', '<button type="button" data-flag="showGrid">Show</button><button type="button" data-flag="snapGrid">Snap</button><button type="button" data-flag="alignGrid">Align</button>');
+    if (show('mode')) html += group('Mode', '<button type="button" data-act="edit" title="Toggle edit mode">Edit</button><button type="button" data-act="images" title="Toggle photos / user icons">Images</button><button type="button" data-act="legend" title="Toggle legend">Legend</button><button type="button" data-act="settings" title="Settings &amp; theming">Settings</button>');
+    if (show('export')) html += group('Export', '<button type="button" data-act="png">PNG</button><button type="button" data-act="svg">SVG</button><button type="button" data-act="pdf">PDF</button><button type="button" data-act="json">JSON</button>');
     bar.innerHTML = html;
     bar.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
@@ -2697,7 +3161,7 @@ export function createOrgChart(host, userOpts = {}) {
     });
     return bar;
     function group(label, inner) { return `<div class="loc-group">${label ? `<span class="loc-label">${label}</span>` : ''}${inner}</div>`; }
-    function btn(attr, val, label) { return `<button data-${attr}="${val}">${label}</button>`; }
+    function btn(attr, val, label) { return `<button type="button" data-${attr}="${val}">${label}</button>`; }
   }
   function syncToolbar() {
     if (!toolbarEl) return;
@@ -2716,6 +3180,25 @@ export function createOrgChart(host, userOpts = {}) {
   // fullscreen state (covers Esc / F11 exits too)
   addL(document, 'fullscreenchange', onFullscreenChange);
   addL(document, 'webkitfullscreenchange', onFullscreenChange);
+
+  // Every library <button> is type="button" so a chart inside a host <form>
+  // never submits it. Drawer, inspector and legend bodies are rebuilt from
+  // templates, so buttons are normalised as they are inserted.
+  function setButtonTypes(node) {
+    if (!node || node.nodeType !== 1) return;
+    if (node.tagName === 'BUTTON' && !node.getAttribute('type')) node.type = 'button';
+    node.querySelectorAll('button:not([type])').forEach((b) => { b.type = 'button'; });
+  }
+  let buttonTypeObserver = null;
+  if (typeof MutationObserver !== 'undefined') {
+    buttonTypeObserver = new MutationObserver((records) => {
+      for (const r of records) for (const added of r.addedNodes) setButtonTypes(added);
+    });
+    for (const target of new Set([root, panel, settingsPanel, legendEl])) {
+      buttonTypeObserver.observe(target, { childList: true, subtree: true });
+    }
+  }
+  [root, panel, settingsPanel, legendEl].forEach(setButtonTypes);
 
   // ================= boot =================
   restore();
@@ -2760,22 +3243,32 @@ export function createOrgChart(host, userOpts = {}) {
   }
 
   // ================= destroy =================
-  let destroyed = false;
   function destroy() {
-    if (destroyed) return; destroyed = true;
+    if (destroyed) return;
+    if (gestureTimer) { clearTimeout(gestureTimer); gestureTimer = 0; persist(); }   // flush a settling gesture
     cancelActiveLayout('destroyed');
     disposeLayoutWorker();
+    destroyed = true;
     listeners.forEach(({ target, type, fn, optsL }) => target.removeEventListener(type, fn, optsL));
     listeners.length = 0;
-    if (dragRaf) cancelAnimationFrame(dragRaf);
+    if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; }
     clearNodeClickSuppression();
-    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    if (resizeRaf) { cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
+    if (sizeRaf) { cancelAnimationFrame(sizeRaf); sizeRaf = 0; }
     if (resizeObserver) resizeObserver.disconnect();
+    if (sizeObserver) sizeObserver.disconnect();
+    if (buttonTypeObserver) buttonTypeObserver.disconnect();
     if (userSearchTimer) clearTimeout(userSearchTimer);
+    releasePointer();
+    drag = null; pan = null; pinch = null; pendingFit = null;
+    touchPoints.clear();
+    // drawers/legend mounted into external targets live outside root
+    panel.remove(); settingsPanel.remove(); legendEl.remove();
     root.remove();
     for (const k in elById) delete elById[k];
     for (const k in pathById) delete pathById[k];
     for (const k in hitById) delete hitById[k];
+    for (const k in events) delete events[k];
   }
 
   // ================= public API =================
@@ -2783,7 +3276,7 @@ export function createOrgChart(host, userOpts = {}) {
     root,
     setNodes, loadJSON, setOrientation, setSubtreeMode, setSpacing, setOption,
     setShowGrid, setSnapToGrid, setAlignToGrid, toggleGrid,
-    fitToScreen, relayout, forceRelayout, resetView, expandAll, collapseAll, toggleCollapse, centerOnNode,
+    fitToScreen, zoomBy, relayout, forceRelayout, resetView, expandAll, collapseAll, toggleCollapse, centerOnNode,
     search, clearSearch, exportJSON, exportSVG, exportPNG, exportWebP, exportPDF, buildSVG,
     setEditMode, isEditMode: () => state.editMode,
     setShowImages, isShowingImages: () => state.showImages,
@@ -2829,5 +3322,22 @@ export function createOrgChart(host, userOpts = {}) {
     cancelLayout: () => cancelActiveLayout('cancelled'),
     on, off, destroy,
   };
+  // After destroy() the instance is inert: methods do nothing and return an
+  // empty result instead of touching detached DOM or emitting events.
+  const EMPTY_LIST_METHODS = new Set(['getPositioned', 'getNodes', 'getSelection', 'getEdgeSelection',
+    'listLayoutPresets', 'getFamilyNetworks']);
+  for (const key of Object.keys(api)) {
+    const fn = api[key];
+    if (typeof fn !== 'function' || key === 'destroy') continue;
+    api[key] = function inertAfterDestroy(...args) {
+      if (!destroyed) return fn.apply(this, args);
+      if (key === 'on' || key === 'off') return api;
+      if (key === 'whenLayoutSettled') return Promise.resolve(false);
+      if (EMPTY_LIST_METHODS.has(key)) return [];
+      if (/^(is|can)[A-Z]/.test(key)) return false;
+      return null;
+    };
+  }
+  on('layout-change', rebaseActiveDrag);
   return api;
 }
