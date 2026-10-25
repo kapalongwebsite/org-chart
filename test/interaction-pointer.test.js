@@ -78,6 +78,66 @@ test('pointercancel ends a pan; later moves do not drag the view', async () => {
   chart.destroy();
 });
 
+test('a release the page never saw ends a pan where the button was last held', async () => {
+  // Alt-tab, a popup or a release outside the browser can swallow pointerup.
+  // The next move then reports no button held: the view must stop following it.
+  const { host, canvas, chart } = await mountChart({ readonly: true, inspector: false });
+  const seen = recorder(chart, ['node-select']);
+  const start = cam(chart);
+  pointer('pointerdown', canvas, 100, 100);
+  pointer('pointermove', window, 150, 120);
+  const held = cam(chart);
+  assert.equal(held.panX - start.panX, 50);
+  pointer('pointermove', window, 400, 400, { buttons: 0 });
+  pointer('pointermove', window, 600, 500, { buttons: 0 });
+  assert.deepEqual(cam(chart), held, 'moves without a button never pan');
+  assert.ok(!canvas.classList.contains('loc-panning'));
+
+  pointer('pointerdown', canvas, 100, 100);
+  pointer('pointermove', window, 130, 100);
+  pointer('pointerup', window, 130, 100, { buttons: 0 });
+  assert.equal(cam(chart).panX - held.panX, 30, 'the next press pans normally');
+
+  // a press on a card whose release is missed is neither a pan nor a click
+  const before = cam(chart);
+  pointer('pointerdown', card(host, 'p1'), 200, 200);
+  pointer('pointermove', window, 260, 260, { buttons: 0 });
+  pointer('pointerup', window, 260, 260, { buttons: 0 });
+  assert.deepEqual(cam(chart), before);
+  assert.equal(seen.length, 0);
+  chart.destroy();
+});
+
+test('a missed release ends a card drag where the card was last held', async () => {
+  const { host, chart } = await mountChart({ editMode: true, inspector: false });
+  const ends = recorder(chart, ['node-drag-end']);
+  const history = recorder(chart, ['history-change']);
+  pointer('pointerdown', card(host, 'p2'), 500, 400);
+  pointer('pointermove', window, 560, 430);
+  await tick(5);
+  const held = JSON.stringify(chart.getLayout().layout.manualOffsets);
+  assert.notEqual(held, '{}', 'the held drag moved the card');
+  pointer('pointermove', window, 800, 800, { buttons: 0 });
+  pointer('pointermove', window, 900, 900, { buttons: 0 });
+  await tick(5);
+  assert.equal(ends.length, 1, 'the drag ended once');
+  assert.equal(JSON.stringify(chart.getLayout().layout.manualOffsets), held, 'the card stays where it was released');
+  assert.equal(history.length, 1, 'one undo step, like a normal drop');
+  assert.ok(!card(host, 'p2').classList.contains('loc-dragging'));
+  chart.destroy();
+});
+
+test('a missed release ends a marquee selection', async () => {
+  const { canvas, chart } = await mountChart({ editMode: true, inspector: false });
+  pointer('pointerdown', canvas, 100, 100, { ctrlKey: true });
+  pointer('pointermove', window, 300, 300, { ctrlKey: true });
+  assert.ok(canvas.querySelector('.loc-marquee'), 'the marquee is drawn while held');
+  pointer('pointermove', window, 500, 500, { buttons: 0 });
+  assert.equal(canvas.querySelectorAll('.loc-marquee').length, 0, 'the marquee ends with the missed release');
+  assert.ok(!canvas.classList.contains('loc-marqueeing'));
+  chart.destroy();
+});
+
 test('repeated pans do not grow the teardown listener list', async () => {
   // destroy() removes every listener the renderer still tracks; count those
   // removals after zero pans and after fifty.

@@ -1,6 +1,6 @@
 import { H as e, U as t, W as n, q as r, z as i } from "./bounds-Cig4UHsX.js";
 import { s as a } from "./core-DpSEAd-z.js";
-import { t as o } from "./createOrgChart-D_okENqF.js";
+import { t as o } from "./createOrgChart-CwdZtEa4.js";
 /* empty css                   */
 import { Teleport as s, computed as c, defineComponent as l, h as u, markRaw as d, onBeforeUnmount as f, onMounted as p, ref as m, shallowRef as h, watch as g } from "vue";
 // src/vue/OrgChart.js
