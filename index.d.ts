@@ -248,6 +248,8 @@ export interface CreateOptions extends LayoutOptions, CardGeometryOptions {
   fitOnInit?: boolean;
   /** Run editor-triggered full layouts in a Web Worker. Default true. */
   layoutWorker?: boolean;
+  /** Milliseconds a worker layout may run before it fails with `layout-error`. Default 60000. */
+  layoutTimeout?: number;
   /** Reuse exact completed layout results from a bounded in-memory cache. Default true. */
   layoutCache?: boolean;
   /** Built-in toolbar groups. The subtree strategy group is hidden unless explicitly set to true. */

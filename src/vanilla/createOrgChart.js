@@ -94,6 +94,7 @@ const DEFAULT_OPTS = {
   targetSize: null,    // optional explicit layout/output shape
   reflowOnResize: false, // opt in when viewport aspect changes should regenerate geometry
   layoutWorker: true,  // move editor-triggered full layout work off the UI thread
+  layoutTimeout: 60000, // ms a worker layout may run before it fails with layout-error
   layoutCache: true,   // reuse exact completed layouts (bounded process-wide LRU)
   toolbar: true,      // true | false | { subtree, orient, actions, grid, mode, export }; subtree is opt-in
   advancedLayoutControls: false, // expose legacy per-node subtree strategy overrides in the inspector
@@ -174,6 +175,11 @@ export function createOrgChart(host, userOpts = {}) {
   let layoutRequestId = 0, activeLayout = null, layoutBusy = false;
   let layoutPromise = Promise.resolve(true);
   let workerAvailable = opts.layoutWorker !== false && typeof Worker !== 'undefined';
+  // One worker per chart stays alive between layouts, so the engine is parsed
+  // and JIT-compiled once (a cold solve costs about twice a warm one). It is
+  // replaced only when a newer request supersedes a solve still running in it
+  // — terminating is the only way to stop that work — or after it fails.
+  let layoutWorker = null;
   const listeners = [];                 // {target,type,fn} for clean teardown
   const events = Object.create(null);   // name -> [cb]
 
@@ -374,8 +380,9 @@ export function createOrgChart(host, userOpts = {}) {
     const active = activeLayout;
     if (!active) return false;
     activeLayout = null;
-    if (active.worker) active.worker.terminate();
+    if (active.worker) disposeLayoutWorker();
     if (active.timer) clearTimeout(active.timer);
+    if (active.watchdog) clearTimeout(active.watchdog);
     active.resolve(false);
     emit('layout-cancel', { id: active.id, reason: active.reason, cause: reason });
     if (!keepBusy) setLayoutBusy(false);
@@ -431,6 +438,53 @@ export function createOrgChart(host, userOpts = {}) {
       }
     }, 0);
   }
+  function disposeLayoutWorker() {
+    if (layoutWorker) layoutWorker.terminate();
+    layoutWorker = null;
+  }
+  function workerError(detail, fallbackMessage) {
+    const error = new Error(detail?.message || fallbackMessage);
+    if (detail?.name) error.name = detail.name;
+    return error;
+  }
+  /* The request a worker message belongs to: the active one, still waiting on
+     this worker, with a matching id. Anything else is a stale answer. */
+  function workerRequest(worker, id) {
+    const request = activeLayout;
+    if (!request || request.worker !== worker || (id !== undefined && id !== request.id)) return null;
+    clearTimeout(request.watchdog);
+    request.worker = null;
+    return request;
+  }
+  function ensureLayoutWorker() {
+    if (layoutWorker) return layoutWorker;
+    const worker = new LayoutWorker();
+    worker.addEventListener('message', (event) => {
+      const message = event.data || {};
+      const request = workerRequest(worker, message.id);
+      if (!request) return;
+      if (!message.ok) {
+        failLayoutRequest(request, workerError(message.error, 'Layout worker failed.'));
+        return;
+      }
+      if (opts.layoutCache !== false) rememberLayout(request.signature, message.result);
+      finishLayoutRequest(request, message.result, message.durationMs, false);
+    });
+    worker.addEventListener('messageerror', () => {
+      const request = workerRequest(worker);
+      if (request) failLayoutRequest(request, new Error('Layout worker sent a result that could not be read.'));
+    });
+    // An error event means the worker script itself failed to load or crashed
+    // outside the solver's own try/catch; layout then runs on this thread.
+    worker.addEventListener('error', (event) => {
+      if (layoutWorker === worker) layoutWorker = null;
+      worker.terminate();
+      const request = workerRequest(worker);
+      if (request) runLayoutOnMainThread(request, request.payload, new Error(event.message || 'Layout worker failed to load.'));
+    });
+    layoutWorker = worker;
+    return worker;
+  }
   function requestLayout(reason = 'refresh', requestOpts = {}) {
     cancelActiveLayout('superseded', true);
     const id = ++layoutRequestId;
@@ -439,7 +493,7 @@ export function createOrgChart(host, userOpts = {}) {
     const pins = requestOpts.pins || (requestOpts.preserveManual ? manualCenters() : null);
     let resolveRequest;
     const promise = new Promise((resolve) => { resolveRequest = resolve; });
-    const request = { id, reason, signature, pins, resolve: resolveRequest, worker: null, timer: 0 };
+    const request = { id, reason, signature, pins, resolve: resolveRequest, worker: null, timer: 0, watchdog: 0, payload: null };
     activeLayout = request;
     layoutPromise = promise;
     setLayoutBusy(true);
@@ -462,28 +516,21 @@ export function createOrgChart(host, userOpts = {}) {
     }
 
     try {
-      const worker = new LayoutWorker();
+      const worker = ensureLayoutWorker();
       request.worker = worker;
-      worker.addEventListener('message', (event) => {
-        const message = event.data || {};
-        if (message.id !== request.id || !activeLayout || activeLayout.id !== request.id) return;
-        worker.terminate(); request.worker = null;
-        if (!message.ok) {
-          failLayoutRequest(request, new Error(message.error?.message || 'Layout worker failed.'));
-          return;
-        }
-        if (opts.layoutCache !== false) rememberLayout(signature, message.result);
-        finishLayoutRequest(request, message.result, message.durationMs, false);
-      });
-      worker.addEventListener('error', (event) => {
-        if (!activeLayout || activeLayout.id !== request.id) return;
-        worker.terminate(); request.worker = null;
-        runLayoutOnMainThread(request, payload, new Error(event.message || 'Layout worker failed to load.'));
-      }, { once: true });
+      request.payload = payload;
+      const timeout = Number(opts.layoutTimeout) > 0 ? Number(opts.layoutTimeout) : DEFAULT_OPTS.layoutTimeout;
+      request.watchdog = setTimeout(() => {
+        if (activeLayout !== request) return;
+        request.worker = null;
+        disposeLayoutWorker();
+        failLayoutRequest(request, new Error(`Layout worker did not answer within ${Math.round(timeout / 1000)}s.`));
+      }, timeout);
       worker.postMessage({ id, nodes: payload.nodes, options: payload.options });
     } catch (error) {
-      if (request.worker) request.worker.terminate();
+      if (request.watchdog) clearTimeout(request.watchdog);
       request.worker = null;
+      disposeLayoutWorker();
       runLayoutOnMainThread(request, payload, error);
     }
     return promise;
@@ -2701,6 +2748,7 @@ export function createOrgChart(host, userOpts = {}) {
   function destroy() {
     if (destroyed) return; destroyed = true;
     cancelActiveLayout('destroyed');
+    disposeLayoutWorker();
     listeners.forEach(({ target, type, fn, optsL }) => target.removeEventListener(type, fn, optsL));
     listeners.length = 0;
     if (dragRaf) cancelAnimationFrame(dragRaf);

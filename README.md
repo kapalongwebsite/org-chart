@@ -248,6 +248,7 @@ you render a chart.
 | `snapAlign` | `Boolean` | `true` | while dragging, snap to the parent's connector axis + sibling centers (with guide lines) |
 | `fitOnInit` | `Boolean` | `true` | frame the chart on mount |
 | `layoutWorker` | `Boolean` | `true` | calculate full structural layouts off the UI thread; set `false` only for synchronous first-paint compatibility |
+| `layoutTimeout` | `Number` | `60000` | milliseconds a worker layout may run before the request fails with `layout-error`; the chart keeps one worker alive between layouts and replaces it after a timeout |
 | `layoutCache` | `Boolean` | `true` | reuse exact completed layouts from a bounded in-memory cache |
 | `toolbar` | `Boolean \| Object` | `true` | show the built-in toolbar; legacy subtree-strategy buttons are opt-in with `{ subtree: true }` |
 | `advancedLayoutControls` | `Boolean` | `false` | show legacy per-node layout-strategy overrides in the inspector |
