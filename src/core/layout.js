@@ -1686,6 +1686,7 @@ function routeOccupancyGrid(positioned, cfg) {
         uniquePoints([ports.start, ...prefix, ...routed.slice(1)]),
         isHorizontal(cfg),
       ));
+      if (complete.length < 2) continue;
       const crossesReservedChannel = positioned.some((other) => {
         if (!other.parentId || String(other.parentId) === parentId || other.node.id === child.node.id) return false;
         const otherPath = pathsByChild.get(String(other.node.id));
@@ -1793,6 +1794,7 @@ function repairReservedChannelConflicts(positioned, cfg) {
       });
       if (!routed || routed.length < 2) continue;
       const complete = simplifyOrthogonalPoints(routed);
+      if (complete.length < 2) continue;
       if (reservedPaths.some((path) => pathsCrossOpen(complete, path) || pathsOverlapOpen(complete, path))) continue;
       edge.child.routeType = 'packed';
       edge.child.routePoints = complete.length > 2
@@ -1898,6 +1900,9 @@ function compactAutomaticRouteTails(positioned, cfg) {
           ? [anchor, end]
           : [anchor, { x: end.x, y: anchor.y }, end]);
       const candidate = simplifyOrthogonalPoints([...current.slice(0, anchorIndex), ...tail]);
+      // Coarse grid snapping can land both ends on one point; a route that
+      // collapses to a single point has no segments to compare.
+      if (candidate.length < 2) continue;
       const candidateLength = orthogonalPathLength(candidate);
       const candidateBends = orthogonalPathBends(candidate);
       const firstSegmentHorizontal = Math.abs(candidate[0].y - candidate[1].y) < 0.01;
@@ -2252,6 +2257,7 @@ function routeFamilyConnectorNetworks(positioned, cfg) {
     if (best.generated || best.repaired) {
       children.forEach((child, index) => {
         const path = best.paths[index];
+        if (!path || path.length < 2) return;
         child.routeType = 'packed';
         child.routePoints = path.length > 2 ? path.slice(1, -1) : [midpoint(path[0], path[1])];
         pathByChild.set(String(child.node.id), path);
