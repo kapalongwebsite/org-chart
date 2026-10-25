@@ -455,6 +455,48 @@ function buildFootprintSpatialIndex(rects, cellSize) {
   };
 }
 
+/* An empty spatial index that grows as placements are made. Adding rects in
+   placement order yields exactly the buckets buildFootprintSpatialIndex()
+   would build from the same list. */
+function createFootprintSpatialIndex(cellSize, capacity) {
+  return {
+    rects: [],
+    buckets: new Map(),
+    cellSize,
+    seen: new Uint32Array(Math.max(1, capacity)),
+    queryStamp: 0,
+  };
+}
+
+function addToFootprintSpatialIndex(index, rect) {
+  const rectIndex = index.rects.length;
+  index.rects.push(rect);
+  if (rectIndex >= index.seen.length) {
+    const grown = new Uint32Array(index.seen.length * 2);
+    grown.set(index.seen);
+    index.seen = grown;
+  }
+  const minX = Math.floor(rect.left / index.cellSize);
+  const maxX = Math.floor(rect.right / index.cellSize);
+  const minY = Math.floor(rect.top / index.cellSize);
+  const maxY = Math.floor(rect.bottom / index.cellSize);
+  for (let bx = minX; bx <= maxX; bx += 1) {
+    let column = index.buckets.get(bx);
+    if (!column) {
+      column = new Map();
+      index.buckets.set(bx, column);
+    }
+    for (let by = minY; by <= maxY; by += 1) {
+      let bucket = column.get(by);
+      if (!bucket) {
+        bucket = [];
+        column.set(by, bucket);
+      }
+      bucket.push(rectIndex);
+    }
+  }
+}
+
 function translatedFootprintsClear(currentRects, x, y, placedIndex, gapX, gapY, gridSize) {
   const padding = Math.max(gapX, gapY);
   for (const current of currentRects) {
@@ -547,35 +589,40 @@ function packOccupancyGrid(items, targetAspect, gapX, gapY, gridSize) {
     mouldWidths.add(gridCeil(Math.max(widest, prefixWidth), latticeSize));
   });
 
+  // Placement only reads footprints, never mutates them; resolve them once.
+  const footprints = items.map((item) => {
+    const rects = itemFootprintRects(item);
+    return {
+      rects,
+      lefts: new Set(rects.map((rect) => rect.left)),
+      tops: new Set(rects.map((rect) => rect.top)),
+    };
+  });
+  const indexCellSize = Math.max(64, gridGapX * 2, gridGapY * 1.2);
+  const totalRects = footprints.reduce((count, footprint) => count + footprint.rects.length, 0);
+
   let best = null;
   for (const mouldWidth of [...mouldWidths].sort((a, b) => a - b)) {
     const placements = [];
-    for (const item of items) {
-      const currentRects = itemFootprintRects(item);
-      const placedRects = placements.flatMap((placement) => itemFootprintRects(placement.item).map((rect) => ({
-        ...rect,
-        left: rect.left + placement.x,
-        right: rect.right + placement.x,
-        top: rect.top + placement.y,
-        bottom: rect.bottom + placement.y,
-      })));
-      const placedIndex = buildFootprintSpatialIndex(
-        placedRects,
-        Math.max(64, gridGapX * 2, gridGapY * 1.2),
-      );
+    // Everything below grows incrementally as items are placed, in placement
+    // order, so each item sees exactly the placed state a full rebuild gives.
+    const placedIndex = createFootprintSpatialIndex(indexCellSize, totalRects);
+    const placedRights = new Set();
+    const placedBottoms = new Set();
+    const placedXs = new Set([0]);
+    const placedYs = new Set([0]);
+    let placedMaxBottom = -Infinity;
+    // Whether this mould width ever ruled out a candidate. If it never did, a
+    // wider mould examines the same candidates in the same order, reproduces
+    // these placements, and only scores worse for its unused width.
+    let widthBound = false;
+    items.forEach((item, itemIndex) => {
+      const { rects: currentRects, lefts: currentLefts, tops: currentTops } = footprints[itemIndex];
       // Footprint pairs frequently resolve to the same lattice coordinate.
       // Deduplicate while generating candidates so a large subtree does not
       // allocate and sort hundreds of thousands of repeated values.
-      const xs = new Set([0]);
-      const ys = new Set([0]);
-      for (const placed of placements) {
-        xs.add(gridCeil(placed.x + placed.item.w + gridGapX, latticeSize));
-        ys.add(gridCeil(placed.y + placed.item.h + gridGapY, latticeSize));
-      }
-      const placedRights = new Set(placedRects.map((rect) => rect.right));
-      const placedBottoms = new Set(placedRects.map((rect) => rect.bottom));
-      const currentLefts = new Set(currentRects.map((rect) => rect.left));
-      const currentTops = new Set(currentRects.map((rect) => rect.top));
+      const xs = new Set(placedXs);
+      const ys = new Set(placedYs);
       for (const right of placedRights) {
         for (const left of currentLefts) {
           xs.add(gridCeil(right + gridGapX - left, latticeSize));
@@ -591,7 +638,10 @@ function packOccupancyGrid(items, targetAspect, gapX, gapY, gridSize) {
       const candidateYs = boundedGridCoordinates(ys);
       for (const y of candidateYs) {
         for (const x of candidateXs) {
-          if (x + item.w > mouldWidth + 0.01) continue;
+          if (x + item.w > mouldWidth + 0.01) {
+            widthBound = true;
+            continue;
+          }
           if (translatedFootprintsClear(
             currentRects,
             x,
@@ -610,10 +660,26 @@ function packOccupancyGrid(items, targetAspect, gapX, gapY, gridSize) {
       // x=0 below the existing mould is always legal, so this is only a
       // defensive fallback for malformed dimensions.
       const fallbackY = placements.length
-        ? gridCeil(Math.max(...placements.map((placed) => placed.y + placed.item.h)) + gridGapY, latticeSize)
+        ? gridCeil(placedMaxBottom + gridGapY, latticeSize)
         : 0;
-      placements.push(selected || { item, x: 0, y: fallbackY });
-    }
+      const placement = selected || { item, x: 0, y: fallbackY };
+      placements.push(placement);
+      placedMaxBottom = Math.max(placedMaxBottom, placement.y + item.h);
+      placedXs.add(gridCeil(placement.x + item.w + gridGapX, latticeSize));
+      placedYs.add(gridCeil(placement.y + item.h + gridGapY, latticeSize));
+      for (const rect of currentRects) {
+        const placed = {
+          ...rect,
+          left: rect.left + placement.x,
+          right: rect.right + placement.x,
+          top: rect.top + placement.y,
+          bottom: rect.bottom + placement.y,
+        };
+        addToFootprintSpatialIndex(placedIndex, placed);
+        placedRights.add(placed.right);
+        placedBottoms.add(placed.bottom);
+      }
+    });
 
     const w = Math.max(...placements.map((placement) => placement.x + placement.item.w));
     const h = Math.max(...placements.map((placement) => placement.y + placement.item.h));
@@ -663,6 +729,7 @@ function packOccupancyGrid(items, targetAspect, gapX, gapY, gridSize) {
       || (Math.abs(score - best.score) < 1e-9 && Math.abs(h - best.h) < 0.01 && w < best.w)) {
       best = candidate;
     }
+    if (!widthBound) break;
   }
   return best;
 }
