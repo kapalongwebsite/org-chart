@@ -1574,21 +1574,28 @@ function obstacleRoute(parent, child, positioned, cfg, ports = null) {
   ])].sort((a, b) => a - b);
   const startX = xs.indexOf(searchStart.x), startY = ys.indexOf(searchStart.y);
   const endX = xs.indexOf(searchEnd.x), endY = ys.indexOf(searchEnd.y);
-  const keyOf = (x, y, direction) => `${x}:${y}:${direction}`;
+  // Search states are (column, row, arrival direction) on the xs/ys lattice,
+  // indexed numerically. Whether a single grid move is open depends only on
+  // its two end points, so each directed move is tested against the cards and
+  // reserved paths once and remembered.
+  const columns = xs.length;
+  const stateOf = (x, y, direction) => (y * columns + x) * 3 + direction;
+  const stateCount = columns * ys.length * 3;
+  const distances = new Float64Array(stateCount).fill(Infinity);
+  const previous = new Int32Array(stateCount).fill(-1);
+  const moveOpen = new Int8Array(columns * ys.length * 4);   // 0 unknown, 1 open, -1 blocked
   const heap = new MinHeap();
-  const distances = new Map();
-  const previous = new Map();
-  const startKey = keyOf(startX, startY, 0);
-  distances.set(startKey, 0);
+  const startState = stateOf(startX, startY, 0);
+  distances[startState] = 0;
   heap.push({ x: startX, y: startY, direction: 0, cost: 0, priority: 0 });
-  let finalKey = null;
+  let finalState = -1;
   const bendPenalty = Math.max(20, Math.min(cfg.spacingX, cfg.spacingY) * 0.6);
 
   while (heap.items.length) {
     const current = heap.pop();
-    const currentKey = keyOf(current.x, current.y, current.direction);
-    if (current.cost !== distances.get(currentKey)) continue;
-    if (current.x === endX && current.y === endY) { finalKey = currentKey; break; }
+    const currentState = stateOf(current.x, current.y, current.direction);
+    if (current.cost !== distances[currentState]) continue;
+    if (current.x === endX && current.y === endY) { finalState = currentState; break; }
     const candidates = [
       { x: current.x - 1, y: current.y, direction: 1 },
       { x: current.x + 1, y: current.y, direction: 1 },
@@ -1596,37 +1603,40 @@ function obstacleRoute(parent, child, positioned, cfg, ports = null) {
       { x: current.x, y: current.y + 1, direction: 2 },
     ];
     const from = { x: xs[current.x], y: ys[current.y] };
-    for (const candidate of candidates) {
+    for (let move = 0; move < candidates.length; move += 1) {
+      const candidate = candidates[move];
       if (candidate.x < 0 || candidate.x >= xs.length || candidate.y < 0 || candidate.y >= ys.length) continue;
       const to = { x: xs[candidate.x], y: ys[candidate.y] };
-      if (rects.some((rect) => pointInsideRect(to, rect) || segmentCrossesRect(from, to, rect))) continue;
-      const conflictsWithReserved = reservedPaths.some((path) => {
-        for (let index = 1; index < path.length; index += 1) {
-          if (segmentsCrossOpen(from, to, path[index - 1], path[index])
-            || segmentsOverlapOpen(from, to, path[index - 1], path[index])) return true;
-        }
-        return false;
-      });
-      if (conflictsWithReserved) continue;
+      const moveKey = (current.y * columns + current.x) * 4 + move;
+      if (moveOpen[moveKey] === 0) {
+        const blocked = rects.some((rect) => pointInsideRect(to, rect) || segmentCrossesRect(from, to, rect))
+          || reservedPaths.some((path) => {
+            for (let index = 1; index < path.length; index += 1) {
+              if (segmentsCrossOpen(from, to, path[index - 1], path[index])
+                || segmentsOverlapOpen(from, to, path[index - 1], path[index])) return true;
+            }
+            return false;
+          });
+        moveOpen[moveKey] = blocked ? -1 : 1;
+      }
+      if (moveOpen[moveKey] === -1) continue;
       const distance = Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
       const turn = current.direction && current.direction !== candidate.direction ? bendPenalty : 0;
       const cost = current.cost + distance + turn;
-      const nextKey = keyOf(candidate.x, candidate.y, candidate.direction);
-      if (cost >= (distances.get(nextKey) ?? Infinity)) continue;
-      distances.set(nextKey, cost);
-      previous.set(nextKey, currentKey);
+      const nextState = stateOf(candidate.x, candidate.y, candidate.direction);
+      if (cost >= distances[nextState]) continue;
+      distances[nextState] = cost;
+      previous[nextState] = currentState;
       const heuristic = Math.abs(searchEnd.x - to.x) + Math.abs(searchEnd.y - to.y);
       heap.push({ ...candidate, cost, priority: cost + heuristic });
     }
   }
-  if (!finalKey) return null;
+  if (finalState < 0) return null;
 
   const points = [];
-  let cursor = finalKey;
-  while (cursor) {
-    const [x, y] = cursor.split(':').map(Number);
-    points.push({ x: xs[x], y: ys[y] });
-    cursor = previous.get(cursor);
+  for (let state = finalState; state >= 0; state = previous[state]) {
+    const cell = Math.floor(state / 3);
+    points.push({ x: xs[cell % columns], y: ys[Math.floor(cell / columns)] });
   }
   points.reverse();
   const compressed = [];
