@@ -222,8 +222,9 @@ you render a chart.
 | `spacingY` | `Number` | `70` | vertical gap |
 | `enableDragging` | `Boolean` | `true` | allow node drag |
 | `enablePan` | `Boolean` | `true` | allow canvas pan |
-| `enableZoom` | `Boolean` | `true` | allow wheel zoom |
-| `maxZoom` | `Number` | `4` | how far the wheel can zoom in |
+| `enableZoom` | `Boolean` | `true` | allow wheel and pinch zoom |
+| `maxZoom` | `Number` | `4` | how far wheel, pinch and `zoomBy()` can zoom in |
+| `ariaLabel` | `String` | `'Organization chart'` | accessible name of the chart tree (init-only) |
 | `readonly` | `Boolean` | `false` | disable drag / waypoint edit / collapse; edit methods (`setEditMode(true)`, `updateNode`, `addChild`, `deleteNode`, `reparentNode`, family-route edits) are refused with one console warning |
 | `inspector` | `Boolean` | `true` | open the built-in drawer on node click; `false` = headless (emit `node-select` only) |
 | `inspectorTarget` | `String \| Element` | `null` | mount the inspector drawer into an element outside the canvas |
@@ -256,7 +257,15 @@ you render a chart.
 
 Props are watched — changing `nodes`, `orientation`, `subtreeMode`, spacing, or the
 feature flags updates the chart automatically (no manual re-init). When changing
-`nodes`, replace the array reference (don't mutate it in place).
+`nodes`, replace the array reference (don't mutate it in place). `settings` is
+applied only when it differs from the chart's current settings, so a two-way
+binding (`:settings="s" @settings-change="s = $event"`) or an inline object is safe.
+
+These props are read once at mount; change them by re-mounting the component
+(for example with a `:key`): `inspector`, `inspectorTarget`, `settingsTarget`,
+`legendTarget`, `fullscreenControl`, `toolbar`, `advancedLayoutControls`,
+`fitOnInit`, `reflowOnResize`, `layoutWorker`, `layoutCache`, `persist`,
+`storageKey`, `ariaLabel` — and which slots are provided.
 
 ## 9. Vue events
 
@@ -293,7 +302,8 @@ All methods are available on:
 
 | Method | Description |
 |--------|-------------|
-| `fitToScreen()` | Zoom & pan to frame all visible nodes |
+| `fitToScreen(options?)` | Zoom & pan to frame all visible nodes. `{ minZoom }`: when framing everything would zoom below `minZoom` (an unreadable overview on a phone), show the chart at `minZoom` anchored at its root edge instead (`anchor: 'top'`, default — the leading edge for the orientation — or `'center'`). Returns `false` when there is nothing to frame; a fit requested while the canvas is hidden runs once it gets a size |
+| `zoomBy(factor, point?)` | Zoom by a factor (e.g. `1.25` / `0.8`) around a client point `{ x, y }` (default: canvas centre); returns the new zoom |
 | `relayout()` | Recalculate automatic geometry while preserving manual card and connector adjustments |
 | `forceRelayout()` | Clear manual geometry and rebuild every card and connector from the chart data |
 | `resetView()` | Clear search + force re-layout + fit (one-stop full reset) |
@@ -311,6 +321,24 @@ so desktop, tablet, mobile, and fullscreen keep the same nodes and connectors
 while `fitToScreen()` adjusts zoom and pan. Set `reflowOnResize: true` only for
 an intentionally responsive screen layout. Exact tarp and print dimensions
 belong to the physical-canvas print API rather than ordinary viewport resizing.
+
+### Pointer, touch and keyboard
+
+- **Pan** by dragging the empty canvas. When cards can't be dragged (`readonly`,
+  view mode, or `enableDragging: false`) pressing a card pans too; releasing
+  without moving (≤ 4 px) is a click, which selects the card and fires
+  `node-select`. In edit mode a press on a card drags it (≤ 4 px of jitter never
+  moves it) and `node-select` fires on press. The middle mouse button pans from
+  anywhere, including over cards in edit mode.
+- **Zoom** with the vertical wheel (proportional to the scroll distance, so
+  trackpads zoom smoothly), Ctrl+wheel / trackpad pinch, or a two-finger pinch on
+  touch screens. A horizontal wheel or Shift+wheel pans sideways. Zooming out
+  stops at 15 % or the fitted zoom, whichever is smaller.
+- **Keyboard**: the cards form an ARIA tree (`role="tree"` / `treeitem`) with one
+  tab stop. Arrow Up/Down go to the parent / first child, Left/Right to the
+  previous / next sibling, Home to the root; Enter or Space select the card (as a
+  click: `node-select` and `node-click`); `+` / `-` expand or collapse it. The
+  focused card is panned into view.
 
 Full structural calculations are asynchronous by default. The current chart
 stays visible while the worker calculates, and only the newest request may
