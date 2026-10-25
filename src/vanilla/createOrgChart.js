@@ -1143,6 +1143,14 @@ export function createOrgChart(host, userOpts = {}) {
     if (pointerId == null || typeof canvas.setPointerCapture !== 'function') return;
     try { canvas.setPointerCapture(pointerId); capturedPointer = pointerId; } catch (e) { /* pointer already released */ }
   }
+  /* A mouse or pen move with no button held means the release happened where
+     the page never saw it: focus left the window mid-drag, a popup or system
+     dialog took the release, or it landed outside the browser. The gesture then
+     ends as if released at its last held position instead of following a
+     pointer that is no longer pressed. Touch moves only exist while touching. */
+  function releaseMissed(ev) {
+    return !!ev && (ev.pointerType === 'mouse' || ev.pointerType === 'pen') && ev.buttons === 0;
+  }
   function releasePointer() {
     if (capturedPointer == null) return;
     const id = capturedPointer; capturedPointer = null;
@@ -1196,6 +1204,7 @@ export function createOrgChart(host, userOpts = {}) {
   }
   function onNodePointerMove(e) {
     if (!drag || pinch || (drag.pointerId != null && e.pointerId != null && e.pointerId !== drag.pointerId)) return;
+    if (releaseMissed(e)) { onNodePointerUp({ type: 'pointercancel', pointerId: e.pointerId }); return; }
     const tx = e.clientX - drag.startX, ty = e.clientY - drag.startY;
     if (!drag.moved) {
       if (Math.abs(tx) + Math.abs(ty) <= CLICK_SLOP_PX) return;   // click jitter never moves or snaps the card
@@ -1395,6 +1404,7 @@ export function createOrgChart(host, userOpts = {}) {
     canvas.classList.add('loc-marqueeing');
     let did = false;
     const apply = (ev) => {
+      if (releaseMissed(ev)) { up(); return; }
       const p = clientToContent(ev.clientX, ev.clientY);
       const x = Math.min(p0.x, p.x), y = Math.min(p0.y, p.y), w = Math.abs(p.x - p0.x), h = Math.abs(p.y - p0.y);
       rect.setAttribute('x', x); rect.setAttribute('y', y); rect.setAttribute('width', w); rect.setAttribute('height', h);
@@ -1473,6 +1483,7 @@ export function createOrgChart(host, userOpts = {}) {
     canvas.classList.add('loc-marqueeing');
     let did = false;
     const apply = (ev) => {
+      if (releaseMissed(ev)) { up(); return; }
       const p = clientToContent(ev.clientX, ev.clientY);
       const x = Math.min(p0.x, p.x), y = Math.min(p0.y, p.y), w = Math.abs(p.x - p0.x), h = Math.abs(p.y - p0.y);
       rect.setAttribute('x', x); rect.setAttribute('y', y); rect.setAttribute('width', w); rect.setAttribute('height', h);
@@ -1655,6 +1666,7 @@ export function createOrgChart(host, userOpts = {}) {
   }
   function onEpMove(e) {
     if (!edgeDrag || edgeDrag.kind !== 'ep') return;
+    if (releaseMissed(e)) { onEpUp(); return; }
     const id = edgeDrag.id, child = posById[id]; if (!child) return;
     const parent = posById[child.node.parentId]; if (!parent) return;
     // grid-snap the drag point (so the endpoint square lands on the grid, like a
@@ -2821,6 +2833,7 @@ export function createOrgChart(host, userOpts = {}) {
 
   function onFamilyRouteMove(e) {
     if (!familyDrag) return;
+    if (releaseMissed(e)) { onFamilyRouteUp(); return; }
     const point = clientToContent(e.clientX, e.clientY);
     const cross = isHorizontal(cfg()) ? point.y : point.x;
     const grid = Math.max(1, state.gridSize);
@@ -2911,7 +2924,7 @@ export function createOrgChart(host, userOpts = {}) {
     updateEdgeGeom(id); renderEdgeHandles(); persist(); pushHistory();
     emitGeometryEdit('waypoint-remove');
   });
-  function onHandleMove(e) { if (!edgeDrag) return; const wps = edgeWaypoints[edgeDrag.id]; if (!wps) return; wps[edgeDrag.idx] = waypointAlignSnap(edgeDrag.id, snapPoint(clientToContent(e.clientX, e.clientY))); edgeDrag.changed = true; updateEdgeGeom(edgeDrag.id); renderEdgeHandles(); }
+  function onHandleMove(e) { if (!edgeDrag) return; if (releaseMissed(e)) { onHandleUp(); return; } const wps = edgeWaypoints[edgeDrag.id]; if (!wps) return; wps[edgeDrag.idx] = waypointAlignSnap(edgeDrag.id, snapPoint(clientToContent(e.clientX, e.clientY))); edgeDrag.changed = true; updateEdgeGeom(edgeDrag.id); renderEdgeHandles(); }
   function onHandleUp() {
     const d = edgeDrag; edgeDrag = null;
     clearAlignGuides(); rmWin('pointermove', onHandleMove); rmWin('pointerup', onHandleUp); persist();
@@ -3076,6 +3089,7 @@ export function createOrgChart(host, userOpts = {}) {
   }
   function onPanMove(ev) {
     if (!pan || ev.pointerId !== pan.pointerId || pinch) return;
+    if (releaseMissed(ev)) { endPan(true); return; }
     const dx = ev.clientX - pan.sx, dy = ev.clientY - pan.sy;
     if (!pan.moved) {
       if (Math.abs(dx) + Math.abs(dy) <= CLICK_SLOP_PX) return;

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.19.1
+
+### Interaction
+- A gesture no longer outlives its mouse button. Sometimes the page never sees
+  the release: focus left the window mid-drag, a popup or system dialog took it,
+  or the button was released outside the browser. Panning, card drags, marquee
+  selection and connector, endpoint and trunk drags then kept following the
+  pointer with no button held. Now the first mouse or pen move that reports no
+  button held ends the gesture, as if released at its last held position. A
+  press on a card whose release is missed is neither a pan nor a click. Touch
+  input is unaffected.
+
 ## 1.19.0
 
 ### Behaviour changes hosts should know
