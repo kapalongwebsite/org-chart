@@ -1,14 +1,24 @@
-import { I as e, L as t, N as n, R as r, V as i } from "./bounds-BAybmE0D.js";
-import { t as a } from "./createOrgChart-BebWhTsH.js";
+import { H as e, U as t, W as n, q as r, z as i } from "./bounds-Cig4UHsX.js";
+import { s as a } from "./core-DpSEAd-z.js";
+import { t as o } from "./createOrgChart-D_okENqF.js";
 /* empty css                   */
-import { Teleport as o, computed as s, defineComponent as c, h as l, markRaw as u, onBeforeUnmount as d, onMounted as f, ref as p, shallowRef as m, watch as h } from "vue";
+import { Teleport as s, computed as c, defineComponent as l, h as u, markRaw as d, onBeforeUnmount as f, onMounted as p, ref as m, shallowRef as h, watch as g } from "vue";
 // src/vue/OrgChart.js
-var g = /* @__PURE__ */ "node-click.node-select.node-drag-start.node-drag.node-drag-end.layout-change.orientation-change.subtree-mode-change.relayout.layout-start.layout-complete.layout-cancel.layout-error.edit-mode-change.node-change.settings-change.inspector-open.inspector-close.settings-open.settings-close.fullscreen-change.history-change.attach-start.attach-cancel.user-select.presets-change.preset-load.selection-change.legend-change.edges-select.edges-reset.family-route-select.family-route-change.family-route-reset".split(".");
-function _(e) {
+var _ = /* @__PURE__ */ "node-click.node-select.node-drag-start.node-drag.node-drag-end.layout-change.orientation-change.subtree-mode-change.relayout.layout-start.layout-complete.layout-cancel.layout-error.edit-mode-change.node-change.settings-change.inspector-open.inspector-close.settings-open.settings-close.fullscreen-change.history-change.attach-start.attach-cancel.user-select.presets-change.preset-load.selection-change.legend-change.edges-select.edges-reset.family-route-select.family-route-change.family-route-reset.input-warning".split(".");
+function v(e, t) {
+	if (e === t) return !0;
+	if (!e || !t || typeof e != "object" || typeof t != "object" || Array.isArray(e) !== Array.isArray(t)) return !1;
+	let n = Object.keys(e), r = Object.keys(t);
+	return n.length === r.length && n.every((n) => Object.prototype.hasOwnProperty.call(t, n) && v(e[n], t[n]));
+}
+function y(e, t) {
+	return t ? Object.keys(e).every((n) => n === "themeRules" ? Array.isArray(e.themeRules) && v(e.themeRules.map(a), t.themeRules) : Object.prototype.hasOwnProperty.call(t, n) && v(e[n], t[n])) : !1;
+}
+function b(e) {
 	let t = {};
 	return e && (e.bg && (t.background = e.bg), e.text && (t.color = e.text), e.border && (t.borderColor = e.border)), t;
 }
-var v = c({
+var x = l({
 	name: "OrgChart",
 	props: {
 		nodes: {
@@ -42,6 +52,14 @@ var v = c({
 		enableZoom: {
 			type: Boolean,
 			default: !0
+		},
+		maxZoom: {
+			type: Number,
+			default: 4
+		},
+		ariaLabel: {
+			type: String,
+			default: null
 		},
 		readonly: {
 			type: Boolean,
@@ -89,23 +107,23 @@ var v = c({
 		},
 		departmentWidth: {
 			type: Number,
-			default: n.width
+			default: i.width
 		},
 		departmentHeight: {
 			type: Number,
-			default: n.height
+			default: i.height
 		},
 		photoContain: {
 			type: Boolean,
-			default: r.fit === "contain"
+			default: n.fit === "contain"
 		},
 		virtualPhotoFrame: {
 			type: Object,
-			default: () => ({ ...i })
+			default: () => ({ ...r })
 		},
 		renderedImage: {
 			type: Object,
-			default: () => ({ ...r })
+			default: () => ({ ...n })
 		},
 		photoBackground: {
 			type: String,
@@ -180,25 +198,25 @@ var v = c({
 			default: "local-org-chart.state"
 		}
 	},
-	emits: g,
+	emits: _,
 	setup(e, { emit: t, expose: n, slots: r }) {
-		let i = p(null), c = null, v = p(!1), y = p({}), b = m([]), x = p(null), S = p(!1), C = p(!!e.legend), w = s(() => !(e.nodes && e.nodes.length));
-		function T() {
-			c && (y.value = c.getState());
-		}
+		let i = m(null), a = null, l = m(!1), v = m({}), x = h([]), S = m(null), C = m(!1), w = m(!!e.legend), T = c(() => !(e.nodes && e.nodes.length));
 		function E() {
-			!c || !r.node ? b.value = [] : b.value = c.getPositioned().map((e) => {
-				let t = c.getNodeSlotEl(e.node.id);
+			a && (v.value = a.getState());
+		}
+		function D() {
+			!a || !r.node ? x.value = [] : x.value = a.getPositioned().map((e) => {
+				let t = a.getNodeSlotEl(e.node.id);
 				return t ? {
 					id: e.node.id,
-					node: u(e.node),
-					target: u(t),
-					themeStyle: _(c.nodeThemeStyle(e.node.id))
+					node: d(e.node),
+					target: d(t),
+					themeStyle: b(a.nodeThemeStyle(e.node.id))
 				} : null;
 			}).filter(Boolean);
 		}
-		return f(() => {
-			c = a(i.value, {
+		return p(() => {
+			if (a = o(i.value, {
 				nodes: e.nodes,
 				orientation: e.orientation,
 				subtreeMode: e.subtreeMode,
@@ -207,6 +225,8 @@ var v = c({
 				enableDragging: e.enableDragging,
 				enablePan: e.enablePan,
 				enableZoom: e.enableZoom,
+				maxZoom: e.maxZoom,
+				ariaLabel: e.ariaLabel || void 0,
 				readonly: e.readonly,
 				editMode: e.editMode,
 				inspector: e.inspector,
@@ -245,180 +265,190 @@ var v = c({
 				settingsSlot: !!r.settings,
 				persist: e.persist,
 				storageKey: e.storageKey
-			}), g.forEach((e) => c.on(e, (n) => t(e, n))), c.on("nodes-rendered", E), [
+			}), _.forEach((e) => a.on(e, (n) => t(e, n))), a.on("nodes-rendered", D), [
 				"layout-change",
 				"edit-mode-change",
 				"settings-change",
 				"node-select",
 				"node-change"
-			].forEach((e) => c.on(e, T)), c.on("inspector-open", (e) => {
-				x.value = e;
-			}), c.on("inspector-close", () => {
-				x.value = null;
-			}), c.on("settings-open", () => {
-				S.value = !0;
-			}), c.on("settings-close", () => {
-				S.value = !1;
-			}), c.on("legend-change", (e) => {
-				C.value = !!e.legend;
-			}), T(), E(), v.value = !0;
-		}), h(() => e.nodes, (e) => {
-			c && (c.setNodes(e || []), E(), T());
-		}), h(() => e.orientation, (e) => c && c.setOrientation(e)), h(() => e.subtreeMode, (e) => c && c.setSubtreeMode(e)), h(() => [e.spacingX, e.spacingY], ([e, t]) => c && c.setSpacing(e, t)), h(() => e.readonly, (e) => c && c.setOption("readonly", e)), h(() => e.editMode, (e) => c && c.setEditMode(e)), h(() => e.settings, (e) => {
-			c && e && c.setSettings(e);
-		}, { deep: !0 }), h(() => e.enableDragging, (e) => c && c.setOption("enableDragging", e)), h(() => e.enablePan, (e) => c && c.setOption("enablePan", e)), h(() => e.enableZoom, (e) => c && c.setOption("enableZoom", e)), h(() => e.fitOnLayoutChange, (e) => c && c.setOption("fitOnLayoutChange", e)), h(() => e.showImages, (e) => c && c.setShowImages(e)), h(() => e.photoHeight, (e) => c && c.setPhotoHeight(e)), h(() => e.cardWidth, (e) => c && c.setCardWidth(e)), h(() => e.textHeight, (e) => c && c.setCardSize({ textHeight: e })), h(() => e.departmentWidth, (e) => c && c.setCardSize({ departmentWidth: e })), h(() => e.departmentHeight, (e) => c && c.setCardSize({ departmentHeight: e })), h(() => e.photoContain, (e) => c && c.setPhotoContain(e)), h(() => e.virtualPhotoFrame, (e) => c && c.setPhotoRendering({ virtualPhotoFrame: e }), { deep: !0 }), h(() => e.renderedImage, (e) => c && c.setPhotoRendering({ renderedImage: e }), { deep: !0 }), h(() => e.photoBackground, (e) => c && c.setPhotoRendering({ photoBackground: e })), h(() => e.legend, (e) => c && c.setShowLegend(e)), h(() => e.autoEdgeSide, (e) => c && c.setAutoEdgeSide(e)), h(() => e.userSearch, (e) => c && c.setOption("userSearch", e || null)), h(() => e.userToFields, (e) => c && c.setOption("userToFields", e || null)), h(() => e.snapAlign, (e) => c && c.setOption("snapAlign", e)), h(() => e.targetAspect, (e) => c && c.setOption("targetAspect", e)), h(() => e.targetSize, (e) => c && c.setOption("targetSize", e), { deep: !0 }), d(() => {
-			c &&= (c.destroy(), null);
+			].forEach((e) => a.on(e, E)), a.on("inspector-open", (e) => {
+				S.value = e;
+			}), a.on("inspector-close", () => {
+				S.value = null;
+			}), a.on("settings-open", () => {
+				C.value = !0;
+			}), a.on("settings-close", () => {
+				C.value = !1;
+			}), a.on("legend-change", (e) => {
+				w.value = !!e.legend;
+			}), E(), D(), l.value = !0, !a.isLayoutBusy() && a.getPositioned().length) {
+				let e = a.getState();
+				t("layout-change", {
+					positioned: a.getPositioned(),
+					familyNetworks: a.getFamilyNetworks(),
+					mode: e.subtreeMode,
+					orientation: e.orientation
+				});
+			}
+		}), g(() => e.nodes, (e) => {
+			a && (a.setNodes(e || []), D(), E());
+		}), g(() => e.orientation, (e) => a && a.setOrientation(e)), g(() => e.subtreeMode, (e) => a && a.setSubtreeMode(e)), g(() => [e.spacingX, e.spacingY], ([e, t]) => a && a.setSpacing(e, t)), g(() => e.readonly, (e) => a && a.setOption("readonly", e)), g(() => e.editMode, (e) => a && a.setEditMode(e)), g(() => e.settings, (e) => {
+			a && e && !y(e, a.getSettings()) && a.setSettings(e);
+		}, { deep: !0 }), g(() => e.enableDragging, (e) => a && a.setOption("enableDragging", e)), g(() => e.enablePan, (e) => a && a.setOption("enablePan", e)), g(() => e.enableZoom, (e) => a && a.setOption("enableZoom", e)), g(() => e.maxZoom, (e) => a && a.setOption("maxZoom", e)), g(() => e.fitOnLayoutChange, (e) => a && a.setOption("fitOnLayoutChange", e)), g(() => e.showImages, (e) => a && a.setShowImages(e)), g(() => e.photoHeight, (e) => a && a.setPhotoHeight(e)), g(() => e.cardWidth, (e) => a && a.setCardWidth(e)), g(() => e.textHeight, (e) => a && a.setCardSize({ textHeight: e })), g(() => e.departmentWidth, (e) => a && a.setCardSize({ departmentWidth: e })), g(() => e.departmentHeight, (e) => a && a.setCardSize({ departmentHeight: e })), g(() => e.photoContain, (e) => a && a.setPhotoContain(e)), g(() => e.virtualPhotoFrame, (e) => a && a.setPhotoRendering({ virtualPhotoFrame: e }), { deep: !0 }), g(() => e.renderedImage, (e) => a && a.setPhotoRendering({ renderedImage: e }), { deep: !0 }), g(() => e.photoBackground, (e) => a && a.setPhotoRendering({ photoBackground: e })), g(() => e.legend, (e) => a && a.setShowLegend(e)), g(() => e.autoEdgeSide, (e) => a && a.setAutoEdgeSide(e)), g(() => e.userSearch, (e) => a && a.setOption("userSearch", e || null)), g(() => e.userToFields, (e) => a && a.setOption("userToFields", e || null)), g(() => e.snapAlign, (e) => a && a.setOption("snapAlign", e)), g(() => e.targetAspect, (e) => a && a.setOption("targetAspect", e)), g(() => e.targetSize, (e) => a && a.setOption("targetSize", e), { deep: !0 }), f(() => {
+			a &&= (a.destroy(), null);
 		}), n({
-			fitToScreen: () => c && c.fitToScreen(),
-			relayout: () => c && c.relayout(),
-			forceRelayout: () => c && c.forceRelayout(),
-			resetView: () => c && c.resetView(),
-			expandAll: () => c && c.expandAll(),
-			collapseAll: () => c && c.collapseAll(),
-			toggleCollapse: (e) => c && c.toggleCollapse(e),
-			centerOnNode: (e) => c && c.centerOnNode(e),
-			search: (e) => c && c.search(e),
-			clearSearch: () => c && c.clearSearch(),
-			setOrientation: (e) => c && c.setOrientation(e),
-			setSubtreeMode: (e) => c && c.setSubtreeMode(e),
-			setSpacing: (e, t) => c && c.setSpacing(e, t),
-			setShowGrid: (e) => c && c.setShowGrid(e),
-			setSnapToGrid: (e) => c && c.setSnapToGrid(e),
-			setAlignToGrid: (e) => c && c.setAlignToGrid(e),
-			toggleGrid: (e) => c && c.toggleGrid(e),
-			enterFullscreen: () => c && c.enterFullscreen(),
-			exitFullscreen: () => c && c.exitFullscreen(),
-			toggleFullscreen: (e) => c && c.toggleFullscreen(e),
-			isFullscreen: () => !!(c && c.isFullscreen()),
-			undo: () => c && c.undo(),
-			redo: () => c && c.redo(),
-			canUndo: () => !!(c && c.canUndo()),
-			canRedo: () => !!(c && c.canRedo()),
-			setShowImages: (e) => c && c.setShowImages(e),
-			isShowingImages: () => !!(c && c.isShowingImages()),
-			setPhotoHeight: (e) => c && c.setPhotoHeight(e),
-			setCardWidth: (e) => c && c.setCardWidth(e),
-			setCardSize: (e) => c && c.setCardSize(e),
-			setPhotoRendering: (e) => c && c.setPhotoRendering(e),
-			setPhotoContain: (e) => c && c.setPhotoContain(e),
-			setShowLegend: (e) => c && c.setShowLegend(e),
-			toggleLegend: (e) => c && c.toggleLegend(e),
-			isShowingLegend: () => !!(c && c.isShowingLegend()),
-			setAutoEdgeSide: (e) => c && c.setAutoEdgeSide(e),
-			isAutoEdgeSide: () => !!(c && c.isAutoEdgeSide()),
-			getSelection: () => c ? c.getSelection() : [],
-			setSelection: (e) => c && c.setSelection(e),
-			clearSelection: () => c && c.clearSelection(),
-			getEdgeSelection: () => c ? c.getEdgeSelection() : [],
-			setEdgeSelection: (e) => c && c.setEdgeSelection(e),
-			clearEdgeSelection: () => c && c.clearEdgeSelection(),
-			resetSelectedEdges: () => c && c.resetSelectedEdges(),
-			getFamilyRouteSelection: () => c ? c.getFamilyRouteSelection() : null,
-			getFamilyNetworks: () => c ? c.getFamilyNetworks() : [],
-			getFamilyRouteOverrides: () => c ? c.getFamilyRouteOverrides() : {},
-			setFamilyRouteOverride: (e, t) => c && c.setFamilyRouteOverride(e, t),
-			resetFamilyRoute: (e) => c && c.resetFamilyRoute(e),
-			setEditMode: (e) => c && c.setEditMode(e),
-			isEditMode: () => c && c.isEditMode(),
-			updateNode: (e, t) => c && c.updateNode(e, t),
-			addChild: (e) => c && c.addChild(e),
-			deleteNode: (e) => c && c.deleteNode(e),
-			reparentNode: (e, t) => c && c.reparentNode(e, t),
-			detachNode: (e) => c && c.detachNode(e),
-			attachNode: (e, t) => c && c.attachNode(e, t),
-			beginAttach: (e) => c && c.beginAttach(e),
-			cancelAttach: () => c && c.cancelAttach(),
-			isAttaching: () => !!(c && c.isAttaching()),
-			openInspector: (e) => c && c.openInspector(e),
-			closeInspector: () => c && c.closeInspector(),
-			nodeScreenRect: (e) => c && c.nodeScreenRect(e),
-			getSettings: () => c && c.getSettings(),
-			setSettings: (e) => c && c.setSettings(e),
-			toggleSettings: (e) => c && c.toggleSettings(e),
-			resetSettings: () => c && c.resetSettings(),
-			saveLayoutPreset: (e, t) => c && c.saveLayoutPreset(e, t),
-			loadLayoutPreset: (e) => c && c.loadLayoutPreset(e),
-			deleteLayoutPreset: (e) => c && c.deleteLayoutPreset(e),
-			listLayoutPresets: () => c ? c.listLayoutPresets() : [],
-			getLayoutPresets: () => c ? c.getLayoutPresets() : {},
-			getLayout: (e) => c && c.getLayout(e),
-			applyLayout: (e) => c && c.applyLayout(e),
-			setNodes: (e, t, n) => c && c.setNodes(e, t, n),
-			loadJSON: (e) => c && c.loadJSON(e),
-			getState: () => c && c.getState(),
-			getNodes: () => c && c.getNodes(),
-			getPositioned: () => c && c.getPositioned(),
-			isLayoutBusy: () => !!(c && c.isLayoutBusy()),
-			whenLayoutSettled: () => c ? c.whenLayoutSettled() : Promise.resolve(!1),
-			cancelLayout: () => !!(c && c.cancelLayout()),
-			exportJSON: (e) => c && c.exportJSON(e),
-			exportSVG: () => c && c.exportSVG(),
-			exportPNG: (e) => c && c.exportPNG(e),
-			exportWebP: (e) => c && c.exportWebP(e),
-			exportPDF: () => c && c.exportPDF(),
-			buildSVG: (e) => c && c.buildSVG(e),
-			setOption: (e, t) => c && c.setOption(e, t),
-			on: (e, t) => c && c.on(e, t),
-			off: (e, t) => c && c.off(e, t),
-			instance: () => c
+			fitToScreen: (e) => !!(a && a.fitToScreen(e)),
+			zoomBy: (e, t) => a ? a.zoomBy(e, t) : null,
+			relayout: () => a && a.relayout(),
+			forceRelayout: () => a && a.forceRelayout(),
+			resetView: () => a && a.resetView(),
+			expandAll: () => a && a.expandAll(),
+			collapseAll: () => a && a.collapseAll(),
+			toggleCollapse: (e) => a && a.toggleCollapse(e),
+			centerOnNode: (e) => a && a.centerOnNode(e),
+			search: (e) => a && a.search(e),
+			clearSearch: () => a && a.clearSearch(),
+			setOrientation: (e) => a && a.setOrientation(e),
+			setSubtreeMode: (e) => a && a.setSubtreeMode(e),
+			setSpacing: (e, t) => a && a.setSpacing(e, t),
+			setShowGrid: (e) => a && a.setShowGrid(e),
+			setSnapToGrid: (e) => a && a.setSnapToGrid(e),
+			setAlignToGrid: (e) => a && a.setAlignToGrid(e),
+			toggleGrid: (e) => a && a.toggleGrid(e),
+			enterFullscreen: () => a && a.enterFullscreen(),
+			exitFullscreen: () => a && a.exitFullscreen(),
+			toggleFullscreen: (e) => a && a.toggleFullscreen(e),
+			isFullscreen: () => !!(a && a.isFullscreen()),
+			undo: () => a && a.undo(),
+			redo: () => a && a.redo(),
+			canUndo: () => !!(a && a.canUndo()),
+			canRedo: () => !!(a && a.canRedo()),
+			setShowImages: (e) => a && a.setShowImages(e),
+			isShowingImages: () => !!(a && a.isShowingImages()),
+			setPhotoHeight: (e) => a && a.setPhotoHeight(e),
+			setCardWidth: (e) => a && a.setCardWidth(e),
+			setCardSize: (e) => a && a.setCardSize(e),
+			setPhotoRendering: (e) => a && a.setPhotoRendering(e),
+			setPhotoContain: (e) => a && a.setPhotoContain(e),
+			setShowLegend: (e) => a && a.setShowLegend(e),
+			toggleLegend: (e) => a && a.toggleLegend(e),
+			isShowingLegend: () => !!(a && a.isShowingLegend()),
+			setAutoEdgeSide: (e) => a && a.setAutoEdgeSide(e),
+			isAutoEdgeSide: () => !!(a && a.isAutoEdgeSide()),
+			getSelection: () => a ? a.getSelection() : [],
+			setSelection: (e) => a && a.setSelection(e),
+			clearSelection: () => a && a.clearSelection(),
+			getEdgeSelection: () => a ? a.getEdgeSelection() : [],
+			setEdgeSelection: (e) => a && a.setEdgeSelection(e),
+			clearEdgeSelection: () => a && a.clearEdgeSelection(),
+			resetSelectedEdges: () => a && a.resetSelectedEdges(),
+			getFamilyRouteSelection: () => a ? a.getFamilyRouteSelection() : null,
+			getFamilyNetworks: () => a ? a.getFamilyNetworks() : [],
+			getFamilyRouteOverrides: () => a ? a.getFamilyRouteOverrides() : {},
+			setFamilyRouteOverride: (e, t) => a && a.setFamilyRouteOverride(e, t),
+			resetFamilyRoute: (e) => a && a.resetFamilyRoute(e),
+			setEditMode: (e) => a && a.setEditMode(e),
+			isEditMode: () => a && a.isEditMode(),
+			updateNode: (e, t) => a && a.updateNode(e, t),
+			addChild: (e) => a && a.addChild(e),
+			deleteNode: (e) => a && a.deleteNode(e),
+			reparentNode: (e, t) => a && a.reparentNode(e, t),
+			detachNode: (e) => a && a.detachNode(e),
+			attachNode: (e, t) => a && a.attachNode(e, t),
+			beginAttach: (e) => a && a.beginAttach(e),
+			cancelAttach: () => a && a.cancelAttach(),
+			isAttaching: () => !!(a && a.isAttaching()),
+			openInspector: (e) => a && a.openInspector(e),
+			closeInspector: () => a && a.closeInspector(),
+			nodeScreenRect: (e) => a && a.nodeScreenRect(e),
+			getSettings: () => a && a.getSettings(),
+			setSettings: (e) => a && a.setSettings(e),
+			toggleSettings: (e) => a && a.toggleSettings(e),
+			resetSettings: () => a && a.resetSettings(),
+			saveLayoutPreset: (e, t) => a && a.saveLayoutPreset(e, t),
+			loadLayoutPreset: (e) => a && a.loadLayoutPreset(e),
+			deleteLayoutPreset: (e) => a && a.deleteLayoutPreset(e),
+			listLayoutPresets: () => a ? a.listLayoutPresets() : [],
+			getLayoutPresets: () => a ? a.getLayoutPresets() : {},
+			getLayout: (e) => a && a.getLayout(e),
+			applyLayout: (e) => a && a.applyLayout(e),
+			setNodes: (e, t, n) => a && a.setNodes(e, t, n),
+			loadJSON: (e) => a && a.loadJSON(e),
+			getState: () => a && a.getState(),
+			getNodes: () => a && a.getNodes(),
+			getPositioned: () => a && a.getPositioned(),
+			isLayoutBusy: () => !!(a && a.isLayoutBusy()),
+			isReadonly: () => !a || a.isReadonly(),
+			whenLayoutSettled: () => a ? a.whenLayoutSettled() : Promise.resolve(!1),
+			cancelLayout: () => !!(a && a.cancelLayout()),
+			exportJSON: (e) => a && a.exportJSON(e),
+			exportSVG: () => a && a.exportSVG(),
+			exportPNG: (e) => a && a.exportPNG(e),
+			exportWebP: (e) => a && a.exportWebP(e),
+			exportPDF: () => a && a.exportPDF(),
+			buildSVG: (e) => a && a.buildSVG(e),
+			setOption: (e, t) => a && a.setOption(e, t),
+			on: (e, t) => a && a.on(e, t),
+			off: (e, t) => a && a.off(e, t),
+			instance: () => a
 		}), () => {
 			let e = [];
-			if (r.toolbar && e.push(l("div", { class: "loc-vue-toolbar" }, v.value ? r.toolbar({
-				chart: c,
-				state: y.value
-			}) : [])), e.push(l("div", {
+			if (r.toolbar && e.push(u("div", { class: "loc-vue-toolbar" }, l.value ? r.toolbar({
+				chart: a,
+				state: v.value
+			}) : [])), e.push(u("div", {
 				ref: i,
 				class: "loc-vue-host"
-			})), r.node) for (let t of b.value) e.push(l(o, {
+			})), r.node) for (let t of x.value) e.push(u(s, {
 				to: t.target,
 				key: "n:" + t.id
 			}, r.node({
 				node: t.node,
-				selected: y.value.selectedNodeId === t.id,
-				editMode: !!y.value.editMode,
+				selected: v.value.selectedNodeId === t.id,
+				editMode: !!v.value.editMode,
 				themeStyle: t.themeStyle,
-				update: (e) => c && c.updateNode(t.id, e),
-				select: () => c && c.openInspector(t.id)
+				update: (e) => a && a.updateNode(t.id, e),
+				select: () => a && a.openInspector(t.id)
 			})));
-			if (r.inspector && v.value && x.value && c) {
-				let t = c.getInspectorBody();
-				t && e.push(l(o, {
+			if (r.inspector && l.value && S.value && a) {
+				let t = a.getInspectorBody();
+				t && e.push(u(s, {
 					to: t,
 					key: "inspector"
 				}, r.inspector({
-					node: x.value.node,
-					editMode: !!y.value.editMode,
-					update: (e) => c.updateNode(x.value.id, e),
-					close: () => c.closeInspector()
+					node: S.value.node,
+					editMode: !!v.value.editMode,
+					update: (e) => a.updateNode(S.value.id, e),
+					close: () => a.closeInspector()
 				})));
 			}
-			if (r.settings && v.value && S.value && c) {
-				let t = c.getSettingsBody();
-				t && e.push(l(o, {
+			if (r.settings && l.value && C.value && a) {
+				let t = a.getSettingsBody();
+				t && e.push(u(s, {
 					to: t,
 					key: "settings"
 				}, r.settings({
-					settings: c.getSettings(),
-					update: (e) => c.setSettings(e),
-					reset: () => c.resetSettings(),
-					close: () => c.toggleSettings(!1)
+					settings: a.getSettings(),
+					update: (e) => a.setSettings(e),
+					reset: () => a.resetSettings(),
+					close: () => a.toggleSettings(!1)
 				})));
 			}
-			if (r.legend && v.value && C.value && c) {
-				let t = c.getLegendBody();
-				t && e.push(l(o, {
+			if (r.legend && l.value && w.value && a) {
+				let t = a.getLegendBody();
+				t && e.push(u(s, {
 					to: t,
 					key: "legend"
 				}, r.legend({
-					nodes: c.getNodes(),
-					settings: c.getSettings(),
-					close: () => c.setShowLegend(!1)
+					nodes: a.getNodes(),
+					settings: a.getSettings(),
+					close: () => a.setShowLegend(!1)
 				})));
 			}
-			return r.empty && w.value && e.push(l("div", { class: "loc-vue-empty" }, r.empty())), l("div", { class: "loc-vue-wrap" }, e);
+			return r.empty && T.value && e.push(u("div", { class: "loc-vue-empty" }, r.empty())), u("div", { class: "loc-vue-wrap" }, e);
 		};
 	}
-}), y = { install(e, t = {}) {
-	e.component(t.name || "OrgChart", v);
+}), S = { install(e, t = {}) {
+	e.component(t.name || "OrgChart", x);
 } };
-export { v as OrgChart, y as default };
+export { x as OrgChart, S as default };

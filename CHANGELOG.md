@@ -1,5 +1,81 @@
 # Changelog
 
+## 1.19.0
+
+### Behaviour changes hosts should know
+- In view mode (readonly, not editing, or dragging disabled) pressing a card
+  pans like empty canvas, and `node-select` fires on release only when the
+  pointer moved 4px or less. Edit mode still selects on press.
+- `exportPDF()` must be called inside a user gesture: it opens the print window
+  synchronously and returns `Promise<boolean>`.
+- Duplicate ids, parent cycles and self-parents reject the layout with
+  `layout-error` (`error.code === 'INVALID_DATA'`, ids in `error.details`);
+  nothing partial is rendered and `whenLayoutSettled()` resolves `false`.
+- `readonly` refuses every edit method; edit methods return booleans and
+  `isReadonly()` is new.
+- `setNodes()` treats fresh data as authoritative: manual state for removed ids
+  is pruned and a changed `parentId` wins over an older manual reparent.
+- Removed the unused layered layout and the `@dagrejs/dagre` dependency.
+
+### Security
+- Saved layouts, imports, settings and node patches are validated; invalid
+  entries are dropped and reported once (console warning and `input-warning`).
+  PHP `[]` maps are accepted.
+- SVG export writes only finite numbers into geometry attributes and strips
+  XML-illegal characters; theme colours accept colour literals only.
+- `exportPDF()` shows the chart as an image of an `image/svg+xml` blob, so chart
+  data never becomes markup in a same-origin document.
+
+### Interaction and accessibility
+- Panning is composited only while a gesture runs; pointer capture,
+  `pointercancel`, no text selection or native drag, middle-button pan.
+- Two-finger pinch zoom; `touch-action` set on canvas and cards.
+- Wheel zoom is proportional and trackpad friendly (Ctrl+wheel pinches,
+  horizontal wheel pans); zooming out never zooms in past the fitted view.
+- `fitToScreen({ minZoom, anchor })` frames a readable, root-anchored view;
+  new `zoomBy(factor, point)`; a fit on a hidden container waits for a size.
+- ARIA tree with roving focus and keyboard navigation; the collapse toggle is a
+  real button; every library button is `type="button"`.
+- WCAG AA colours for the department label (`#1f7f74`) and VACANT badge
+  (`#a3520f`); the phone toolbar is one scrolling row; external drawers styled.
+- `destroy()` releases everything and leaves the instance inert; the camera is
+  persisted once per gesture.
+- Vue: settings-loop guard, `maxZoom` and `ariaLabel` props, `input-warning`
+  forwarded, `fitToScreen(options)`, `zoomBy` and `isReadonly` exposed.
+
+### Data integrity
+- Restored layouts no longer drift; undo/redo matches the screen, keeps
+  per-node sizes and fires `node-change` for reparents.
+- Manual geometry edits fire `layout-change` with `edit: true`.
+- `loadJSON` resets the manual maps and applies the file's settings;
+  `exportJSON` writes `version: 2`; `setSettings` is a no-op when nothing
+  changed; the `settings` option is honoured at construction.
+- Family connector stems are no longer lost when another line sits in the same
+  column.
+- Left-to-right and right-to-left charts keep the requested wide shape.
+- Grid Smart no longer throws at grid size 80 or zero spacing.
+
+### Performance
+- One layout worker per chart (with a `layoutTimeout` watchdog and
+  `messageerror` handling); later layouts run warm.
+- Restoring a saved layout and toggling smart edges reuse the solved layout;
+  the worker payload carries only layout fields.
+- Grid Smart uses about 35% less CPU on real office charts with identical
+  geometry (golden snapshots of 28 anonymised charts).
+- Card text is fitted after the collapse toggle is placed, so it renders at full
+  size, and new cards are fitted in one batch.
+
+### Official print
+- Exact physical PDF size above 5,080 mm (page UserUnit, PDF 1.6).
+- Card text wrapped by measured font width; overflow is ellipsized with a
+  `text-truncated` warning; unsupported characters raise
+  `unsupported-characters`; the photo placeholder is vector.
+- New `preparePrintPhotos()` rasterises portraits to their printed size;
+  oversized embedded images fail with an actionable error; photos are clipped
+  with the approved 5% overscan geometry.
+- Saved print layouts are validated (`sanitizePrintLayout`); invalid values and
+  stray bend points block export; connectors stay inside the content box.
+
 ## 1.18.7
 
 - Keep PDF dependencies external to the library bundle so each application's

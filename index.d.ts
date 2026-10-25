@@ -214,7 +214,7 @@ export interface PrintProfile {
   layoutFamily: PrintLayoutFamily;
   layout?: Record<string, any>;
 }
-export interface PrintDiagnostic { level: 'error' | 'warning'; code: string; message: string; }
+export interface PrintDiagnostic { level: 'error' | 'warning'; code: string; message: string; /** The card the diagnostic is about, when it concerns one. */ nodeId?: string; }
 export interface PrintLayoutResult {
   ok: boolean;
   profile: Required<Omit<PrintProfile, 'layout'>> & { layout: Record<string, any> };
@@ -223,14 +223,35 @@ export interface PrintLayoutResult {
   contentBox: { x: number; y: number; width: number; height: number };
   transform?: { scale: number; x: number; y: number };
   effectiveFontMm?: number;
+  /** Connector geometry drawn on the page, in page millimetres. */
+  connectorSegments?: Array<{ d: string; style?: any }>;
+  /** Measured text lines per card id. */
+  cardText?: Record<string, any>;
   [key: string]: any;
 }
 export const PRINT_LAYOUT_FAMILIES: readonly PrintLayoutFamily[];
 export function recommendPrintLayout(nodes: OrgNode[], canvas: { widthMm: number; heightMm: number }): { family: PrintLayoutFamily; reasons: string[]; stats: { count: number; maxDepth: number; maxChildren: number }; canvasAspect: number };
 export function normalizePrintProfile(profile: PrintProfile): Required<Omit<PrintProfile, 'layout'>> & { layout: Record<string, any> };
 export function layoutPrintChart(nodes: OrgNode[], profile: PrintProfile): PrintLayoutResult;
-export function renderPrintChartFragment(layout: PrintLayoutResult, options?: { photoDataByUrl?: Record<string, string>; allowRemotePhotos?: boolean }): string;
-export function renderPrintChartSvg(layout: PrintLayoutResult, options?: { photoDataByUrl?: Record<string, string>; allowRemotePhotos?: boolean; background?: string; ariaLabel?: string }): string;
+export interface PrintRenderOptions {
+  photoDataByUrl?: Record<string, string>;
+  /** Photos from preparePrintPhotos(), keyed by photo URL; used in place of photoDataByUrl. */
+  preparedPhotos?: Record<string, string>;
+  allowRemotePhotos?: boolean;
+}
+export function renderPrintChartFragment(layout: PrintLayoutResult, options?: PrintRenderOptions): string;
+export function renderPrintChartSvg(layout: PrintLayoutResult, options?: PrintRenderOptions & { background?: string; ariaLabel?: string }): string;
+/** Rasterise every photo the layout uses to its printed size at the profile dpi (browser only). */
+export function preparePrintPhotos(layout: PrintLayoutResult, photoDataByUrl: Record<string, string>, options?: { charBudget?: number }): Promise<{ photos: Record<string, string>; failed: string[] }>;
+/** Keep only finite geometry, known enums and safe colours from a saved print layout. */
+export function sanitizePrintLayout(layout: unknown): { layout: Record<string, any>; issues: string[] };
+/** PDF page size and UserUnit that keep an exact physical size beyond the 14,400-unit page limit. */
+export function printPdfPageGeometry(widthMm: number, heightMm: number): { userUnit: number; unitsPerMm: number; pageWidth: number; pageHeight: number };
+export function printPhotoPixelSize(boxMm: number, dpi: number, maxPx?: number): number;
+export function printPhotoPlacement(naturalWidth: number, naturalHeight: number, edgePx: number): { x: number; y: number; width: number; height: number };
+export function rasterizePrintPhoto(src: string, edgePx: number, options?: { charBudget?: number }): Promise<string>;
+export const MAX_PRINT_PHOTO_PX: number;
+export const MAX_EMBEDDED_IMAGE_CHARS: number;
 export function svgElementToPdfBlob(svgElement: SVGElement, dimensions: { widthMm: number; heightMm: number }): Promise<Blob>;
 
 // ---- vanilla ----
